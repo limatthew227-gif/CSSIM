@@ -1665,10 +1665,17 @@ function createRoundFeed(
 
   while (remainingKills.you + remainingKills.opponent > 0) {
     const preferred = feed.length === 1 ? openingSide : pickKillSide(remainingKills);
-    const sideKey = remainingKills[preferred] > 0 ? preferred : otherSide(preferred);
+    let sideKey: "you" | "opponent" = remainingKills[preferred] > 0 ? preferred : otherSide(preferred);
     if (remainingKills[sideKey] <= 0) break;
 
-    const victimSide = otherSide(sideKey);
+    let victimSide: "you" | "opponent" = otherSide(sideKey);
+    // Prevent a team from being completely wiped out if they still have kills to get,
+    // which would otherwise result in dead players getting kills later in the round.
+    if (alive[victimSide].length === 1 && remainingKills[victimSide] > 0) {
+      sideKey = victimSide;
+      victimSide = otherSide(sideKey);
+    }
+
     const killerPool = alive[sideKey].length ? alive[sideKey] : teams[sideKey];
     const victimPool = alive[victimSide];
     if (!victimPool.length) {
