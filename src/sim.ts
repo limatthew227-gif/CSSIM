@@ -726,6 +726,80 @@ function economyValue(economy: MatchState["economy"]) {
   return -0.055;
 }
 
+type ArmorState = "none" | "kevlar" | "helmet";
+
+interface LoadoutProfile {
+  buyState: MatchState["economy"];
+  primaryWeapons: number;
+  midWeapons: number;
+  upgradedPistols: number;
+  armor: number;
+  nakedEco: boolean;
+}
+
+function loadoutProfile(
+  players: Player[],
+  buyState: MatchState["economy"],
+  weapons: Record<string, string>,
+  armor: Record<string, ArmorState>,
+): LoadoutProfile {
+  let primaryWeapons = 0;
+  let midWeapons = 0;
+  let upgradedPistols = 0;
+  let armorCount = 0;
+
+  players.forEach((player) => {
+    const weapon = weapons[player.id] ?? "";
+    if (weapon === "AK-47" || weapon === "M4A4" || weapon === "M4A1-S" || weapon === "M4A1" || weapon === "AWP") {
+      primaryWeapons += 1;
+    } else if (weapon === "Galil AR" || weapon === "Galil" || weapon === "Famas" || weapon === "MP9" || weapon === "MAC-10") {
+      midWeapons += 1;
+    } else if (weapon === "Desert Eagle" || weapon === "P250") {
+      upgradedPistols += 1;
+    }
+    if ((armor[player.id] ?? "none") !== "none") armorCount += 1;
+  });
+
+  return {
+    buyState,
+    primaryWeapons,
+    midWeapons,
+    upgradedPistols,
+    armor: armorCount,
+    nakedEco: buyState === "ECO" && primaryWeapons === 0 && midWeapons === 0 && upgradedPistols === 0 && armorCount === 0,
+  };
+}
+
+function hasRealFullBuy(profile: LoadoutProfile) {
+  return profile.buyState === "FULL" && profile.primaryWeapons >= 3 && profile.armor >= 3;
+}
+
+function ecoUpsetCap(ecoProfile: LoadoutProfile, fullProfile: LoadoutProfile, strengthAdvantage: number) {
+  if (ecoProfile.buyState !== "ECO" || !hasRealFullBuy(fullProfile)) return undefined;
+  if (strengthAdvantage >= 20) return clamp(0.18 + (strengthAdvantage - 20) * 0.004, 0.18, 0.3);
+
+  const advantageLift = Math.max(0, strengthAdvantage) * 0.003;
+  if (ecoProfile.nakedEco) return clamp(0.035 + advantageLift, 0.025, 0.095);
+  if (ecoProfile.primaryWeapons > 0 || ecoProfile.midWeapons > 0) return clamp(0.12 + advantageLift, 0.1, 0.18);
+  return clamp(0.07 + advantageLift + ecoProfile.upgradedPistols * 0.006 + ecoProfile.armor * 0.004, 0.055, 0.15);
+}
+
+function applyEcoUpsetCaps(
+  probability: number,
+  yourProfile: LoadoutProfile,
+  opponentProfile: LoadoutProfile,
+  yourStrength: number,
+  opponentStrength: number,
+) {
+  const yourEcoCap = ecoUpsetCap(yourProfile, opponentProfile, yourStrength - opponentStrength);
+  if (yourEcoCap !== undefined) probability = Math.min(probability, yourEcoCap);
+
+  const opponentEcoCap = ecoUpsetCap(opponentProfile, yourProfile, opponentStrength - yourStrength);
+  if (opponentEcoCap !== undefined) probability = Math.max(probability, 1 - opponentEcoCap);
+
+  return probability;
+}
+
 function matchWinThreshold(round: number) {
   if (round < 25) return 13;
   const overtimeNumber = Math.floor((round - 25) / 6) + 1;
@@ -1155,6 +1229,8 @@ export function playRound(
 
   const yourStrength = teamStrength(you, settings) + mapEdge(you, opponent, state.map, settings);
   const opponentStrength = teamStrength(opponent, settings, difficulty, true);
+  const yourLoadout = loadoutProfile(you.players, currentEconomy, yourWeapons, yourArmor);
+  const opponentLoadout = loadoutProfile(opponent.players, currentOpponentEconomy, opponentWeapons, opponentArmor);
   const economyMod = economyValue(currentEconomy) - economyValue(currentOpponentEconomy);
   const sideMod = state.side === "CT" ? 0.015 : -0.005;
   const tacticMod =
@@ -1172,7 +1248,8 @@ export function playRound(
             ? -0.04
             : 0;
   const luck = (Math.random() - 0.5) * (settings.luck + difficulty.luck) * 0.34;
-  const probability = clamp(0.5 + (yourStrength - opponentStrength) / 58 + economyMod + sideMod + tacticMod + timeoutBoost + luck, 0.16, 0.84);
+  const baseProbability = clamp(0.5 + (yourStrength - opponentStrength) / 58 + economyMod + sideMod + tacticMod + timeoutBoost + luck, 0.16, 0.84);
+  const probability = applyEcoUpsetCaps(baseProbability, yourLoadout, opponentLoadout, yourStrength, opponentStrength);
   const youWin = Math.random() < probability;
 
   const winningTeamId: "you" | "opponent" = youWin ? "you" : "opponent";
