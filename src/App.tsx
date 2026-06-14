@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
+  ArrowLeft,
   Award,
   Ban,
   CheckCircle2,
@@ -96,7 +97,7 @@ const weaponIcons: Record<string, string> = {
 };
 
 
-type Screen = "setup" | "teams" | "draft" | "coach" | "swiss" | "playoffs" | "veto" | "match" | "result";
+type Screen = "setup" | "teams" | "draft" | "coach" | "swiss" | "playoffs" | "veto" | "match" | "result" | "stats" | "results" | "series-detail";
 type Mode = "classic" | "blind";
 type SwissRecord = { wins: number; losses: number };
 type TimeoutPlan = { boost: number; rounds: number };
@@ -106,6 +107,7 @@ type TournamentOutcome = "running" | "eliminated" | "champion";
 type SeriesStage = "swiss" | PlayoffRound;
 type StatsSideFilter = "both" | "T" | "CT";
 type StatsMapFilter = "all" | number;
+type StatsScope = "all" | "mine";
 
 interface TeamFormPlayer {
   handle: string;
@@ -399,7 +401,7 @@ function App() {
   const [playedOpponentIds, setPlayedOpponentIds] = useState<string[]>([]);
   const [matchResults, setMatchResults] = useState<SwissResult[]>([]);
   const [selectedResultId, setSelectedResultId] = useState<string>();
-  const [showStatsDatabase, setShowStatsDatabase] = useState(false);
+  const [statsScope, setStatsScope] = useState<StatsScope>("all");
   const [record, setRecord] = useState({ wins: 0, losses: 0 });
   const [pickems, setPickems] = useState<Record<string, string>>({});
   const [pickemScore, setPickemScore] = useState(0);
@@ -437,6 +439,10 @@ function App() {
     [record, swissField, swissPairs, swissRecords, swissUserFinished],
   );
   const playerDatabase = useMemo(() => buildPlayerDatabase(matchResults), [matchResults]);
+  const selectedResult = useMemo(
+    () => matchResults.find((result) => result.id === selectedResultId) ?? matchResults[matchResults.length - 1],
+    [matchResults, selectedResultId],
+  );
   const runDone = tournamentOutcome !== "running" || (phase === "swiss" && record.losses >= 3);
   const currentBestOf = phase === "playoffs" ? playoffBestOf(playoffRound) : swissBestOf(record);
   const currentSeriesLabel = phase === "playoffs" ? playoffRoundLabel(playoffRound) : `Swiss round ${record.wins + record.losses + 1}`;
@@ -559,7 +565,7 @@ function App() {
     setPlayedOpponentIds([]);
     setMatchResults([]);
     setSelectedResultId(undefined);
-    setShowStatsDatabase(false);
+    setStatsScope("all");
     setSeries(undefined);
     setMatch(undefined);
     setRollsLeft(settings.draftRolls);
@@ -600,7 +606,7 @@ function App() {
     setPlayedOpponentIds([]);
     setMatchResults([]);
     setSelectedResultId(undefined);
-    setShowStatsDatabase(false);
+    setStatsScope("all");
     setSeries(undefined);
     setMatch(undefined);
     setPlayerForm(generatePlayerForm(selected));
@@ -869,7 +875,7 @@ function App() {
     setPlayedOpponentIds([]);
     setMatchResults([]);
     setSelectedResultId(undefined);
-    setShowStatsDatabase(false);
+    setStatsScope("all");
     setVeto(createVeto());
     setSeries(undefined);
     setMatch(undefined);
@@ -1111,9 +1117,13 @@ function App() {
                 </span>
               </div>
               <div className="swiss-actions">
-                <button className={showStatsDatabase ? "secondary selected" : "secondary"} onClick={() => setShowStatsDatabase((value) => !value)}>
+                <button className="secondary" onClick={() => setScreen("stats")}>
                   <Target size={16} />
                   Stats
+                </button>
+                <button className="secondary" disabled={!matchResults.length} onClick={() => setScreen("results")}>
+                  <Database size={16} />
+                  Results
                 </button>
                 {swissCanSim ? (
                   <>
@@ -1184,15 +1194,6 @@ function App() {
             </div>
           </section>
 
-          {showStatsDatabase && (
-            <StatsDatabase
-              results={matchResults}
-              selectedResultId={selectedResultId}
-              playerRows={playerDatabase}
-              onSelectResult={setSelectedResultId}
-            />
-          )}
-
           <section className="swiss-board-shell">
             <div className="swiss-board-title">
               <div className="section-title">
@@ -1237,9 +1238,13 @@ function App() {
                 <span>Playoffs - {playoffRoundLabel(playoffRound)}</span>
               </div>
               <div className="swiss-actions">
-                <button className={showStatsDatabase ? "secondary selected" : "secondary"} onClick={() => setShowStatsDatabase((value) => !value)}>
+                <button className="secondary" onClick={() => setScreen("stats")}>
                   <Target size={16} />
                   Stats
+                </button>
+                <button className="secondary" disabled={!matchResults.length} onClick={() => setScreen("results")}>
+                  <Database size={16} />
+                  Results
                 </button>
                 {tournamentOutcome === "running" ? (
                   <button className="primary" onClick={startVeto}>
@@ -1283,15 +1288,6 @@ function App() {
             </div>
           </section>
 
-          {showStatsDatabase && (
-            <StatsDatabase
-              results={matchResults}
-              selectedResultId={selectedResultId}
-              playerRows={playerDatabase}
-              onSelectResult={setSelectedResultId}
-            />
-          )}
-
           <section className="swiss-roster-bar">
             <div className="record-pill">
               <strong>{record.wins}-{record.losses}</strong>
@@ -1314,6 +1310,35 @@ function App() {
             <AchievementStrip achievements={achievements} />
           </section>
         </main>
+      )}
+
+      {screen === "stats" && (
+        <RunStatsPage
+          rows={playerDatabase}
+          scope={statsScope}
+          onScopeChange={setStatsScope}
+          onBack={() => setScreen(phase === "playoffs" ? "playoffs" : "swiss")}
+        />
+      )}
+
+      {screen === "results" && (
+        <RunResultsPage
+          results={matchResults}
+          selectedResultId={selectedResultId}
+          onOpen={(id) => {
+            setSelectedResultId(id);
+            setScreen("series-detail");
+          }}
+          onBack={() => setScreen(phase === "playoffs" ? "playoffs" : "swiss")}
+        />
+      )}
+
+      {screen === "series-detail" && (
+        <SeriesDetailPage
+          result={selectedResult}
+          onBack={() => setScreen("results")}
+          onBackToRun={() => setScreen(phase === "playoffs" ? "playoffs" : "swiss")}
+        />
       )}
 
       {screen === "veto" && (
@@ -2400,6 +2425,10 @@ function signedValue(value: number) {
   return `${value > 0 ? "+" : ""}${value.toFixed(1)}`;
 }
 
+function signedInteger(value: number) {
+  return `${value > 0 ? "+" : ""}${value}`;
+}
+
 function vetoMapLabel(veto: VetoState, map: MapId) {
   const pick = veto.picked[map];
   if (pick === "decider") return "Decider";
@@ -2590,84 +2619,280 @@ function aggregateSeriesSideStats(team: FieldTeam, maps: SeriesMapResult[], team
   return stats;
 }
 
-function StatsDatabase({
+function RunStatsPage({
+  rows,
+  scope,
+  onScopeChange,
+  onBack,
+}: {
+  rows: PlayerDatabaseRow[];
+  scope: StatsScope;
+  onScopeChange: (scope: StatsScope) => void;
+  onBack: () => void;
+}) {
+  const visibleRows = scope === "mine" ? rows.filter((row) => row.team.id === "user") : rows;
+  const leader = visibleRows[0];
+  return (
+    <main className="layout fullscreen-page">
+      <section className="fullscreen-head">
+        <div>
+          <div className="section-title">
+            <Target size={18} />
+            <span>Run stats</span>
+          </div>
+          <h1>Player database</h1>
+          <p>{rows.length ? `${rows.length} players tracked from completed series.` : "Complete a series and the run database will start filling in here."}</p>
+        </div>
+        <div className="fullscreen-actions">
+          <div className="segmented compact">
+            <button className={scope === "all" ? "selected" : ""} onClick={() => onScopeChange("all")}>
+              <Users size={16} />
+              All players
+            </button>
+            <button className={scope === "mine" ? "selected" : ""} onClick={() => onScopeChange("mine")}>
+              <Target size={16} />
+              My players
+            </button>
+          </div>
+          <button className="secondary" onClick={onBack}>
+            <ArrowLeft size={16} />
+            Back
+          </button>
+        </div>
+      </section>
+
+      {leader && (
+        <section className="stats-leader-strip">
+          <div>
+            <span>Top rating</span>
+            <strong>{leader.player.handle}</strong>
+            <small>{leader.team.name} / {leader.line.rating.toFixed(2)}</small>
+          </div>
+          <div>
+            <span>Best ADR</span>
+            <strong>{[...visibleRows].sort((a, b) => b.line.adr - a.line.adr)[0]?.player.handle}</strong>
+            <small>{[...visibleRows].sort((a, b) => b.line.adr - a.line.adr)[0]?.line.adr.toFixed(1)} ADR</small>
+          </div>
+          <div>
+            <span>Scope</span>
+            <strong>{scope === "mine" ? "My roster" : "Full field"}</strong>
+            <small>{visibleRows.length} listed</small>
+          </div>
+        </section>
+      )}
+
+      <section className="full-table-card">
+        <div className="full-table-head run-stats-grid">
+          <span>Player</span>
+          <span>Nation</span>
+          <span>Team</span>
+          <span>Role</span>
+          <span>Maps</span>
+          <span>K-D</span>
+          <span>+/-</span>
+          <span>ADR</span>
+          <span>KAST</span>
+          <span>Impact</span>
+          <span>FK-FD</span>
+          <span>2K+</span>
+          <span>Clutch</span>
+          <span>Rating</span>
+        </div>
+        {visibleRows.length ? (
+          visibleRows.map(({ databaseKey, player, team, matches, line }) => {
+            const kast = line.rounds ? (line.kastRounds / line.rounds) * 100 : 0;
+            return (
+              <div className="full-table-row run-stats-grid" key={databaseKey}>
+                <span className="full-player-cell">
+                  <Flag country={player.country} />
+                  <b>{player.handle}</b>
+                  <small>{player.realName}</small>
+                </span>
+                <span>{player.country}</span>
+                <span>{team.tag}</span>
+                <span>{player.role}</span>
+                <span>{matches}</span>
+                <span>{line.kills}-{line.deaths}</span>
+                <span className={line.kills >= line.deaths ? "stat-positive" : "stat-negative"}>{signedInteger(line.kills - line.deaths)}</span>
+                <span>{line.adr.toFixed(1)}</span>
+                <span>{kast.toFixed(1)}%</span>
+                <span>{line.impact.toFixed(2)}</span>
+                <span>{line.firstKills}-{line.firstDeaths}</span>
+                <span>{line.multiKills}</span>
+                <span>{line.clutchWins}</span>
+                <span className={`rating-number ${ratingTone(line.rating)}`}>{line.rating.toFixed(2)}</span>
+              </div>
+            );
+          })
+        ) : (
+          <div className="empty-fullscreen">No player stats for this filter yet.</div>
+        )}
+      </section>
+    </main>
+  );
+}
+
+function RunResultsPage({
   results,
   selectedResultId,
-  playerRows,
-  onSelectResult,
+  onOpen,
+  onBack,
 }: {
   results: SwissResult[];
   selectedResultId?: string;
-  playerRows: PlayerDatabaseRow[];
-  onSelectResult: (id: string) => void;
+  onOpen: (id: string) => void;
+  onBack: () => void;
 }) {
-  const selected = results.find((result) => result.id === selectedResultId) ?? results[results.length - 1];
   return (
-    <section className="analysis-panel full stats-database">
-      <div className="series-analysis-head">
-        <div className="section-title">
-          <Database size={18} />
-          <span>Run database</span>
+    <main className="layout fullscreen-page">
+      <section className="fullscreen-head">
+        <div>
+          <div className="section-title">
+            <Database size={18} />
+            <span>Previous results</span>
+          </div>
+          <h1>Series archive</h1>
+          <p>{results.length ? `${results.length} completed series saved for this run.` : "Completed series will be stored here."}</p>
         </div>
-        <span>{results.length ? `${results.length} series stored` : "No completed series yet"}</span>
-      </div>
-      {results.length ? (
-        <>
-          <div className="database-grid">
-            <div className="result-browser">
-              <strong>Series results</strong>
-              <div className="result-list">
-                {[...results].reverse().map((result) => (
-                  <button
-                    className={selected?.id === result.id ? "result-row selected" : "result-row"}
-                    key={result.id}
-                    onClick={() => onSelectResult(result.id)}
-                  >
-                    <span>R{result.round} / {result.label} / BO{result.bestOf}</span>
-                    <b>{result.left.tag} {result.leftScore}-{result.rightScore} {result.right.tag}</b>
-                    <small>{seriesMapSummary(result)} / {result.winnerId === result.left.id ? result.left.name : result.right.name} won{result.played ? " / yours" : ""}</small>
-                  </button>
+        <button className="secondary" onClick={onBack}>
+          <ArrowLeft size={16} />
+          Back
+        </button>
+      </section>
+
+      <section className="results-grid-full">
+        {results.length ? (
+          [...results].reverse().map((result) => (
+            <button
+              className={selectedResultId === result.id ? "series-result-card selected" : "series-result-card"}
+              key={result.id}
+              onClick={() => onOpen(result.id)}
+            >
+              <span className="series-stage-pill">{result.label} / BO{result.bestOf}</span>
+              <div className="series-card-score">
+                <div>
+                  <TeamLogo team={result.left} small />
+                  <strong>{result.left.name}</strong>
+                </div>
+                <b>
+                  <span className={result.winnerId === result.left.id ? "winner" : ""}>{result.leftScore}</span>
+                  <em>:</em>
+                  <span className={result.winnerId === result.right.id ? "winner" : ""}>{result.rightScore}</span>
+                </b>
+                <div>
+                  <TeamLogo team={result.right} small />
+                  <strong>{result.right.name}</strong>
+                </div>
+              </div>
+              <div className="series-map-pills">
+                {result.maps.map((map, index) => (
+                  <span key={`${result.id}-${map.map}-${index}`}>
+                    {mapName(map.map)} {map.leftScore}:{map.rightScore}
+                  </span>
                 ))}
               </div>
+              <small>{result.winnerId === result.left.id ? result.left.name : result.right.name} won{result.played ? " / your match" : ""}</small>
+            </button>
+          ))
+        ) : (
+          <div className="empty-fullscreen">No previous results yet. Finish a series and it will appear here.</div>
+        )}
+      </section>
+    </main>
+  );
+}
+
+function SeriesDetailPage({
+  result,
+  onBack,
+  onBackToRun,
+}: {
+  result?: SwissResult;
+  onBack: () => void;
+  onBackToRun: () => void;
+}) {
+  if (!result) {
+    return (
+      <main className="layout fullscreen-page">
+        <section className="fullscreen-head">
+          <div>
+            <div className="section-title">
+              <Database size={18} />
+              <span>Series details</span>
             </div>
-            <div className="player-database">
-              <strong>Player database</strong>
-              <div className="player-db-head">
-                <span>Player</span>
-                <span>Maps</span>
-                <span>K-D</span>
-                <span>ADR</span>
-                <span>Rating</span>
-              </div>
-              {playerRows.map(({ databaseKey, player, team, matches, line }) => (
-                <div className="player-db-row" key={databaseKey}>
-                  <span>
-                    <b>{player.handle}</b>
-                    <small>{team.tag} / {player.role}</small>
-                  </span>
-                  <span>{matches}</span>
-                  <span>{line.kills}-{line.deaths}</span>
-                  <span>{line.adr.toFixed(1)}</span>
-                  <span className={`rating-number ${ratingTone(line.rating)}`}>{line.rating.toFixed(2)}</span>
-                </div>
-              ))}
-            </div>
+            <h1>No series selected</h1>
+            <p>Open a completed result to inspect its maps and player stats.</p>
           </div>
-          {selected && (
-            <MatchStatsPanel
-              maps={selected.maps.map((map) => map.map)}
-              mapResults={selected.maps}
-              teams={[
-                { team: selected.left, players: selected.left.players, stats: selected.leftStats, side: "left" },
-                { team: selected.right, players: selected.right.players, stats: selected.rightStats, side: "right" },
-              ]}
-            />
-          )}
-        </>
-      ) : (
-        <p className="note">Complete a Swiss round and the sim will save every other series here with player stats.</p>
-      )}
-    </section>
+          <button className="secondary" onClick={onBackToRun}>
+            <ArrowLeft size={16} />
+            Back to run
+          </button>
+        </section>
+      </main>
+    );
+  }
+
+  return (
+    <main className="layout fullscreen-page">
+      <section className="fullscreen-head">
+        <div>
+          <div className="section-title">
+            <Database size={18} />
+            <span>Series details</span>
+          </div>
+          <h1>{result.label}</h1>
+          <p>BO{result.bestOf} / {result.played ? "Your series" : "Simmed series"}</p>
+        </div>
+        <div className="fullscreen-actions">
+          <button className="secondary" onClick={onBack}>
+            <ArrowLeft size={16} />
+            Results
+          </button>
+          <button className="secondary" onClick={onBackToRun}>
+            Back to run
+          </button>
+        </div>
+      </section>
+
+      <section className="series-detail-hero">
+        <div className="series-detail-team" style={{ "--crest": result.left.accent } as React.CSSProperties}>
+          <TeamLogo team={result.left} />
+          <strong>{result.left.name}</strong>
+          <span>{result.left.country} / {result.left.year}</span>
+        </div>
+        <div className="series-detail-score">
+          <strong>
+            <span className={result.winnerId === result.left.id ? "winner" : ""}>{result.leftScore}</span>
+            <em>:</em>
+            <span className={result.winnerId === result.right.id ? "winner" : ""}>{result.rightScore}</span>
+          </strong>
+          <small>{result.label}</small>
+        </div>
+        <div className="series-detail-team right" style={{ "--crest": result.right.accent } as React.CSSProperties}>
+          <TeamLogo team={result.right} />
+          <strong>{result.right.name}</strong>
+          <span>{result.right.country} / {result.right.year}</span>
+        </div>
+      </section>
+
+      <section className="series-map-summary">
+        {result.maps.map((map, index) => (
+          <span key={`${result.id}-detail-${map.map}-${index}`}>
+            <b>{mapName(map.map)}</b>
+            {map.leftScore}:{map.rightScore}
+          </span>
+        ))}
+      </section>
+
+      <MatchStatsPanel
+        maps={result.maps.map((map) => map.map)}
+        mapResults={result.maps}
+        teams={[
+          { team: result.left, players: result.left.players, stats: result.leftStats, side: "left" },
+          { team: result.right, players: result.right.players, stats: result.rightStats, side: "right" },
+        ]}
+      />
+    </main>
   );
 }
 
@@ -2692,6 +2917,9 @@ function TeamStatsBlock({
         <b>Swing</b>
         <b>ADR</b>
         <b>KAST</b>
+        <b>Impact</b>
+        <b>FK-FD</b>
+        <b>2K+</b>
         <b>
           Rating
           <span>2.0</span>
@@ -2701,6 +2929,7 @@ function TeamStatsBlock({
         <div className="team-stats-grid team-stats-row" key={player.id}>
           <div className="stats-player">
             <Flag country={player.country} />
+            <span className="country-code">{player.country}</span>
             <span className="player-name">
               <span className="player-real">{player.realName}</span> <b>{player.handle}</b>
             </span>
@@ -2709,6 +2938,9 @@ function TeamStatsBlock({
           <span data-label="Swing" className={`swing-cell ${swingTone(swing)}`}>{formatSignedPercent(swing)}</span>
           <span data-label="ADR">{line.adr.toFixed(1)}</span>
           <span data-label="KAST">{kast.toFixed(1)}%</span>
+          <span data-label="Impact">{line.impact.toFixed(2)}</span>
+          <span data-label="FK-FD">{line.firstKills}-{line.firstDeaths}</span>
+          <span data-label="2K+">{line.multiKills}</span>
           <span data-label="Rating" className={`rating-number ${ratingTone(line.rating)}`}>{line.rating.toFixed(2)}</span>
         </div>
       ))}
