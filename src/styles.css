@@ -64,11 +64,11 @@ button:hover:not(:disabled) {
   top: 0;
   z-index: 10;
   display: grid;
-  grid-template-columns: minmax(220px, 1fr) auto auto;
-  gap: 12px;
+  grid-template-columns: minmax(240px, 1fr) auto auto;
+  gap: 14px;
   align-items: center;
-  min-height: 46px;
-  padding: 6px 16px;
+  min-height: 54px;
+  padding: 8px 18px;
   border-top: 3px solid var(--gold);
   border-bottom: 1px solid var(--line);
   background: rgba(25, 27, 31, 0.96);
@@ -76,25 +76,25 @@ button:hover:not(:disabled) {
 }
 
 .topbar .crest {
-  width: 30px;
-  height: 30px;
+  width: 34px;
+  height: 34px;
   border-radius: 6px;
   font-size: 12px;
 }
 
 .topbar .brand-lockup strong {
-  font-size: 16px;
+  font-size: 18px;
 }
 
 .topbar .stage-nav span {
-  padding: 3px 7px;
-  font-size: 11px;
+  padding: 5px 10px;
+  font-size: 12px;
 }
 
 .topbar button {
-  min-height: 30px;
-  padding: 0 10px;
-  font-size: 11px;
+  min-height: 34px;
+  padding: 0 12px;
+  font-size: 12px;
 }
 
 .brand-lockup,
