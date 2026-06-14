@@ -46,6 +46,10 @@ export interface VetoState {
   decider?: MapId;
   ready: boolean;
   prompt: string;
+  pendingOpponent?: {
+    action: "ban" | "pick";
+    map: MapId;
+  };
 }
 
 export interface PlayerLine {
@@ -299,28 +303,30 @@ export function createVeto(bestOf = 1): VetoState {
 }
 
 export function applyUserBan(veto: VetoState, map: MapId, you: FieldTeam, opponent: FieldTeam, settings: CustomSettings) {
-  if (veto.ready || !veto.available.includes(map)) return veto;
+  if (veto.ready || veto.pendingOpponent || !veto.available.includes(map)) return veto;
   if (veto.bestOf >= 5) return applyMultiMapVeto(veto, map, you, opponent, settings, 5);
   if (veto.bestOf >= 3) return applyMultiMapVeto(veto, map, you, opponent, settings, 3);
 
   let next = banMap(veto, map, "you", `${you.name} banned ${mapName(map)}`);
   if (next.available.length > 1) {
     const opponentBan = opponentBanChoice(next.available, you, opponent, settings);
-    next = banMap(next, opponentBan, "opponent", `${opponent.name} banned ${mapName(opponentBan)}`);
+    return queueOpponentVeto(next, "ban", opponentBan, opponent.name);
   }
-  if (next.available.length === 1) {
-    const decider = next.available[0];
-    next = {
-      ...next,
-      decider,
-      selected: [decider],
-      picked: { ...next.picked, [decider]: "decider" },
-      ready: true,
-      prompt: "Map decided",
-      log: [...next.log, `${mapName(decider)} is the decider`],
-    };
-  }
-  return next;
+  return finishSingleMapVeto(next);
+}
+
+export function applyOpponentVeto(veto: VetoState, opponent: FieldTeam) {
+  if (veto.ready || !veto.pendingOpponent) return veto;
+  const { action, map } = veto.pendingOpponent;
+  if (!veto.available.includes(map)) return { ...veto, pendingOpponent: undefined };
+
+  const label = action === "pick" ? `${opponent.name} picked ${mapName(map)}` : `${opponent.name} banned ${mapName(map)}`;
+  let next = action === "pick" ? pickMap(veto, map, "opponent", label) : banMap(veto, map, "opponent", label);
+  next = { ...next, pendingOpponent: undefined };
+
+  if (next.bestOf >= 5) return finishMultiMapOpponentStep(next, 5);
+  if (next.bestOf >= 3) return finishMultiMapOpponentStep(next, 3);
+  return finishSingleMapVeto(next);
 }
 
 function applyMultiMapVeto(
@@ -333,17 +339,16 @@ function applyMultiMapVeto(
 ) {
   const userPickCount = veto.selected.filter((id) => veto.picked[id] === "you").length;
   if (!Object.keys(veto.banned).length) {
-    let next = banMap(veto, map, "you", `${you.name} banned ${mapName(map)}`);
+    const next = banMap(veto, map, "you", `${you.name} banned ${mapName(map)}`);
     const opponentBan = opponentBanChoice(next.available, you, opponent, settings);
-    next = banMap(next, opponentBan, "opponent", `${opponent.name} banned ${mapName(opponentBan)}`);
-    return { ...next, prompt: "Pick your map" };
+    return queueOpponentVeto(next, "ban", opponentBan, opponent.name);
   }
 
   if (userPickCount < Math.floor(targetMaps / 2)) {
     let next = pickMap(veto, map, "you", `${you.name} picked ${mapName(map)}`);
     if (next.selected.length < targetMaps - 1 && next.available.length > 1) {
       const opponentPick = opponentPickChoice(next.available, you, opponent, settings);
-      next = pickMap(next, opponentPick, "opponent", `${opponent.name} picked ${mapName(opponentPick)}`);
+      return queueOpponentVeto(next, "pick", opponentPick, opponent.name);
     }
     if (next.selected.length >= targetMaps - 1 && next.available.length === 1) {
       return setDecider(next, next.available[0]);
@@ -354,9 +359,39 @@ function applyMultiMapVeto(
   let next = banMap(veto, map, "you", `${you.name} banned ${mapName(map)}`);
   if (next.available.length > 1) {
     const opponentBan = opponentBanChoice(next.available, you, opponent, settings);
-    next = banMap(next, opponentBan, "opponent", `${opponent.name} banned ${mapName(opponentBan)}`);
+    return queueOpponentVeto(next, "ban", opponentBan, opponent.name);
   }
   return setDecider(next, next.available[0]);
+}
+
+function queueOpponentVeto(veto: VetoState, action: "ban" | "pick", map: MapId, opponentName: string): VetoState {
+  return {
+    ...veto,
+    pendingOpponent: { action, map },
+    prompt: `${opponentName} is thinking...`,
+  };
+}
+
+function finishSingleMapVeto(veto: VetoState): VetoState {
+  if (veto.available.length !== 1) return { ...veto, prompt: "Ban a map" };
+  const decider = veto.available[0];
+  return {
+    ...veto,
+    decider,
+    selected: [decider],
+    picked: { ...veto.picked, [decider]: "decider" },
+    ready: true,
+    prompt: "Map decided",
+    log: [...veto.log, `${mapName(decider)} is the decider`],
+  };
+}
+
+function finishMultiMapOpponentStep(veto: VetoState, targetMaps: 3 | 5): VetoState {
+  if (veto.selected.length >= targetMaps - 1 && veto.available.length === 1) {
+    return setDecider(veto, veto.available[0]);
+  }
+  const userPickCount = veto.selected.filter((id) => veto.picked[id] === "you").length;
+  return { ...veto, prompt: userPickCount < Math.floor(targetMaps / 2) ? "Pick your map" : "Ban a map" };
 }
 
 function banMap(veto: VetoState, map: MapId, owner: "you" | "opponent", label: string): VetoState {

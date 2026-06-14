@@ -3125,9 +3125,9 @@ meter::-webkit-meter-optimum-value {
 
 .paper-strength-panel {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 116px minmax(0, 1fr);
-  gap: 10px;
-  margin: 16px 0;
+  grid-template-columns: 1fr;
+  gap: 8px;
+  margin: 14px 0;
   align-items: stretch;
 }
 
@@ -3135,17 +3135,25 @@ meter::-webkit-meter-optimum-value {
 .paper-edge {
   display: grid;
   align-content: center;
-  min-height: 104px;
+  min-width: 0;
+  min-height: 82px;
+  overflow: hidden;
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  padding: 12px;
+  padding: 10px;
   background:
     linear-gradient(135deg, color-mix(in srgb, var(--accent), transparent 88%), transparent 62%),
     #171a1f;
 }
 
+.paper-strength-card {
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: 10px;
+  align-items: center;
+}
+
 .paper-strength-card.right {
-  text-align: right;
+  text-align: left;
 }
 
 .paper-strength-card span,
@@ -3157,18 +3165,27 @@ meter::-webkit-meter-optimum-value {
 }
 
 .paper-strength-card strong {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  justify-self: end;
   color: var(--gold);
-  font-size: clamp(34px, 4vw, 48px);
+  font-size: clamp(34px, 5vw, 46px);
   line-height: 0.95;
+  white-space: nowrap;
 }
 
 .paper-strength-card small,
 .paper-edge small {
   color: var(--muted);
   font-weight: 800;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .paper-strength-details {
+  grid-column: 1 / -1;
   display: flex;
   flex-wrap: wrap;
   gap: 5px;
@@ -3176,7 +3193,7 @@ meter::-webkit-meter-optimum-value {
 }
 
 .paper-strength-card.right .paper-strength-details {
-  justify-content: flex-end;
+  justify-content: flex-start;
 }
 
 .paper-strength-details em {
@@ -3193,14 +3210,21 @@ meter::-webkit-meter-optimum-value {
 }
 
 .paper-edge {
-  justify-items: center;
-  text-align: center;
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: 10px;
+  justify-items: stretch;
+  text-align: left;
   background: #202329;
 }
 
 .paper-edge strong {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  align-self: center;
+  justify-self: end;
   font-size: 26px;
   line-height: 1;
+  white-space: nowrap;
 }
 
 .paper-edge.good strong {
@@ -3241,9 +3265,49 @@ meter::-webkit-meter-optimum-value {
 
 .edge {
   display: grid;
-  grid-template-columns: 82px 1fr 54px;
+  grid-template-columns: minmax(76px, 92px) minmax(0, 1fr) 50px;
   gap: 8px;
   align-items: center;
+  min-width: 0;
+}
+
+.map-edge-label {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+
+.map-edge-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.map-edge-label small {
+  color: var(--muted);
+  font-size: 8.5px;
+  font-weight: 900;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.edge.banned .map-edge-name {
+  opacity: 0.5;
+  text-decoration: line-through;
+}
+
+.edge.banned meter,
+.edge.banned b {
+  opacity: 0.35;
+}
+
+.edge.picked .map-edge-name {
+  color: var(--accent);
+}
+
+.edge.decider .map-edge-name {
+  color: var(--gold);
 }
 
 .bonus-list div {

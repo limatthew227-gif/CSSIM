@@ -48,6 +48,7 @@ import {
   MatchState,
   Tactic,
   VetoState,
+  applyOpponentVeto,
   applyUserBan,
   averageOvr,
   composition,
@@ -519,6 +520,14 @@ function App() {
   useEffect(() => {
     saveCustomRosters(customRosters);
   }, [customRosters]);
+
+  useEffect(() => {
+    if (screen !== "veto" || !veto.pendingOpponent) return;
+    const timer = window.setTimeout(() => {
+      setVeto((current) => applyOpponentVeto(current, opponent));
+    }, 1000);
+    return () => window.clearTimeout(timer);
+  }, [screen, veto.pendingOpponent?.action, veto.pendingOpponent?.map, opponent]);
 
   useEffect(() => {
     if (screen !== "match" || !match?.running || match.ended) return;
@@ -1448,7 +1457,7 @@ function App() {
                 <button
                   key={map.id}
                   className={`map-card ${veto.banned[map.id] ? "banned" : ""} ${veto.picked[map.id] ? "picked" : ""} ${veto.decider === map.id ? "decider" : ""}`}
-                  disabled={Boolean(veto.banned[map.id] || veto.picked[map.id] || veto.ready)}
+                  disabled={Boolean(veto.banned[map.id] || veto.picked[map.id] || veto.ready || veto.pendingOpponent)}
                   onClick={() => ban(map.id)}
                   style={{ "--map": map.accent } as React.CSSProperties}
                 >
@@ -1483,13 +1492,20 @@ function App() {
               {mapPool
                 .map((map) => ({ ...map, edge: mapEdge(yourTeam, opponent, map.id, settings) }))
                 .sort((a, b) => b.edge - a.edge)
-                .map((map) => (
-                  <div className={map.edge >= 0 ? "edge good" : "edge bad"} key={map.id}>
-                    <span>{map.name}</span>
-                    <meter min={-8} max={8} value={map.edge} />
-                    <b>{map.edge > 0 ? "+" : ""}{map.edge.toFixed(1)}</b>
-                  </div>
-                ))}
+                .map((map) => {
+                  const status = vetoEdgeStatus(veto, map.id, opponent.tag);
+                  const mapState = veto.banned[map.id] ? "banned" : veto.picked[map.id] === "decider" ? "decider" : veto.picked[map.id] ? "picked" : "";
+                  return (
+                    <div className={`edge ${map.edge >= 0 ? "good" : "bad"} ${mapState}`} key={map.id}>
+                      <span className="map-edge-label">
+                        <span className="map-edge-name">{map.name}</span>
+                        {status && <small>{status}</small>}
+                      </span>
+                      <meter min={-8} max={8} value={map.edge} />
+                      <b>{map.edge > 0 ? "+" : ""}{map.edge.toFixed(1)}</b>
+                    </div>
+                  );
+                })}
             </div>
             <FormList players={selected} form={playerForm} />
             <div className="bonus-compare">
@@ -2579,7 +2595,19 @@ function vetoMapLabel(veto: VetoState, map: MapId) {
   if (pick === "you") return "Your pick";
   if (pick === "opponent") return "Opponent pick";
   if (veto.banned[map]) return "Ban";
+  if (veto.pendingOpponent && veto.available.includes(map)) return "Thinking";
   return veto.prompt.toLowerCase().includes("pick") ? "Pick" : "Open";
+}
+
+function vetoEdgeStatus(veto: VetoState, map: MapId, opponentTag: string) {
+  const ban = veto.banned[map];
+  if (ban === "you") return "your ban";
+  if (ban === "opponent") return `${opponentTag} ban`;
+  const pick = veto.picked[map];
+  if (pick === "you") return "your pick";
+  if (pick === "opponent") return `${opponentTag} pick`;
+  if (pick === "decider") return "decider";
+  return "";
 }
 
 function SwissPath({ record }: { record: SwissRecord }) {
