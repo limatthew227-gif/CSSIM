@@ -13,6 +13,7 @@ import magic from "./assets/team-logos/magic.svg";
 import mibr from "./assets/team-logos/mibr.png";
 import mouz from "./assets/team-logos/mouz.png";
 import navi from "./assets/team-logos/natus-vincere.png";
+import navi2026 from "./assets/team-logos/natus-vincere-2026.svg";
 import pain from "./assets/team-logos/pain.png";
 import parivision from "./assets/team-logos/parivision.png";
 import spirit from "./assets/team-logos/spirit.png";
@@ -22,6 +23,7 @@ import vitality from "./assets/team-logos/vitality.png";
 export const teamLogoUrls: Record<string, string> = {
   vitality,
   "natus-vincere": navi,
+  "natus-vincere-2026": navi2026,
   spirit,
   falcons,
   furia,

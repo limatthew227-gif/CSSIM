@@ -32,6 +32,11 @@ interface HltvPlayerSeed {
 
 interface HltvTeamSeed {
   id: string;
+  rosterId?: string;
+  logoKey?: string;
+  era?: SourceTeam["era"];
+  year?: string;
+  rankingLabel?: string;
   rank: number;
   points: number;
   tag: string;
@@ -298,17 +303,19 @@ function makeRoster(team: HltvTeamSeed): Roster {
     tag: team.tag,
     name: team.name,
     country: team.country,
-    era: "CS2",
-    year: "2026",
+    era: team.era ?? "CS2",
+    year: team.year ?? "2026",
     accent: team.accent,
-    logo: teamLogoUrls[team.id],
+    logo: teamLogoUrls[team.logoKey ?? team.id],
   };
   const maps = teamMapPool(team);
+  const rankingLabel = team.rankingLabel ?? `HLTV #${team.rank} on June 8, 2026`;
+  const pointsCopy = team.year === "2026" || !team.year ? ` with ${team.points} points` : ` (${team.points} model points)`;
 
   return {
-    id: `hltv-${team.id}-2026-06-08`,
+    id: team.rosterId ?? `hltv-${team.id}-${source.year === "2026" ? "2026-06-08" : source.year}`,
     ...source,
-    tagline: `HLTV #${team.rank} on June 8, 2026 with ${team.points} points. OVR is opposition, role, sample-size, recent-form, and team-context adjusted.${team.note ? ` ${team.note}` : ""}`,
+    tagline: `${rankingLabel}${pointsCopy}. OVR is opposition, role, sample-size, recent-form, and team-context adjusted.${team.note ? ` ${team.note}` : ""}`,
     mapPool: maps,
     players: team.players.map((player, index) => {
       const stats = statsFromHltv(player, team);
@@ -385,6 +392,7 @@ const hltvTeams: HltvTeamSeed[] = [
   },
   {
     id: "natus-vincere",
+    logoKey: "natus-vincere-2026",
     rank: 2,
     points: 712,
     tag: "NAVI",
@@ -431,6 +439,101 @@ const hltvTeams: HltvTeamSeed[] = [
         },
       },
       { handle: "makazze", realName: "Drin Shaqiri", country: "XK", role: "Rifler", style: "Aggressive", hltvRating: 1.16 },
+    ],
+  },
+  {
+    id: "natus-vincere-2018",
+    rosterId: "hltv-natus-vincere-2018",
+    logoKey: "natus-vincere",
+    era: "CS:GO",
+    year: "2018",
+    rankingLabel: "2018 NAVI historical CS:GO roster",
+    rank: 2,
+    points: 850,
+    tag: "NAVI",
+    name: "Natus Vincere 2018",
+    country: "UA",
+    accent: "#f6d32d",
+    coachHandle: "kane",
+    coachRealName: "Mykhailo Blagin",
+    coachCountry: "UA",
+    coachStyle: "Tactical",
+    coachMaps: 260,
+    coachTrophies: 4,
+    coachWinrate: 63,
+    mapBias: { mirage: 3, inferno: 2, train: 2, dust2: 1, nuke: 1 },
+    note: "Historical lineup: Edward, Zeus, flamie, s1mple, and electronic.",
+    players: [
+      {
+        handle: "s1mple",
+        realName: "Oleksandr Kostyliev",
+        country: "UA",
+        role: "AWP",
+        style: "Balanced",
+        hltvRating: 1.35,
+        samples: {
+          overall: { rating: 1.35, maps: 247 },
+          top50: { rating: 1.35, maps: 247 },
+          top20: { rating: 1.34, maps: 178 },
+          top10: { rating: 1.3, maps: 113 },
+        },
+      },
+      {
+        handle: "electronic",
+        realName: "Denis Sharipov",
+        country: "RU",
+        role: "Lurker",
+        style: "Aggressive",
+        hltvRating: 1.2,
+        samples: {
+          overall: { rating: 1.2, maps: 253 },
+          top50: { rating: 1.2, maps: 253 },
+          top20: { rating: 1.16, maps: 179 },
+          top10: { rating: 1.12, maps: 112 },
+        },
+      },
+      {
+        handle: "flamie",
+        realName: "Egor Vasilyev",
+        country: "RU",
+        role: "Entry",
+        style: "Aggressive",
+        hltvRating: 1.07,
+        samples: {
+          overall: { rating: 1.07, maps: 247 },
+          top50: { rating: 1.07, maps: 247 },
+          top20: { rating: 1.04, maps: 175 },
+          top10: { rating: 1.02, maps: 113 },
+        },
+      },
+      {
+        handle: "Edward",
+        realName: "Ioann Sukhariev",
+        country: "UA",
+        role: "Support",
+        style: "Balanced",
+        hltvRating: 0.99,
+        samples: {
+          overall: { rating: 0.99, maps: 244 },
+          top50: { rating: 0.99, maps: 244 },
+          top20: { rating: 0.98, maps: 175 },
+          top10: { rating: 0.95, maps: 113 },
+        },
+      },
+      {
+        handle: "Zeus",
+        realName: "Danylo Teslenko",
+        country: "UA",
+        role: "IGL",
+        style: "Balanced",
+        hltvRating: 0.92,
+        samples: {
+          overall: { rating: 0.92, maps: 244 },
+          top50: { rating: 0.92, maps: 244 },
+          top20: { rating: 0.91, maps: 175 },
+          top10: { rating: 0.89, maps: 113 },
+        },
+      },
     ],
   },
   {
