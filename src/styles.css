@@ -2037,11 +2037,11 @@ meter::-webkit-meter-optimum-value {
   display: grid;
   align-items: center;
   gap: 8px;
-  min-width: 1320px;
+  min-width: 1080px;
 }
 
 .run-stats-grid {
-  grid-template-columns: minmax(220px, 1.6fr) 70px 80px 96px 62px 86px 68px 74px 82px 82px 82px 70px 74px 86px;
+  grid-template-columns: minmax(220px, 1.7fr) 70px 92px 96px 62px 86px 68px 74px 82px 74px 86px;
 }
 
 .full-table-head {
@@ -2084,6 +2084,26 @@ meter::-webkit-meter-optimum-value {
 .full-player-cell small {
   overflow: hidden;
   color: var(--muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.run-team-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.run-team-cell .team-logo.small {
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+}
+
+.run-team-cell b {
+  overflow: hidden;
+  min-width: 0;
   text-overflow: ellipsis;
   white-space: nowrap;
 }

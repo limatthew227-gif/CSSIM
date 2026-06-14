@@ -2692,9 +2692,6 @@ function RunStatsPage({
           <span>+/-</span>
           <span>ADR</span>
           <span>KAST</span>
-          <span>Impact</span>
-          <span>FK-FD</span>
-          <span>2K+</span>
           <span>Clutch</span>
           <span>Rating</span>
         </div>
@@ -2709,16 +2706,16 @@ function RunStatsPage({
                   <small>{player.realName}</small>
                 </span>
                 <span>{player.country}</span>
-                <span>{team.tag}</span>
+                <span className="run-team-cell" title={team.name}>
+                  <TeamLogo team={team} small />
+                  <b>{team.tag}</b>
+                </span>
                 <span>{player.role}</span>
                 <span>{matches}</span>
                 <span>{line.kills}-{line.deaths}</span>
                 <span className={line.kills >= line.deaths ? "stat-positive" : "stat-negative"}>{signedInteger(line.kills - line.deaths)}</span>
                 <span>{line.adr.toFixed(1)}</span>
                 <span>{kast.toFixed(1)}%</span>
-                <span>{line.impact.toFixed(2)}</span>
-                <span>{line.firstKills}-{line.firstDeaths}</span>
-                <span>{line.multiKills}</span>
                 <span>{line.clutchWins}</span>
                 <span className={`rating-number ${ratingTone(line.rating)}`}>{line.rating.toFixed(2)}</span>
               </div>
