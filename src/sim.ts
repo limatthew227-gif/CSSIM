@@ -1695,15 +1695,21 @@ function createRoundFeed(
 
     let assistant: Player | undefined;
     let assistantDmg = 0;
+    let killerDmg = 0;
+
     if (Math.random() < 0.36) {
       const teammates = sideKey === "you" ? you.players : opponent.players;
       const pool = teammates.filter((player) => player.id !== killer.id);
       if (pool.length > 0) {
         assistant = pool[Math.floor(Math.random() * pool.length)];
-        assistantDmg = Math.floor(26 + Math.random() * 34);
+        assistantDmg = Math.floor(25 + Math.random() * 30);
+        killerDmg = Math.max(30, 100 - assistantDmg);
       }
     }
-    const killerDmg = Math.floor(killDamage(killerWeapon));
+
+    if (assistantDmg === 0) {
+      killerDmg = Math.floor(65 + Math.random() * 35);
+    }
 
     feed.push({
       round,
@@ -2002,12 +2008,16 @@ function killDamage(weapon: string) {
 }
 
 function chipDamage(player: Player, roundKills: number, survived: boolean, context?: MatchContext, weapon?: string) {
-  const activity = player.style === "Aggressive" ? 14 : player.style === "Passive" ? 7 : 10;
-  const survivalBonus = survived ? 4 : 0;
-  const skillBonus = (player.ovr - 70) * 0.4;
+  const activity = player.style === "Aggressive" ? 8 : player.style === "Passive" ? 4 : 6;
+  const survivalBonus = survived ? 2 : 0;
+  const skillBonus = (player.ovr - 70) * 0.2;
   const performance = context ? playerPerformanceMultiplier(player, context, weapon) : 1;
-  // Boosted baseline to ensure players don't drop to impossible 0.1 ratings
-  return Math.max(12, (22 + activity + survivalBonus + skillBonus - roundKills * 4 + Math.random() * 20) * performance);
+  
+  if (roundKills > 0) {
+    return Math.max(4, (4 + activity * 0.4 + Math.random() * 8) * performance);
+  }
+  
+  return Math.max(6, (8 + activity + survivalBonus + skillBonus + Math.random() * 14) * performance);
 }
 
 function pickAssistant(players: Player[], killerId: string) {
