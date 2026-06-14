@@ -356,10 +356,26 @@ function interpolate(p1: Position, p2: Position, t: number): Position {
 function getPathPosition(path: Position[], t: number): Position {
   if (path.length === 0) return { x: 50, y: 50 };
   if (path.length === 1) return path[0];
-  const segmentCount = path.length - 1;
-  const segment = Math.min(segmentCount - 1, Math.floor(t * segmentCount));
-  const segmentT = (t * segmentCount) - segment;
-  return interpolate(path[segment], path[segment + 1], segmentT);
+
+  let totalDist = 0;
+  const dists = [0];
+  for (let i = 0; i < path.length - 1; i++) {
+    const d = Math.hypot(path[i+1].x - path[i].x, path[i+1].y - path[i].y);
+    totalDist += d;
+    dists.push(totalDist);
+  }
+
+  if (totalDist === 0) return path[0];
+
+  const targetDist = t * totalDist;
+  for (let i = 0; i < path.length - 1; i++) {
+    if (targetDist >= dists[i] && targetDist <= dists[i + 1]) {
+      const segmentDist = dists[i + 1] - dists[i];
+      const segmentT = segmentDist > 0 ? (targetDist - dists[i]) / segmentDist : 0;
+      return interpolate(path[i], path[i + 1], segmentT);
+    }
+  }
+  return path[path.length - 1];
 }
 
 interface Waypoint {
@@ -453,18 +469,14 @@ export function simulateRadarPlayers(
   const strategySeed = hashString(tTeamName) + activeRound;
   const tStrategy = strategySeed % 3;
 
-  // 1. Initialize waypoints for all players
-  const playerWaypoints = new Map<string, Waypoint[]>();
-  
+  // 1. Determine base destinations
   const allPlayers = [
     ...you.players.map((p, idx) => ({ p, idx, side: yourSide, team: "you" as const })),
     ...opponent.players.map((p, idx) => ({ p, idx, side: opponentSide, team: "opponent" as const }))
   ];
 
+  const playerBaseDest = new Map<string, Position>();
   for (const { p, idx, side } of allPlayers) {
-    const spawn = side === "CT" ? layout.ctSpawn : layout.tSpawn;
-    
-    // Initial destination site
     let initDest: "bombsiteA" | "bombsiteB" | "mid" = "bombsiteA";
     if (side === "CT") {
       if (idx === 0 || idx === 3) initDest = "bombsiteA";
@@ -479,90 +491,95 @@ export function simulateRadarPlayers(
         else initDest = "mid";
       }
     }
-    
     const destPos = initDest === "bombsiteA" ? layout.bombsiteA : initDest === "bombsiteB" ? layout.bombsiteB : layout.mid;
-    
-    // Create base route waypoints (step 0 at spawn, step totalSteps at target site)
-    const wps: Waypoint[] = [
-      { step: 0, pos: spawn },
-      { step: totalSteps, pos: destPos }
-    ];
-    playerWaypoints.set(p.id, wps);
+    playerBaseDest.set(p.id, destPos);
   }
 
-  // 2. Adjust target destinations for bomb plant (rotate to plant site)
-  if (plantEventIndex !== -1) {
-    const plantSitePos = plantSite === "A" ? layout.bombsiteA : layout.bombsiteB;
-    for (const { p } of allPlayers) {
-      const wps = playerWaypoints.get(p.id)!;
-      // Capture holding position at plant step
-      const currentDest = wps[wps.length - 1].pos;
-      
-      // Make them hold at currentDest up to plant step, then move to plant site
-      wps[wps.length - 1] = { step: plantEventIndex, pos: currentDest };
-      wps.push({ step: totalSteps, pos: plantSitePos });
-    }
+  // 2. Initialize waypoints
+  const playerWaypoints = new Map<string, Waypoint[]>();
+  for (const { p, side } of allPlayers) {
+    const spawn = side === "CT" ? layout.ctSpawn : layout.tSpawn;
+    playerWaypoints.set(p.id, [{ step: 0, pos: spawn }]);
   }
 
   const roundTraces: RadarTrace[] = [];
+  const deadIdsSet = new Set<string>();
 
-  // 3. Process kill events in chronological order to match positions
+  // Available encounter nodes for guaranteed on-path fighting
+  const encounterNodes = [
+    layout.bombsiteA,
+    layout.bombsiteB,
+    layout.mid
+  ];
+
+  // 3. Process events chronologically
   for (let i = 0; i < allEvents.length; i++) {
     const event = allEvents[i];
+    
+    if (event.type === "plant") {
+       const plantSitePos = plantSite === "A" ? layout.bombsiteA : layout.bombsiteB;
+       for (const { p } of allPlayers) {
+         if (!deadIdsSet.has(p.id)) {
+           const wps = playerWaypoints.get(p.id)!;
+           const lastWp = wps[wps.length - 1];
+           // Hold current position until plant event
+           if (lastWp.step < i) {
+             wps.push({ step: i, pos: lastWp.pos });
+           }
+           playerBaseDest.set(p.id, plantSitePos);
+         }
+       }
+    }
+    
     if ((!event.type || event.type === "kill") && event.victimId) {
       const victimId = event.victimId;
       const killerId = event.killerId;
+      deadIdsSet.add(victimId);
+      
+      const seed = hashString(`${activeRound}-${i}-${victimId}`);
+      const encounterPos = encounterNodes[seed % encounterNodes.length];
       
       const victimWps = playerWaypoints.get(victimId);
       if (victimWps) {
-        // Find victim position at step i before death
-        const victimPos = getPlayerPositionAtStep(victimWps, i, layout);
-        
-        // Victim dies here: freeze them at victimPos from step i onwards
-        const cleanedWps = victimWps.filter((w) => w.step < i);
-        cleanedWps.push({ step: i, pos: victimPos });
-        cleanedWps.push({ step: totalSteps, pos: victimPos });
-        playerWaypoints.set(victimId, cleanedWps);
-        
-        // Force the killer to match the victim's position at step i (offset slightly for line-of-sight)
-        if (killerId) {
-          const killerWps = playerWaypoints.get(killerId);
-          if (killerWps) {
-            const angle = hashString(killerId + i) * (Math.PI / 180);
-            const offset = { x: Math.cos(angle) * 3.5, y: Math.sin(angle) * 3.5 };
-            const killerFightPos = { x: victimPos.x + offset.x, y: victimPos.y + offset.y };
-            
-            // Record fight trace
-            const traceSide = event.team === "you" ? yourSide : opponentSide;
-            roundTraces.push({
-              round: activeRound,
-              killerId,
-              victimId,
-              killerPos: killerFightPos,
-              victimPos: victimPos,
-              side: traceSide
-            });
-
-            // Insert the fight waypoint for the killer at step i
-            const insertIdx = killerWps.findIndex((w) => w.step > i);
-            if (insertIdx !== -1) {
-              const before = killerWps.slice(0, insertIdx);
-              const after = killerWps.slice(insertIdx);
-              
-              if (before.length > 0 && before[before.length - 1].step === i) {
-                before[before.length - 1].pos = killerFightPos;
-                playerWaypoints.set(killerId, [...before, ...after]);
-              } else {
-                playerWaypoints.set(killerId, [...before, { step: i, pos: killerFightPos }, ...after]);
-              }
-            }
-          }
+        victimWps.push({ step: i, pos: encounterPos });
+        victimWps.push({ step: totalSteps, pos: encounterPos }); // stay dead
+      }
+      
+      if (killerId) {
+        const killerWps = playerWaypoints.get(killerId);
+        if (killerWps) {
+          const angle = hashString(killerId + i) * (Math.PI / 180);
+          const offset = { x: Math.cos(angle) * 1.5, y: Math.sin(angle) * 1.5 };
+          const killerFightPos = { x: encounterPos.x + offset.x, y: encounterPos.y + offset.y };
+          
+          killerWps.push({ step: i, pos: killerFightPos });
+          
+          const traceSide = event.team === "you" ? yourSide : opponentSide;
+          roundTraces.push({
+            round: activeRound,
+            killerId,
+            victimId,
+            killerPos: killerFightPos,
+            victimPos: encounterPos,
+            side: traceSide
+          });
         }
       }
     }
   }
 
-  // 4. Calculate final positions at current stepIndex
+  // 4. Finalize waypoints for survivors
+  for (const { p } of allPlayers) {
+    if (!deadIdsSet.has(p.id)) {
+      const wps = playerWaypoints.get(p.id)!;
+      const lastStep = wps[wps.length - 1].step;
+      if (lastStep < totalSteps) {
+        wps.push({ step: totalSteps, pos: playerBaseDest.get(p.id)! });
+      }
+    }
+  }
+
+  // 5. Calculate final positions at current stepIndex
   const youSimulated = you.players.map((p) => {
     const wps = playerWaypoints.get(p.id) || [];
     const pos = getPlayerPositionAtStep(wps, stepIndex, layout);
