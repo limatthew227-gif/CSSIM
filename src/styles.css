@@ -4007,9 +4007,7 @@ meter::-webkit-meter-optimum-value {
   justify-items: center;
   gap: 3px;
   transform: translate(-50%, -50%);
-  animation: radarDrift 2.8s ease-in-out infinite alternate;
-  animation-delay: var(--float-delay, 0ms);
-  transition: left var(--transition-duration, 1s) cubic-bezier(0.25, 0.46, 0.45, 0.94), top var(--transition-duration, 1s) cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  transition: left var(--transition-duration, 0ms) linear, top var(--transition-duration, 0ms) linear;
 }
 
 .radar-player span {

@@ -2394,9 +2394,6 @@ function MatchMapView({ match, you, opponent, speed = 1 }: { match: MatchState; 
                 {
                   left: `${x}%`,
                   top: `${y}%`,
-                  "--float-x": `${((hashText(id) % 7) - 3) * 0.4}px`,
-                  "--float-y": `${((hashText(handle) % 7) - 3) * 0.4}px`,
-                  "--float-delay": `${index * 120}ms`,
                 } as React.CSSProperties
               }
             >

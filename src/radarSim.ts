@@ -499,33 +499,32 @@ export function simulateRadarPlayers(
   const strategySeed = hashString(tTeamName) + activeRound;
   const tStrategy = strategySeed % 3;
 
-  // 1. Determine base destinations
+  // 1. Determine base destinations — always use exact known node positions
   const allPlayers = [
     ...you.players.map((p, idx) => ({ p, idx, side: yourSide, team: "you" as const })),
     ...opponent.players.map((p, idx) => ({ p, idx, side: opponentSide, team: "opponent" as const }))
   ];
 
-  const playerBaseDest = new Map<string, Position>();
+  const playerDest = new Map<string, Position>();
   for (const { p, idx, side } of allPlayers) {
-    let initDest: "bombsiteA" | "bombsiteB" | "mid" = "bombsiteA";
+    let dest: Position;
     if (side === "CT") {
-      if (idx === 0 || idx === 3) initDest = "bombsiteA";
-      else if (idx === 1 || idx === 4) initDest = "bombsiteB";
-      else initDest = "mid";
+      if (idx === 0 || idx === 3) dest = layout.bombsiteA;
+      else if (idx === 1 || idx === 4) dest = layout.bombsiteB;
+      else dest = layout.mid;
     } else {
-      if (tStrategy === 1) initDest = idx === 4 ? "mid" : "bombsiteA";
-      else if (tStrategy === 2) initDest = idx === 4 ? "mid" : "bombsiteB";
+      if (tStrategy === 1) dest = idx === 4 ? layout.mid : layout.bombsiteA;
+      else if (tStrategy === 2) dest = idx === 4 ? layout.mid : layout.bombsiteB;
       else {
-        if (idx === 0 || idx === 1) initDest = "bombsiteA";
-        else if (idx === 2 || idx === 3) initDest = "bombsiteB";
-        else initDest = "mid";
+        if (idx === 0 || idx === 1) dest = layout.bombsiteA;
+        else if (idx === 2 || idx === 3) dest = layout.bombsiteB;
+        else dest = layout.mid;
       }
     }
-    const destPos = initDest === "bombsiteA" ? layout.bombsiteA : initDest === "bombsiteB" ? layout.bombsiteB : layout.mid;
-    playerBaseDest.set(p.id, destPos);
+    playerDest.set(p.id, dest);
   }
 
-  // 2. Initialize waypoints
+  // 2. Initialize waypoints — everyone starts at spawn
   const playerWaypoints = new Map<string, Waypoint[]>();
   for (const { p, side } of allPlayers) {
     const spawn = side === "CT" ? layout.ctSpawn : layout.tSpawn;
@@ -534,13 +533,6 @@ export function simulateRadarPlayers(
 
   const roundTraces: RadarTrace[] = [];
   const deadIdsSet = new Set<string>();
-
-  // Available encounter nodes for guaranteed on-path fighting
-  const encounterNodes = [
-    layout.bombsiteA,
-    layout.bombsiteB,
-    layout.mid
-  ];
 
   // 3. Process events chronologically
   for (let i = 0; i < allEvents.length; i++) {
@@ -559,19 +551,15 @@ export function simulateRadarPlayers(
            
            const actualSide = team === "you" ? yourSide : opponentSide;
            if (actualSide === "T") {
+             // One lurker goes mid, rest play on site
              if (idx === 0) {
-               playerBaseDest.set(p.id, layout.mid);
-             } else if (idx === 1) {
-               playerBaseDest.set(p.id, plantSitePos);
+               playerDest.set(p.id, layout.mid);
              } else {
-               const offsetPos = {
-                 x: plantSitePos.x + (idx === 2 ? 3 : idx === 3 ? -3 : 0),
-                 y: plantSitePos.y + (idx === 2 ? 0 : idx === 3 ? 3 : -3)
-               };
-               playerBaseDest.set(p.id, offsetPos);
+               playerDest.set(p.id, plantSitePos);
              }
            } else {
-             playerBaseDest.set(p.id, plantSitePos);
+             // CT retakes toward bomb site
+             playerDest.set(p.id, plantSitePos);
            }
          }
        }
@@ -582,23 +570,33 @@ export function simulateRadarPlayers(
       const killerId = event.killerId;
       deadIdsSet.add(victimId);
       
-      const seed = hashString(`${activeRound}-${i}-${victimId}`);
-      const encounterPos = encounterNodes[seed % encounterNodes.length];
+      // Kill happens at the victim's destination (where they were heading)
+      // This prevents teleportation — victim was walking there anyway
+      const victimDestination = playerDest.get(victimId) ?? layout.mid;
       
       const victimWps = playerWaypoints.get(victimId);
       if (victimWps) {
-        victimWps.push({ step: i, pos: encounterPos });
-        victimWps.push({ step: totalSteps, pos: encounterPos }); // stay dead
+        victimWps.push({ step: i, pos: victimDestination });
+        victimWps.push({ step: totalSteps, pos: victimDestination }); // stay dead
       }
       
       if (killerId) {
         const killerWps = playerWaypoints.get(killerId);
         if (killerWps) {
+          // Killer approaches the encounter from a tiny offset (realistic peek)
           const angle = hashString(killerId + i) * (Math.PI / 180);
-          const offset = { x: Math.cos(angle) * 1.5, y: Math.sin(angle) * 1.5 };
-          const killerFightPos = { x: encounterPos.x + offset.x, y: encounterPos.y + offset.y };
+          const killerFightPos = {
+            x: victimDestination.x + Math.cos(angle) * 1.2,
+            y: victimDestination.y + Math.sin(angle) * 1.2
+          };
           
           killerWps.push({ step: i, pos: killerFightPos });
+          
+          // After the kill, killer continues toward their own destination
+          const killerOwnDest = playerDest.get(killerId) ?? victimDestination;
+          if (i + 1 <= totalSteps) {
+            killerWps.push({ step: Math.min(i + 1, totalSteps), pos: killerOwnDest });
+          }
           
           const traceSide = event.team === "you" ? yourSide : opponentSide;
           roundTraces.push({
@@ -606,7 +604,7 @@ export function simulateRadarPlayers(
             killerId,
             victimId,
             killerPos: killerFightPos,
-            victimPos: encounterPos,
+            victimPos: victimDestination,
             side: traceSide
           });
         }
@@ -620,7 +618,7 @@ export function simulateRadarPlayers(
       const wps = playerWaypoints.get(p.id)!;
       const lastStep = wps[wps.length - 1].step;
       if (lastStep < totalSteps) {
-        wps.push({ step: totalSteps, pos: playerBaseDest.get(p.id)! });
+        wps.push({ step: totalSteps, pos: playerDest.get(p.id)! });
       }
     }
   }
@@ -673,62 +671,31 @@ export function simulateRadarPlayers(
   };
 }
 
-const speedDelays: Record<number, number> = {
+// Fixed delay tables — map view is intentionally slower for smooth walking
+const mapSpeedDelays: Record<number, number> = {
+  0.5: 5500,
+  1: 3200,
+  2: 1600,
+  4: 700,
+};
+
+const feedSpeedDelays: Record<number, number> = {
   0.5: 3500,
   1: 2200,
   2: 1000,
   4: 400,
 };
 
-export function getStepDistance(
-  match: MatchState,
-  you: FieldTeam,
-  opponent: FieldTeam,
-  stepIndex: number
-): number {
-  if (stepIndex <= 0) return 0;
-
-  // Get positions at stepIndex - 1
-  const resPrev = simulateRadarPlayers(match, you, opponent, stepIndex - 1);
-  // Get positions at stepIndex
-  const resCurr = simulateRadarPlayers(match, you, opponent, stepIndex);
-
-  let maxDist = 0;
-  resCurr.players.forEach((pCurr) => {
-    const pPrev = resPrev.players.find((p) => p.id === pCurr.id);
-    if (pPrev && pCurr.alive && pPrev.alive) {
-      const dx = pCurr.x - pPrev.x;
-      const dy = pCurr.y - pPrev.y;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-      if (dist > maxDist) {
-        maxDist = dist;
-      }
-    }
-  });
-
-  return maxDist;
-}
-
 export function getStepDelay(
-  match: MatchState,
-  you: FieldTeam,
-  opponent: FieldTeam,
-  stepIndex: number,
+  _match: MatchState,
+  _you: FieldTeam,
+  _opponent: FieldTeam,
+  _stepIndex: number,
   speed: number,
   liveFeedView: "feed" | "map"
 ): number {
-  const baseDelay = speedDelays[speed] ?? 2200;
-  if (liveFeedView === "feed") {
-    return baseDelay;
+  if (liveFeedView === "map") {
+    return mapSpeedDelays[speed] ?? 3200;
   }
-
-  // Map view: use distance-based delay to keep player speed constant and realistic
-  const maxDist = getStepDistance(match, you, opponent, stepIndex);
-
-  // Speed scaling factor
-  const speedScale = speed === 0.5 ? 1.6 : speed === 1 ? 1.0 : speed === 2 ? 0.5 : 0.25;
-  const dynamicDelay = (1400 + maxDist * 75) * speedScale;
-
-  // Clamp dynamic delay to prevent infinite stall or too fast jumps
-  return Math.max(1200 * speedScale, Math.min(8500 * speedScale, dynamicDelay));
+  return feedSpeedDelays[speed] ?? 2200;
 }
