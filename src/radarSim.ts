@@ -412,7 +412,8 @@ export interface RadarSimulationResult {
 export function simulateRadarPlayers(
   match: MatchState,
   you: FieldTeam,
-  opponent: FieldTeam
+  opponent: FieldTeam,
+  stepOverride?: number
 ): RadarSimulationResult {
   const mapId = match.map;
   const layout = MAP_LAYOUTS[mapId] || MAP_LAYOUTS.mirage;
@@ -424,10 +425,19 @@ export function simulateRadarPlayers(
   const completedEvents = match.feed.filter((e) => e.round === activeRound);
   const remainingEvents = (match.pendingEvents || []).filter((e) => e.round === activeRound);
   const allEvents = [...[...completedEvents].reverse(), ...remainingEvents];
-  const stepIndex = completedEvents.length;
+  
+  const stepIndex = stepOverride !== undefined ? stepOverride : completedEvents.length;
   const totalSteps = Math.max(1, allEvents.length);
 
-  const deadIds = new Set(completedEvents.filter((e) => !e.type || e.type === "kill").map((e) => e.victimId));
+  const deadIds = new Set();
+  for (let i = 0; i < allEvents.length; i++) {
+    const event = allEvents[i];
+    if ((!event.type || event.type === "kill") && event.victimId) {
+      if (i < stepIndex) {
+        deadIds.add(event.victimId);
+      }
+    }
+  }
 
   // Find plant event details
   const plantEventIndex = allEvents.findIndex((e) => e.type === "plant");

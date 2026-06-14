@@ -2263,11 +2263,42 @@ function MatchMapView({ match, you, opponent, speed = 1 }: { match: MatchState; 
   const mapInfo = mapPool.find((map) => map.id === match.map);
   const layout = MAP_LAYOUTS[match.map] || MAP_LAYOUTS.mirage;
 
+  const [smoothMovement, setSmoothMovement] = React.useState(true);
+  const [fraction, setFraction] = React.useState(1);
+  const prevStepRef = React.useRef(roundEvents.length);
+
+  React.useEffect(() => {
+    const currentStep = roundEvents.length;
+    if (currentStep !== prevStepRef.current) {
+      const startTime = performance.now();
+      const duration = speedDelays[speed] ?? 1050;
+      let animId: number;
+
+      const tick = () => {
+        const elapsed = performance.now() - startTime;
+        const f = Math.min(1, elapsed / duration);
+        setFraction(f);
+        if (f < 1) {
+          animId = requestAnimationFrame(tick);
+        }
+      };
+
+      animId = requestAnimationFrame(tick);
+      prevStepRef.current = currentStep;
+
+      return () => cancelAnimationFrame(animId);
+    }
+  }, [roundEvents.length, speed]);
+
+  const stepIndex = smoothMovement && roundEvents.length > 0
+    ? roundEvents.length - 1 + fraction
+    : roundEvents.length;
+
   // Get simulated coordinates and state for all 10 players, and active firefight traces
-  const { players: radarPlayers, traces: radarTraces } = simulateRadarPlayers(match, you, opponent);
+  const { players: radarPlayers, traces: radarTraces } = simulateRadarPlayers(match, you, opponent, stepIndex);
   const radarImage = radarImages[match.map];
 
-  const duration = speed === 0.5 ? 1500 : speed === 1 ? 850 : speed === 2 ? 500 : 200;
+  const duration = smoothMovement ? 0 : (speed === 0.5 ? 1500 : speed === 1 ? 850 : speed === 2 ? 500 : 200);
 
   return (
     <div className="radar-shell">
@@ -2286,6 +2317,15 @@ function MatchMapView({ match, you, opponent, speed = 1 }: { match: MatchState; 
         <div className="radar-map-label">
           <strong>{mapName(match.map)}</strong>
           <span>Round {activeRound}</span>
+          <label className="radar-smooth-toggle" style={{ marginLeft: "12px", display: "inline-flex", alignItems: "center", gap: "4px", fontSize: "10px", cursor: "pointer", userSelect: "none", opacity: 0.85 }}>
+            <input
+              type="checkbox"
+              checked={smoothMovement}
+              onChange={(e) => setSmoothMovement(e.target.checked)}
+              style={{ cursor: "pointer" }}
+            />
+            <span>Fluid Motion</span>
+          </label>
         </div>
 
         {/* Dynamic site tags positioned at exact coords */}
