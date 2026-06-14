@@ -2303,7 +2303,7 @@ function MatchMapView({ match, you, opponent, speed = 1 }: { match: MatchState; 
   return (
     <div className="radar-shell">
       <div
-        className={`radar-map radar-map-${match.map}`}
+        className={`radar-map radar-map-${match.map} ${match.running ? "" : "paused"}`}
         style={
           {
             "--map-accent": mapInfo?.accent ?? "#65a7ff",

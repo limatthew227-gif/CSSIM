@@ -4035,6 +4035,10 @@ meter::-webkit-meter-optimum-value {
   animation-play-state: paused;
 }
 
+.radar-map.paused .radar-player {
+  animation-play-state: paused;
+}
+
 .radar-player.dead span {
   border-color: rgba(255, 255, 255, 0.25);
 }
