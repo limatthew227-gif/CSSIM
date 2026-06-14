@@ -1227,8 +1227,19 @@ export function playRound(
   let endOfRoundYourMoney = { ...updatedYourMoney };
   let endOfRoundOpponentMoney = { ...updatedOpponentMoney };
 
-  const yourStrength = teamStrength(you, settings) + mapEdge(you, opponent, state.map, settings);
-  const opponentStrength = teamStrength(opponent, settings, difficulty, true);
+  let yourStrength = teamStrength(you, settings) + mapEdge(you, opponent, state.map, settings);
+  you.players.forEach((p) => {
+    if (p.role === "AWP" && yourWeapons[p.id] === "AWP") {
+      yourStrength += (p.ovr * 0.15) / 5;
+    }
+  });
+
+  let opponentStrength = teamStrength(opponent, settings, difficulty, true);
+  opponent.players.forEach((p) => {
+    if (p.role === "AWP" && opponentWeapons[p.id] === "AWP") {
+      opponentStrength += (p.ovr * 0.15) / 5;
+    }
+  });
   const yourLoadout = loadoutProfile(you.players, currentEconomy, yourWeapons, yourArmor);
   const opponentLoadout = loadoutProfile(opponent.players, currentOpponentEconomy, opponentWeapons, opponentArmor);
   const economyMod = economyValue(currentEconomy) - economyValue(currentOpponentEconomy);
@@ -1307,8 +1318,8 @@ export function playRound(
     }
   });
 
-  const yourRoundPatch = createRoundStatPatch(you.players, feed, "you", youWin, state.context);
-  const opponentRoundPatch = createRoundStatPatch(opponent.players, feed, "opponent", !youWin, state.context);
+  const yourRoundPatch = createRoundStatPatch(you.players, feed, "you", youWin, state.context, yourWeapons);
+  const opponentRoundPatch = createRoundStatPatch(opponent.players, feed, "opponent", !youWin, state.context, opponentWeapons);
 
   if (youWin) {
     yourLossStreak = Math.max(0, yourLossStreak - 1);
@@ -1665,12 +1676,14 @@ function createRoundFeed(
       continue;
     }
 
-    const killer = pickWeightedBy(killerPool, (player) => killWeight(player, context));
-    const victim = pickWeightedBy(victimPool, (player) => deathWeight(player, context));
+    const equipped = sideKey === "you" ? yourWeapons : opponentWeapons;
+    const victimEquipped = victimSide === "you" ? yourWeapons : opponentWeapons;
+
+    const killer = pickWeightedBy(killerPool, (player) => killWeight(player, context, equipped[player.id]));
+    const victim = pickWeightedBy(victimPool, (player) => deathWeight(player, context, victimEquipped[player.id]));
     alive[victimSide] = alive[victimSide].filter((player) => player.id !== victim.id);
     remainingKills[sideKey] -= 1;
 
-    const equipped = sideKey === "you" ? yourWeapons : opponentWeapons;
     const killerWeapon = equipped[killer.id] ?? "Pistol";
 
     let assistant: Player | undefined;
@@ -1823,7 +1836,7 @@ function pickWeightedBy(players: Player[], weightFor: (player: Player) => number
   return players[0];
 }
 
-function killWeight(player: Player, context: MatchContext) {
+function killWeight(player: Player, context: MatchContext, weapon?: string) {
   const roleMod =
     player.role === "Entry" ? 1.10 :
     player.role === "AWP" ? 1.06 :
@@ -1842,10 +1855,10 @@ function killWeight(player: Player, context: MatchContext) {
   // 60 OVR ≈ 0.92, 80 OVR ≈ 1.46, 95 OVR ≈ 1.87
   const baseWeight = 0.65 + skill * 1.35;
 
-  return baseWeight * roleMod * styleMod * playerPerformanceMultiplier(player, context);
+  return baseWeight * roleMod * styleMod * playerPerformanceMultiplier(player, context, weapon);
 }
 
-function deathWeight(player: Player, context: MatchContext) {
+function deathWeight(player: Player, context: MatchContext, weapon?: string) {
   const roleMod =
     player.role === "Entry" ? 1.12 :
     player.role === "IGL" ? 1.05 :
@@ -1864,16 +1877,21 @@ function deathWeight(player: Player, context: MatchContext) {
   // 60 OVR ≈ 1.24, 80 OVR ≈ 1.02, 95 OVR ≈ 0.86
   const baseWeight = 1.35 - skill * 0.55;
 
-  return (baseWeight * roleMod * styleMod) / playerPerformanceMultiplier(player, context);
+  return (baseWeight * roleMod * styleMod) / playerPerformanceMultiplier(player, context, weapon);
 }
 
-function playerPerformanceMultiplier(player: Player, context: MatchContext) {
+function playerPerformanceMultiplier(player: Player, context: MatchContext, weapon?: string) {
   const handle = player.handle.toLowerCase();
   let multiplier = 1;
 
   if (handle === "makazze" && context.map === "ancient") multiplier *= 1.05;
   if (handle === "m0nesy" && context.stage && context.stage !== "swiss") multiplier *= 1.05;
   if (handle === "niko" && player.source.year === "2026" && context.stage === "final") multiplier *= 0.9;
+
+  // AWP performance boost
+  if (player.role === "AWP" && weapon === "AWP") {
+    multiplier *= 1.15;
+  }
 
   return multiplier;
 }
@@ -1894,6 +1912,7 @@ function createRoundStatPatch(
   team: "you" | "opponent",
   roundWon: boolean,
   context?: MatchContext,
+  weapons?: Record<string, string>,
 ) {
   const patch = makeLines(players);
   const playersById = new Map(players.map((player) => [player.id, player]));
@@ -1912,7 +1931,7 @@ function createRoundStatPatch(
       const killerId = event.killerId;
       if (killerId) {
         const killer = playersById.get(killerId);
-        const performance = killer && context ? playerPerformanceMultiplier(killer, context) : 1;
+        const performance = killer && context ? playerPerformanceMultiplier(killer, context, event.weapon) : 1;
         patch[killerId].kills += 1;
         patch[killerId].damage += (event.killerDamage ?? killDamage(event.weapon)) * performance;
         killsThisRound.set(killerId, (killsThisRound.get(killerId) ?? 0) + 1);
@@ -1942,7 +1961,7 @@ function createRoundStatPatch(
     if (roundKills > 1) line.multiKills += roundKills - 1;
     if (roundWon && survived && roundKills >= 2 && Math.random() < 0.12) line.clutchWins += 1;
     if (roundKills > 0 || assistedThisRound.has(player.id) || survived || traded) line.kastRounds += 1;
-    line.damage += chipDamage(player, roundKills, survived, context);
+    line.damage += chipDamage(player, roundKills, survived, context, weapons?.[player.id]);
   });
   return patch;
 }
@@ -1975,11 +1994,11 @@ function killDamage(weapon: string) {
   return base + Math.random() * 24;
 }
 
-function chipDamage(player: Player, roundKills: number, survived: boolean, context?: MatchContext) {
+function chipDamage(player: Player, roundKills: number, survived: boolean, context?: MatchContext, weapon?: string) {
   const activity = player.style === "Aggressive" ? 14 : player.style === "Passive" ? 7 : 10;
   const survivalBonus = survived ? 4 : 0;
   const skillBonus = (player.ovr - 70) * 0.4;
-  const performance = context ? playerPerformanceMultiplier(player, context) : 1;
+  const performance = context ? playerPerformanceMultiplier(player, context, weapon) : 1;
   // Boosted baseline to ensure players don't drop to impossible 0.1 ratings
   return Math.max(12, (22 + activity + survivalBonus + skillBonus - roundKills * 4 + Math.random() * 20) * performance);
 }
