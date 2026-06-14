@@ -66,7 +66,24 @@ import {
   toFieldTeam,
 } from "./sim";
 import { hltvTop20Coaches, hltvTop20Rosters } from "./hltvTop20";
+import { simulateRadarPlayers, MAP_LAYOUTS } from "./radarSim";
 import "./styles.css";
+
+import mirageRadar from "./assets/radar/mirage.png";
+import infernoRadar from "./assets/radar/inferno.png";
+import dust2Radar from "./assets/radar/dust2.png";
+import nukeRadar from "./assets/radar/nuke.png";
+import ancientRadar from "./assets/radar/ancient.png";
+import trainRadar from "./assets/radar/train.png";
+
+const radarImages: Record<string, string> = {
+  mirage: mirageRadar,
+  inferno: infernoRadar,
+  dust2: dust2Radar,
+  nuke: nukeRadar,
+  ancient: ancientRadar,
+  train: trainRadar,
+};
 
 import ak47Icon from "./assets/weapons/ak47.svg";
 import awpIcon from "./assets/weapons/awp.svg";
@@ -2236,53 +2253,59 @@ function Bench({ players, coach }: { players: Player[]; coach?: Coach }) {
   );
 }
 
-interface RadarPosition {
-  x: number;
-  y: number;
-}
-
 function MatchMapView({ match, you, opponent }: { match: MatchState; you: FieldTeam; opponent: FieldTeam }) {
   const activeRound = match.pendingEvents?.[0]?.round ?? match.feed[0]?.round ?? match.round;
   const roundEvents = match.feed.filter((event) => event.round === activeRound);
   const chronologicalEvents = [...roundEvents].reverse();
   const killEvents = chronologicalEvents.filter(isKillFeedEvent).slice(-6);
   const displayEvents = chronologicalEvents.filter((event) => event.type !== "round_start").slice(-4);
-  const deadIds = new Set(chronologicalEvents.filter(isKillFeedEvent).map((event) => event.victimId));
   const yourSide = match.side;
-  const opponentSide = oppositeMatchSide(match.side);
   const mapInfo = mapPool.find((map) => map.id === match.map);
-  const motionSeed = chronologicalEvents.length + match.round * 3;
-  const radarPlayers = [
-    ...you.players.map((player, index) => ({
-      player,
-      team: "you" as const,
-      side: yourSide,
-      position: radarPlayerPosition(player, index, yourSide, match.map, motionSeed),
-      alive: !deadIds.has(player.id),
-    })),
-    ...opponent.players.map((player, index) => ({
-      player,
-      team: "opponent" as const,
-      side: opponentSide,
-      position: radarPlayerPosition(player, index, opponentSide, match.map, motionSeed + 5),
-      alive: !deadIds.has(player.id),
-    })),
-  ];
-  const positions = new Map(radarPlayers.map((entry) => [entry.player.id, entry.position]));
+  const layout = MAP_LAYOUTS[match.map] || MAP_LAYOUTS.mirage;
+
+  // Get simulated coordinates and state for all 10 players
+  const radarPlayers = simulateRadarPlayers(match, you, opponent);
+  const positions = new Map(radarPlayers.map((entry) => [entry.id, { x: entry.x, y: entry.y }]));
+
+  const radarImage = radarImages[match.map];
 
   return (
     <div className="radar-shell">
       <div
         className={`radar-map radar-map-${match.map}`}
-        style={{ "--map-accent": mapInfo?.accent ?? "#65a7ff" } as React.CSSProperties}
+        style={
+          {
+            "--map-accent": mapInfo?.accent ?? "#65a7ff",
+            backgroundImage: radarImage ? `url(${radarImage})` : undefined,
+            backgroundSize: "cover",
+            backgroundPosition: "center",
+          } as React.CSSProperties
+        }
       >
         <div className="radar-map-label">
           <strong>{mapName(match.map)}</strong>
           <span>Round {activeRound}</span>
         </div>
-        <div className="radar-site site-a">A</div>
-        <div className="radar-site site-b">B</div>
-        <div className="radar-midline" />
+
+        {/* Dynamic site tags positioned at exact coords */}
+        <div className="radar-site site-a" style={{ left: `${layout.bombsiteA.x}%`, top: `${layout.bombsiteA.y}%` }}>A</div>
+        <div className="radar-site site-b" style={{ left: `${layout.bombsiteB.x}%`, top: `${layout.bombsiteB.y}%` }}>B</div>
+
+        {/* Spawn points labels */}
+        <div className="radar-spawn t-spawn-label" style={{ left: `${layout.tSpawn.x}%`, top: `${layout.tSpawn.y}%` }}>T Spawn</div>
+        <div className="radar-spawn ct-spawn-label" style={{ left: `${layout.ctSpawn.x}%`, top: `${layout.ctSpawn.y}%` }}>CT Spawn</div>
+
+        {/* SVG schematic corridor map layout - fallback if no image */}
+        {!radarImage && (
+          <svg className="radar-blueprint" viewBox="0 0 100 100" preserveAspectRatio="none">
+            <g className="blueprint-corridors">
+              {layout.paths.map((d, index) => (
+                <path key={index} d={d} className="blueprint-path" />
+              ))}
+            </g>
+          </svg>
+        )}
+
         <svg className="radar-traces" viewBox="0 0 100 100" preserveAspectRatio="none">
           {killEvents.map((event, index) => {
             const killer = positions.get(event.killerId);
@@ -2313,24 +2336,27 @@ function MatchMapView({ match, you, opponent }: { match: MatchState; you: FieldT
             />
           );
         })}
-        {radarPlayers.map(({ player, team, side, position, alive }, index) => (
-          <div
-            className={`radar-player ${side.toLowerCase()} ${team} ${alive ? "alive" : "dead"}`}
-            key={player.id}
-            style={
-              {
-                left: `${position.x}%`,
-                top: `${position.y}%`,
-                "--float-x": `${((hashText(player.id) % 7) - 3) * 0.9}px`,
-                "--float-y": `${((hashText(player.handle) % 7) - 3) * 0.9}px`,
-                "--float-delay": `${index * 120}ms`,
-              } as React.CSSProperties
-            }
-          >
-            <span>{player.handle.slice(0, 2).toUpperCase()}</span>
-            <small>{player.handle}</small>
-          </div>
-        ))}
+        {radarPlayers.map((simPlayer, index) => {
+          const { id, handle, side, team, alive, x, y } = simPlayer;
+          return (
+            <div
+              className={`radar-player ${side.toLowerCase()} ${team} ${alive ? "alive" : "dead"}`}
+              key={id}
+              style={
+                {
+                  left: `${x}%`,
+                  top: `${y}%`,
+                  "--float-x": `${((hashText(id) % 7) - 3) * 0.4}px`,
+                  "--float-y": `${((hashText(handle) % 7) - 3) * 0.4}px`,
+                  "--float-delay": `${index * 120}ms`,
+                } as React.CSSProperties
+              }
+            >
+              <span>{handle.slice(0, 2).toUpperCase()}</span>
+              <small>{handle}</small>
+            </div>
+          );
+        })}
         <div className="radar-event-stack">
           {displayEvents.length ? (
             displayEvents.map((event, index) => (
@@ -2372,44 +2398,6 @@ function radarEventText(event: MatchState["feed"][number], yourSide: "CT" | "T")
 
 function oppositeMatchSide(side: "CT" | "T") {
   return side === "CT" ? "T" : "CT";
-}
-
-function radarPlayerPosition(player: Player, index: number, side: "CT" | "T", map: MapId, motionSeed: number): RadarPosition {
-  const ctBase: RadarPosition[] = [
-    { x: 24, y: 28 },
-    { x: 42, y: 22 },
-    { x: 31, y: 54 },
-    { x: 50, y: 66 },
-    { x: 18, y: 74 },
-  ];
-  const tBase: RadarPosition[] = [
-    { x: 76, y: 74 },
-    { x: 59, y: 82 },
-    { x: 70, y: 48 },
-    { x: 51, y: 34 },
-    { x: 84, y: 25 },
-  ];
-  const roleShift: Partial<Record<Role, RadarPosition>> = {
-    AWP: { x: -3, y: -5 },
-    Entry: { x: side === "T" ? -7 : 7, y: side === "T" ? -8 : 8 },
-    Lurker: { x: side === "T" ? 8 : -8, y: 5 },
-    IGL: { x: 0, y: 0 },
-    Support: { x: side === "T" ? -3 : 3, y: 8 },
-  };
-  const mapShift = ((hashText(map) % 9) - 4) * 0.7;
-  const jitter = ((hashText(`${player.id}-${map}`) % 11) - 5) * 0.45;
-  const pulse = ((motionSeed + index * 2) % 7) - 3;
-  const base = (side === "CT" ? ctBase : tBase)[index % 5];
-  const shift = roleShift[player.role] ?? { x: 0, y: 0 };
-
-  return {
-    x: clampPercent(base.x + shift.x + jitter + pulse * 0.35 + mapShift),
-    y: clampPercent(base.y + shift.y - jitter + pulse * 0.25 - mapShift),
-  };
-}
-
-function clampPercent(value: number) {
-  return Math.max(7, Math.min(93, value));
 }
 
 function Pairing({
