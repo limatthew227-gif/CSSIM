@@ -98,6 +98,7 @@ export interface FeedLine {
   ctScore?: number;
   reason?: string;
   isHeadshot?: boolean;
+  time?: number;
 }
 
 export interface MatchState {
@@ -129,6 +130,8 @@ export interface MatchState {
   opponentArmor?: Record<string, "none" | "kevlar" | "helmet">;
   // Streaming fields:
   pendingEvents?: FeedLine[];
+  elapsedSeconds?: number;
+  roundEndTime?: number;
   pendingRoundWinner?: "you" | "opponent";
   pendingRoundReason?: string;
   pendingYourMoney?: Record<string, number>;
@@ -930,11 +933,11 @@ export function playRound(
     if (ended) return state;
   }
 
-  // If streaming events
-  if (!instant && state.pendingEvents && state.pendingEvents.length > 0) {
-    const event = state.pendingEvents[0];
-    const nextPending = state.pendingEvents.slice(1);
-    const nextFeed = [event, ...state.feed].slice(0, 60);
+  // If streaming events second-by-second in real-time
+  if (!instant && state.elapsedSeconds !== undefined) {
+    const nextElapsed = state.elapsedSeconds + 1;
+    const currentEvents = (state.pendingEvents || []).filter((e) => e.time !== undefined && e.time === nextElapsed);
+    const nextPending = (state.pendingEvents || []).filter((e) => e.time === undefined || e.time > nextElapsed);
 
     let yourStats = cloneStats(state.yourStats);
     let opponentStats = cloneStats(state.opponentStats);
@@ -947,95 +950,103 @@ export function playRound(
     let yourArmor = state.yourArmor ? { ...state.yourArmor } : {};
     let opponentArmor = state.opponentArmor ? { ...state.opponentArmor } : {};
 
-    if (!event.type || event.type === "kill") {
-      const killerId = event.killerId;
-      const victimId = event.victimId;
-      const assistantId = event.assistantId;
-      const opponentSide = otherMatchSide(state.side);
+    let nextFeed = [...state.feed];
 
-      const reward = getKillReward(event.weapon);
-      if (event.team === "you") {
-        if (killerId) {
-          yourMoney[killerId] = clamp((yourMoney[killerId] ?? 0) + reward, 0, 10000);
-        }
-        if (victimId) {
-          opponentWeapons[victimId] = "";
-          opponentArmor[victimId] = "none";
-        }
-        if (killerId && yourStats[killerId]) {
-          yourStats[killerId].kills += 1;
-          yourStats[killerId].damage += event.killerDamage ?? 72;
-          recalculateHltvStyleRating(yourStats[killerId]);
+    for (const event of currentEvents) {
+      nextFeed = [event, ...nextFeed].slice(0, 60);
 
-          if (yourSideStats[state.side]?.[killerId]) {
-            yourSideStats[state.side][killerId].kills += 1;
-            yourSideStats[state.side][killerId].damage += event.killerDamage ?? 72;
-            recalculateHltvStyleRating(yourSideStats[state.side][killerId]);
+      if (!event.type || event.type === "kill") {
+        const killerId = event.killerId;
+        const victimId = event.victimId;
+        const assistantId = event.assistantId;
+        const opponentSide = otherMatchSide(state.side);
+
+        const reward = getKillReward(event.weapon);
+        if (event.team === "you") {
+          if (killerId) {
+            yourMoney[killerId] = clamp((yourMoney[killerId] ?? 0) + reward, 0, 10000);
           }
-        }
-        if (assistantId && yourStats[assistantId]) {
-          yourStats[assistantId].assists += 1;
-          yourStats[assistantId].damage += event.assistantDamage ?? 40;
-          recalculateHltvStyleRating(yourStats[assistantId]);
-
-          if (yourSideStats[state.side]?.[assistantId]) {
-            yourSideStats[state.side][assistantId].assists += 1;
-            yourSideStats[state.side][assistantId].damage += event.assistantDamage ?? 40;
-            recalculateHltvStyleRating(yourSideStats[state.side][assistantId]);
+          if (victimId) {
+            opponentWeapons[victimId] = "";
+            opponentArmor[victimId] = "none";
           }
-        }
-        if (victimId && opponentStats[victimId]) {
-          opponentStats[victimId].deaths += 1;
-          recalculateHltvStyleRating(opponentStats[victimId]);
+          if (killerId && yourStats[killerId]) {
+            yourStats[killerId].kills += 1;
+            yourStats[killerId].damage += event.killerDamage ?? 72;
+            recalculateHltvStyleRating(yourStats[killerId]);
 
-          if (opponentSideStats[opponentSide]?.[victimId]) {
-            opponentSideStats[opponentSide][victimId].deaths += 1;
-            recalculateHltvStyleRating(opponentSideStats[opponentSide][victimId]);
+            if (yourSideStats[state.side]?.[killerId]) {
+              yourSideStats[state.side][killerId].kills += 1;
+              yourSideStats[state.side][killerId].damage += event.killerDamage ?? 72;
+              recalculateHltvStyleRating(yourSideStats[state.side][killerId]);
+            }
           }
-        }
-      } else {
-        if (killerId) {
-          opponentMoney[killerId] = clamp((opponentMoney[killerId] ?? 0) + reward, 0, 10000);
-        }
-        if (victimId) {
-          yourWeapons[victimId] = "";
-          yourArmor[victimId] = "none";
-        }
-        if (killerId && opponentStats[killerId]) {
-          opponentStats[killerId].kills += 1;
-          opponentStats[killerId].damage += event.killerDamage ?? 72;
-          recalculateHltvStyleRating(opponentStats[killerId]);
+          if (assistantId && yourStats[assistantId]) {
+            yourStats[assistantId].assists += 1;
+            yourStats[assistantId].damage += event.assistantDamage ?? 40;
+            recalculateHltvStyleRating(yourStats[assistantId]);
 
-          if (opponentSideStats[opponentSide]?.[killerId]) {
-            opponentSideStats[opponentSide][killerId].kills += 1;
-            opponentSideStats[opponentSide][killerId].damage += event.killerDamage ?? 72;
-            recalculateHltvStyleRating(opponentSideStats[opponentSide][killerId]);
+            if (yourSideStats[state.side]?.[assistantId]) {
+              yourSideStats[state.side][assistantId].assists += 1;
+              yourSideStats[state.side][assistantId].damage += event.assistantDamage ?? 40;
+              recalculateHltvStyleRating(yourSideStats[state.side][assistantId]);
+            }
           }
-        }
-        if (assistantId && opponentStats[assistantId]) {
-          opponentStats[assistantId].assists += 1;
-          opponentStats[assistantId].damage += event.assistantDamage ?? 40;
-          recalculateHltvStyleRating(opponentStats[assistantId]);
+          if (victimId && opponentStats[victimId]) {
+            opponentStats[victimId].deaths += 1;
+            recalculateHltvStyleRating(opponentStats[victimId]);
 
-          if (opponentSideStats[opponentSide]?.[assistantId]) {
-            opponentSideStats[opponentSide][assistantId].assists += 1;
-            opponentSideStats[opponentSide][assistantId].damage += event.assistantDamage ?? 40;
-            recalculateHltvStyleRating(opponentSideStats[opponentSide][assistantId]);
+            if (opponentSideStats[opponentSide]?.[victimId]) {
+              opponentSideStats[opponentSide][victimId].deaths += 1;
+              recalculateHltvStyleRating(opponentSideStats[opponentSide][victimId]);
+            }
           }
-        }
-        if (victimId && yourStats[victimId]) {
-          yourStats[victimId].deaths += 1;
-          recalculateHltvStyleRating(yourStats[victimId]);
+        } else {
+          if (killerId) {
+            opponentMoney[killerId] = clamp((opponentMoney[killerId] ?? 0) + reward, 0, 10000);
+          }
+          if (victimId) {
+            yourWeapons[victimId] = "";
+            yourArmor[victimId] = "none";
+          }
+          if (killerId && opponentStats[killerId]) {
+            opponentStats[killerId].kills += 1;
+            opponentStats[killerId].damage += event.killerDamage ?? 72;
+            recalculateHltvStyleRating(opponentStats[killerId]);
 
-          if (yourSideStats[state.side]?.[victimId]) {
-            yourSideStats[state.side][victimId].deaths += 1;
-            recalculateHltvStyleRating(yourSideStats[state.side][victimId]);
+            if (opponentSideStats[opponentSide]?.[killerId]) {
+              opponentSideStats[opponentSide][killerId].kills += 1;
+              opponentSideStats[opponentSide][killerId].damage += event.killerDamage ?? 72;
+              recalculateHltvStyleRating(opponentSideStats[opponentSide][killerId]);
+            }
+          }
+          if (assistantId && opponentStats[assistantId]) {
+            opponentStats[assistantId].assists += 1;
+            opponentStats[assistantId].damage += event.assistantDamage ?? 40;
+            recalculateHltvStyleRating(opponentStats[assistantId]);
+
+            if (opponentSideStats[opponentSide]?.[assistantId]) {
+              opponentSideStats[opponentSide][assistantId].assists += 1;
+              opponentSideStats[opponentSide][assistantId].damage += event.assistantDamage ?? 40;
+              recalculateHltvStyleRating(opponentSideStats[opponentSide][assistantId]);
+            }
+          }
+          if (victimId && yourStats[victimId]) {
+            yourStats[victimId].deaths += 1;
+            recalculateHltvStyleRating(yourStats[victimId]);
+
+            if (yourSideStats[state.side]?.[victimId]) {
+              yourSideStats[state.side][victimId].deaths += 1;
+              recalculateHltvStyleRating(yourSideStats[state.side][victimId]);
+            }
           }
         }
       }
     }
 
-    if (nextPending.length === 0) {
+    const isRoundFinished = nextElapsed >= (state.roundEndTime ?? 115);
+
+    if (isRoundFinished) {
       let finalYourStats = { ...state.savedYourStats! };
       let finalOpponentStats = { ...state.savedOpponentStats! };
       let finalYourSideStats = { ...state.savedYourSideStats! };
@@ -1123,6 +1134,8 @@ export function playRound(
         savedOpponentSideStats: undefined,
         pendingYourStatsPatch: undefined,
         pendingOpponentStatsPatch: undefined,
+        elapsedSeconds: undefined,
+        roundEndTime: undefined,
       };
     }
 
@@ -1140,6 +1153,7 @@ export function playRound(
       yourArmor,
       opponentArmor,
       pendingEvents: nextPending,
+      elapsedSeconds: nextElapsed,
     };
   }
 
@@ -1518,6 +1532,8 @@ export function playRound(
     yourArmor,
     opponentArmor,
     pendingEvents: feed,
+    elapsedSeconds: 0,
+    roundEndTime: feed[feed.length - 1].time ?? 115,
     pendingRoundWinner: winningTeamId,
     pendingRoundReason: roundReason,
     pendingYourMoney,
@@ -1796,6 +1812,71 @@ function createRoundFeed(
     ctScore: ctScoreVal,
     reason: finalReason,
   });
+
+  // Assign timestamps (seconds) to all events
+  const plantIdx = feed.findIndex((e) => e.type === "plant");
+  const defuseIdx = feed.findIndex((e) => e.type === "defuse");
+  const explodeIdx = feed.findIndex((e) => e.type === "explode");
+
+  let plantTime = 0;
+  let endTime = 115;
+
+  if (plantIdx !== -1) {
+    plantTime = Math.floor(30 + Math.random() * 25); // 30 to 55 seconds
+    if (explodeIdx !== -1) {
+      endTime = plantTime + 40;
+    } else if (defuseIdx !== -1) {
+      endTime = plantTime + Math.floor(15 + Math.random() * 20); // 15 to 35 seconds after plant
+    } else {
+      endTime = plantTime + 40;
+    }
+  } else {
+    if (finalReason === "Time ran out") {
+      endTime = 115;
+    } else {
+      endTime = Math.floor(40 + Math.random() * 40); // 40 to 80 seconds
+    }
+  }
+
+  // Pre-plant events (excluding round_start at index 0)
+  const prePlantEvents = feed.filter(
+    (e, idx) => idx > 0 && e.type !== "round_over" && (plantIdx === -1 || idx < plantIdx),
+  );
+  // Post-plant events (excluding plant at plantIdx and round_over, defuse, explode)
+  const postPlantEvents = feed.filter(
+    (e, idx) =>
+      idx > 0 &&
+      e.type !== "round_over" &&
+      plantIdx !== -1 &&
+      idx > plantIdx &&
+      e.type !== "defuse" &&
+      e.type !== "explode",
+  );
+
+  const prePlantLimit = plantIdx !== -1 ? plantTime - 5 : endTime - 5;
+  prePlantEvents.forEach((e, idx) => {
+    const fraction = prePlantEvents.length > 1 ? idx / (prePlantEvents.length - 1) : 0.5;
+    const startRange = 8;
+    e.time = Math.floor(startRange + fraction * (prePlantLimit - startRange));
+  });
+
+  postPlantEvents.forEach((e, idx) => {
+    const fraction = postPlantEvents.length > 1 ? idx / (postPlantEvents.length - 1) : 0.5;
+    const startRange = plantTime + 5;
+    e.time = Math.floor(startRange + fraction * (endTime - 5 - startRange));
+  });
+
+  feed[0].time = 0; // round_start
+  if (plantIdx !== -1) {
+    feed[plantIdx].time = plantTime;
+  }
+  if (defuseIdx !== -1) {
+    feed[defuseIdx].time = endTime;
+  }
+  if (explodeIdx !== -1) {
+    feed[explodeIdx].time = endTime;
+  }
+  feed[feed.length - 1].time = endTime;
 
   return feed;
 }
