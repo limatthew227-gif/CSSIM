@@ -570,41 +570,49 @@ export function simulateRadarPlayers(
       const killerId = event.killerId;
       deadIdsSet.add(victimId);
       
-      // Kill happens at the victim's destination (where they were heading)
-      // This prevents teleportation — victim was walking there anyway
-      const victimDestination = playerDest.get(victimId) ?? layout.mid;
-      
+      // Estimate where the victim naturally is at step i along their route
+      // (they were walking from their last waypoint toward their destination)
       const victimWps = playerWaypoints.get(victimId);
-      if (victimWps) {
-        victimWps.push({ step: i, pos: victimDestination });
-        victimWps.push({ step: totalSteps, pos: victimDestination }); // stay dead
+      const victimDest = playerDest.get(victimId) ?? layout.mid;
+      let victimDeathPos = victimDest;
+      
+      if (victimWps && victimWps.length > 0) {
+        const lastWp = victimWps[victimWps.length - 1];
+        const stepsRemaining = totalSteps - lastWp.step;
+        const stepsElapsed = i - lastWp.step;
+        const frac = stepsRemaining > 0 ? Math.min(1, stepsElapsed / stepsRemaining) : 1;
+        // Victim dies partway along their route (natural walking position)
+        victimDeathPos = {
+          x: lastWp.pos.x + (victimDest.x - lastWp.pos.x) * frac,
+          y: lastWp.pos.y + (victimDest.y - lastWp.pos.y) * frac,
+        };
+        // Freeze victim at their death position
+        victimWps.push({ step: i, pos: victimDeathPos });
+        victimWps.push({ step: totalSteps, pos: victimDeathPos }); // stay dead
       }
       
       if (killerId) {
+        // DON'T move the killer — they stay on their own route
+        // Just estimate where the killer naturally is for the trace line
         const killerWps = playerWaypoints.get(killerId);
-        if (killerWps) {
-          // Killer approaches the encounter from a tiny offset (realistic peek)
-          const angle = hashString(killerId + i) * (Math.PI / 180);
-          const killerFightPos = {
-            x: victimDestination.x + Math.cos(angle) * 1.2,
-            y: victimDestination.y + Math.sin(angle) * 1.2
+        if (killerWps && killerWps.length > 0) {
+          const killerLastWp = killerWps[killerWps.length - 1];
+          const killerDest = playerDest.get(killerId) ?? layout.mid;
+          const kStepsRemaining = totalSteps - killerLastWp.step;
+          const kStepsElapsed = i - killerLastWp.step;
+          const kFrac = kStepsRemaining > 0 ? Math.min(1, kStepsElapsed / kStepsRemaining) : 1;
+          const estimatedKillerPos = {
+            x: killerLastWp.pos.x + (killerDest.x - killerLastWp.pos.x) * kFrac,
+            y: killerLastWp.pos.y + (killerDest.y - killerLastWp.pos.y) * kFrac,
           };
-          
-          killerWps.push({ step: i, pos: killerFightPos });
-          
-          // After the kill, killer continues toward their own destination
-          const killerOwnDest = playerDest.get(killerId) ?? victimDestination;
-          if (i + 1 <= totalSteps) {
-            killerWps.push({ step: Math.min(i + 1, totalSteps), pos: killerOwnDest });
-          }
           
           const traceSide = event.team === "you" ? yourSide : opponentSide;
           roundTraces.push({
             round: activeRound,
             killerId,
             victimId,
-            killerPos: killerFightPos,
-            victimPos: victimDestination,
+            killerPos: estimatedKillerPos,
+            victimPos: victimDeathPos,
             side: traceSide
           });
         }
