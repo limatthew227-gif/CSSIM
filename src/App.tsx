@@ -1486,7 +1486,15 @@ function App() {
                 Start series
               </button>
             ) : (
-              <div className="turn-banner">
+              <div
+                className={`turn-banner ${
+                  veto.prompt.toLowerCase().includes("thinking")
+                    ? "thinking"
+                    : veto.prompt.toLowerCase().includes("pick")
+                      ? "pick"
+                      : "ban"
+                }`}
+              >
                 {veto.prompt.toLowerCase().includes("pick") ? <Target size={18} /> : <Ban size={18} />}
                 {veto.prompt}
               </div>

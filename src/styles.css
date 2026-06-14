@@ -65,14 +65,36 @@ button:hover:not(:disabled) {
   z-index: 10;
   display: grid;
   grid-template-columns: minmax(220px, 1fr) auto auto;
-  gap: 16px;
+  gap: 12px;
   align-items: center;
-  min-height: 58px;
-  padding: 10px 22px;
+  min-height: 46px;
+  padding: 6px 16px;
   border-top: 3px solid var(--gold);
   border-bottom: 1px solid var(--line);
   background: rgba(25, 27, 31, 0.96);
   backdrop-filter: blur(14px);
+}
+
+.topbar .crest {
+  width: 30px;
+  height: 30px;
+  border-radius: 6px;
+  font-size: 12px;
+}
+
+.topbar .brand-lockup strong {
+  font-size: 16px;
+}
+
+.topbar .stage-nav span {
+  padding: 3px 7px;
+  font-size: 11px;
+}
+
+.topbar button {
+  min-height: 30px;
+  padding: 0 10px;
+  font-size: 11px;
 }
 
 .brand-lockup,
@@ -1241,7 +1263,7 @@ meter::-webkit-meter-optimum-value {
 
 .swiss-stage {
   display: grid;
-  gap: 16px;
+  gap: 12px;
 }
 
 .swiss-round-panel,
@@ -1260,8 +1282,8 @@ meter::-webkit-meter-optimum-value {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  min-height: 54px;
-  padding: 10px 14px;
+  min-height: 42px;
+  padding: 6px 12px;
   border-left: 3px solid var(--accent);
   border-bottom: 1px solid var(--line);
   background: #1c2027;
@@ -1269,8 +1291,14 @@ meter::-webkit-meter-optimum-value {
 
 .swiss-actions {
   display: flex;
-  gap: 8px;
+  gap: 6px;
   flex: 0 0 auto;
+}
+
+.swiss-actions button {
+  min-height: 28px;
+  padding: 0 10px;
+  font-size: 11px;
 }
 
 .pickem-strip {
@@ -1280,12 +1308,13 @@ meter::-webkit-meter-optimum-value {
 .pickem-title {
   display: flex;
   align-items: center;
-  gap: 9px;
-  min-height: 40px;
-  padding: 0 14px;
+  gap: 8px;
+  min-height: 30px;
+  padding: 0 12px;
   color: var(--gold);
   font-weight: 900;
   text-transform: uppercase;
+  font-size: 11px;
 }
 
 .pickem-title b,
@@ -1306,21 +1335,22 @@ meter::-webkit-meter-optimum-value {
 .swiss-empty-row {
   display: grid;
   place-items: center;
-  min-height: 54px;
-  padding: 12px 14px;
+  min-height: 40px;
+  padding: 8px 12px;
   border-top: 1px solid rgba(255, 255, 255, 0.05);
   background: #20262e;
   color: var(--muted);
   font-weight: 800;
+  font-size: 12px;
 }
 
 .swiss-match-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 118px minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) 98px minmax(0, 1fr);
   align-items: center;
-  gap: 12px;
-  min-height: 50px;
-  padding: 7px 14px;
+  gap: 8px;
+  min-height: 38px;
+  padding: 4px 12px;
   border-top: 1px solid rgba(255, 255, 255, 0.05);
   background: #252b34;
 }
@@ -1352,7 +1382,7 @@ meter::-webkit-meter-optimum-value {
 .swiss-team-name {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   min-width: 0;
 }
 
@@ -1365,31 +1395,42 @@ meter::-webkit-meter-optimum-value {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-size: 13px;
+  font-weight: 800;
 }
 
 .swiss-team-name span {
   flex: 0 0 auto;
   color: var(--muted);
   font-weight: 800;
+  font-size: 11px;
+}
+
+.swiss-match-row .team-logo.small {
+  width: 24px;
+  height: 24px;
+  font-size: 10px;
 }
 
 .swiss-versus {
   color: var(--muted);
   text-align: center;
   font-weight: 900;
+  font-size: 11px;
 }
 
 .swiss-result-score {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 7px;
-  min-height: 32px;
+  gap: 5px;
+  min-height: 24px;
   border: 1px solid var(--line);
-  border-radius: 5px;
+  border-radius: 4px;
   background: #141820;
   color: var(--muted);
   font-weight: 950;
+  font-size: 12px;
 }
 
 .swiss-result-score .winner {
@@ -1399,15 +1440,17 @@ meter::-webkit-meter-optimum-value {
 .swiss-pick-buttons {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 6px;
+  gap: 4px;
 }
 
 .swiss-pick-buttons button {
-  min-height: 30px;
-  padding: 0 8px;
+  min-height: 24px;
+  padding: 0 6px;
   background: #141820;
   color: var(--muted);
   font-weight: 900;
+  font-size: 10px;
+  border-radius: 4px;
 }
 
 .swiss-board-title > span {
@@ -1418,9 +1461,9 @@ meter::-webkit-meter-optimum-value {
 .swiss-board {
   display: grid;
   grid-template-columns: 1fr auto;
-  gap: 24px;
-  min-height: 520px;
-  padding: 24px 20px 30px;
+  gap: 16px;
+  min-height: 380px;
+  padding: 12px 14px 16px;
 }
 
 /* ----- Round-by-round vertical flow ----- */
@@ -1428,13 +1471,13 @@ meter::-webkit-meter-optimum-value {
 .swiss-rounds-flow {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 12px;
 }
 
 .swiss-round-group {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 6px;
 }
 
 .swiss-round-label {
@@ -1449,7 +1492,7 @@ meter::-webkit-meter-optimum-value {
 
 .swiss-round-lanes {
   display: flex;
-  gap: 14px;
+  gap: 8px;
   flex-wrap: wrap;
 }
 
@@ -1457,13 +1500,13 @@ meter::-webkit-meter-optimum-value {
 
 .swiss-lane {
   flex: 1 1 0;
-  min-width: 180px;
+  min-width: 150px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 12px;
+  gap: 6px;
+  padding: 8px 10px;
   border: 1px solid var(--line);
-  border-radius: 10px;
+  border-radius: 8px;
   background: rgba(28, 32, 39, 0.6);
 }
 
@@ -1481,7 +1524,7 @@ meter::-webkit-meter-optimum-value {
 
 .lane-header strong {
   color: var(--muted);
-  font-size: 16px;
+  font-size: 13px;
   letter-spacing: 0.5px;
 }
 
@@ -1493,13 +1536,13 @@ meter::-webkit-meter-optimum-value {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 22px;
-  height: 20px;
-  padding: 0 5px;
-  border-radius: 10px;
+  min-width: 18px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 8px;
   background: rgba(255, 255, 255, 0.07);
   color: var(--muted);
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 900;
 }
 
@@ -1508,15 +1551,15 @@ meter::-webkit-meter-optimum-value {
 .lane-matchups {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
 }
 
 .lane-matchup-row {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 5px 8px;
-  border-radius: 7px;
+  gap: 6px;
+  padding: 3px 6px;
+  border-radius: 5px;
   background: rgba(34, 40, 50, 0.8);
   transition: background 0.15s ease;
 }
@@ -1540,7 +1583,7 @@ meter::-webkit-meter-optimum-value {
 
 .lane-matchup-row.empty {
   justify-content: center;
-  min-height: 36px;
+  min-height: 28px;
 }
 
 .swiss-lane.current .lane-matchup-row {
@@ -1551,7 +1594,7 @@ meter::-webkit-meter-optimum-value {
   flex: 0 0 auto;
   color: var(--muted);
   font-weight: 900;
-  font-size: 10px;
+  font-size: 9px;
   text-transform: uppercase;
   letter-spacing: 0.5px;
   opacity: 0.55;
@@ -1563,9 +1606,9 @@ meter::-webkit-meter-optimum-value {
   gap: 3px;
   place-items: center;
   flex: 0 0 auto;
-  min-width: 34px;
+  min-width: 30px;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 950;
   font-variant-numeric: tabular-nums;
 }
@@ -1583,7 +1626,7 @@ meter::-webkit-meter-optimum-value {
   flex: 0 0 auto;
   color: var(--muted);
   font-weight: 800;
-  font-size: 10px;
+  font-size: 9px;
   font-style: italic;
   opacity: 0.45;
 }
@@ -1593,12 +1636,12 @@ meter::-webkit-meter-optimum-value {
 .lane-team {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   flex: 1 1 0;
   min-width: 0;
-  min-height: 30px;
-  padding: 3px 6px;
-  border-radius: 5px;
+  min-height: 22px;
+  padding: 2px 4px;
+  border-radius: 4px;
   background: rgba(255, 255, 255, 0.04);
 }
 
@@ -1613,15 +1656,15 @@ meter::-webkit-meter-optimum-value {
 }
 
 .lane-team .team-logo.small {
-  width: 22px;
-  height: 22px;
+  width: 16px;
+  height: 16px;
   border-radius: 50%;
-  font-size: 9px;
+  font-size: 8px;
   flex: 0 0 auto;
 }
 
 .lane-team b {
-  font-size: 12px;
+  font-size: 10px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1630,7 +1673,7 @@ meter::-webkit-meter-optimum-value {
 
 .lane-team small {
   color: var(--gold);
-  font-size: 9px;
+  font-size: 8px;
   font-weight: 900;
   text-transform: uppercase;
   flex: 0 0 auto;
@@ -1641,17 +1684,18 @@ meter::-webkit-meter-optimum-value {
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 30px;
-  padding: 3px 6px;
+  min-height: 22px;
+  padding: 2px 4px;
   border: 1px dashed rgba(255, 255, 255, 0.1);
-  border-radius: 5px;
+  border-radius: 4px;
   color: #5a6270;
   font-weight: 800;
   flex: 1 1 0;
+  font-size: 9px;
 }
 
 .empty-lane.solo {
-  min-height: 34px;
+  min-height: 24px;
 }
 
 /* ----- Outcome zones (Qualified / Eliminated) ----- */
@@ -1659,16 +1703,16 @@ meter::-webkit-meter-optimum-value {
 .swiss-outcome-zone {
   display: flex;
   flex-direction: column;
-  gap: 18px;
-  min-width: 260px;
-  max-width: 320px;
+  gap: 10px;
+  min-width: 180px;
+  max-width: 220px;
 }
 
 .swiss-outcome {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 14px;
+  gap: 6px;
+  padding: 8px 10px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: #222832;
@@ -1686,7 +1730,7 @@ meter::-webkit-meter-optimum-value {
 
 .swiss-outcome > strong {
   color: var(--green);
-  font-size: 16px;
+  font-size: 13px;
   text-transform: uppercase;
   font-weight: 900;
 }
@@ -1700,27 +1744,27 @@ meter::-webkit-meter-optimum-value {
   grid-template-columns: repeat(3, 1fr);
   color: var(--muted);
   font-weight: 900;
-  font-size: 12px;
+  font-size: 10px;
 }
 
 .outcome-teams {
   display: flex;
   flex-direction: column;
-  gap: 5px;
+  gap: 4px;
 }
 
 .swiss-roster-bar {
   display: grid;
-  grid-template-columns: 150px 1fr auto;
+  grid-template-columns: 110px 1fr auto;
   align-items: center;
-  gap: 14px;
-  padding: 12px 14px;
+  gap: 10px;
+  padding: 8px 12px;
 }
 
 .record-pill {
   display: grid;
   place-items: center;
-  min-height: 76px;
+  min-height: 48px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: #171a1f;
@@ -1728,27 +1772,29 @@ meter::-webkit-meter-optimum-value {
 
 .record-pill strong {
   color: var(--gold);
-  font-size: 32px;
+  font-size: 20px;
 }
 
 .record-pill span {
   color: var(--muted);
+  font-size: 11px;
 }
 
 .compact-roster {
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
-  gap: 8px;
+  gap: 4px;
 }
 
 .compact-roster span {
   display: grid;
-  min-height: 56px;
-  padding: 8px;
+  min-height: 38px;
+  padding: 4px 6px;
   border: 1px solid var(--line);
-  border-radius: 6px;
+  border-radius: 4px;
   background: #242a33;
   color: var(--muted);
+  font-size: 11px;
 }
 
 .compact-roster b {
@@ -1876,6 +1922,13 @@ meter::-webkit-meter-optimum-value {
   color: #ffc4c4;
   font-weight: 900;
   text-transform: uppercase;
+}
+
+.turn-banner.pick,
+.turn-banner.thinking {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent), transparent 84%);
+  color: #c4d7ff;
 }
 
 .center-action {
