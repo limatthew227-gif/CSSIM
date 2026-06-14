@@ -97,6 +97,7 @@ const weaponIcons: Record<string, string> = {
   "P250": p250Icon,
 };
 
+const COACH_SHORTLIST_SIZE = 5;
 
 type Screen = "setup" | "teams" | "draft" | "coach" | "swiss" | "playoffs" | "veto" | "match" | "result" | "stats" | "results" | "series-detail";
 type Mode = "classic" | "blind" | "random";
@@ -412,6 +413,10 @@ function randomFiveWithIgl(rosterPool: Roster[]) {
   return draft;
 }
 
+function coachShortlist(coaches: Coach[]) {
+  return shuffled(coaches).slice(0, Math.min(COACH_SHORTLIST_SIZE, coaches.length));
+}
+
 function App() {
   const [settings, setSettings] = useState<CustomSettings>(defaultSettings);
   const [showSettings, setShowSettings] = useState(false);
@@ -426,6 +431,8 @@ function App() {
   const [difficulty, setDifficulty] = useState<Difficulty>(difficulties[0]);
   const [selected, setSelected] = useState<Player[]>([]);
   const [coach, setCoach] = useState<Coach | undefined>();
+  const [coachOptions, setCoachOptions] = useState<Coach[]>([]);
+  const [coachRevealKey, setCoachRevealKey] = useState(0);
   const [currentRoster, setCurrentRoster] = useState<Roster>(hltvTop20Rosters[0]);
   const [usedRosterIds, setUsedRosterIds] = useState<string[]>([]);
   const [rolling, setRolling] = useState(false);
@@ -458,6 +465,7 @@ function App() {
   const builtInRosterCount = hltvTop20Rosters.length;
   const rosterPool = useMemo(() => [...hltvTop20Rosters, ...customRosters], [customRosters]);
   const coachPool = useMemo(() => hltvTop20Coaches, []);
+  const visibleCoachOptions = coachOptions.length ? coachOptions : coachPool.slice(0, COACH_SHORTLIST_SIZE);
 
   const formAdjustedPlayers = useMemo(
     () =>
@@ -600,9 +608,21 @@ function App() {
     }, 3950);
   }
 
+  function dealCoachOptions() {
+    setCoachOptions(coachShortlist(coachPool));
+    setCoachRevealKey((value) => value + 1);
+  }
+
+  function openCoachDraft() {
+    dealCoachOptions();
+    setScreen("coach");
+  }
+
   function startDraft() {
     setSelected([]);
     setCoach(undefined);
+    setCoachOptions([]);
+    setCoachRevealKey(0);
     setRecord({ wins: 0, losses: 0 });
     setPickems({});
     setPickemScore(0);
@@ -626,7 +646,7 @@ function App() {
     setRollsLeft(settings.draftRolls);
     if (mode === "random") {
       setSelected(randomFiveWithIgl(rosterPool));
-      setScreen("coach");
+      openCoachDraft();
       return;
     }
     setScreen("draft");
@@ -639,7 +659,7 @@ function App() {
     setSelected(nextSelected);
     setUsedRosterIds(nextUsed);
     if (nextSelected.length >= 5) {
-      setScreen("coach");
+      openCoachDraft();
       return;
     }
     rollRoster(nextUsed);
@@ -1154,10 +1174,21 @@ function App() {
               <SlidersHorizontal size={18} />
               <span>Choose coach</span>
             </div>
+            <div className="top-actions">
+              <button className="secondary" onClick={dealCoachOptions}>
+                <RefreshCcw size={16} />
+                New shortlist
+              </button>
+            </div>
           </section>
-          <section className="coach-grid">
-            {coachPool.map((item) => (
-              <button className="coach-card" key={item.id} onClick={() => chooseCoach(item)}>
+          <section className="coach-grid coach-draft-grid" key={coachRevealKey}>
+            {visibleCoachOptions.map((item, index) => (
+              <button
+                className="coach-card coach-reveal-card"
+                key={`${coachRevealKey}-${item.id}`}
+                onClick={() => chooseCoach(item)}
+                style={{ "--deal-delay": `${index * 90}ms` } as React.CSSProperties}
+              >
                 <Avatar label={item.handle} accent={settings.accent} />
                 <strong>{item.handle}</strong>
                 <span>{item.country} / {item.realName}</span>

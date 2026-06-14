@@ -880,6 +880,12 @@ textarea {
   .case-card.winner {
     animation-duration: 0.01ms;
   }
+
+  .coach-reveal-card,
+  .coach-reveal-card::before {
+    animation-duration: 0.01ms;
+    animation-delay: 0ms;
+  }
 }
 
 .missing-row {
@@ -922,6 +928,10 @@ textarea {
   grid-template-columns: repeat(5, minmax(0, 1fr));
 }
 
+.coach-draft-grid {
+  perspective: 900px;
+}
+
 .player-card,
 .coach-card {
   position: relative;
@@ -932,6 +942,35 @@ textarea {
   padding: 14px;
   text-align: center;
   background: var(--panel-2);
+}
+
+.coach-reveal-card {
+  overflow: hidden;
+  opacity: 0;
+  transform: translateY(18px) rotateX(12deg) scale(0.96);
+  transform-origin: 50% 100%;
+  animation: coachDealIn 0.58s cubic-bezier(0.18, 0.86, 0.3, 1.08) forwards;
+  animation-delay: var(--deal-delay, 0ms);
+}
+
+.coach-reveal-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background:
+    linear-gradient(115deg, transparent 0 34%, rgba(255, 255, 255, 0.12) 42%, transparent 52%),
+    radial-gradient(circle at 50% -20%, color-mix(in srgb, var(--accent), transparent 70%), transparent 54%);
+  opacity: 0;
+  transform: translateX(-45%);
+  animation: coachCardSheen 0.72s ease-out forwards;
+  animation-delay: calc(var(--deal-delay, 0ms) + 80ms);
+  pointer-events: none;
+}
+
+.coach-reveal-card > * {
+  position: relative;
+  z-index: 1;
 }
 
 .player-card.fills {
@@ -1045,6 +1084,35 @@ meter::-webkit-meter-optimum-value {
 .coach-card p {
   margin: 0;
   color: var(--muted);
+}
+
+@keyframes coachDealIn {
+  0% {
+    opacity: 0;
+    transform: translateY(18px) rotateX(12deg) scale(0.96);
+  }
+  68% {
+    opacity: 1;
+    transform: translateY(-3px) rotateX(-2deg) scale(1.01);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) rotateX(0) scale(1);
+  }
+}
+
+@keyframes coachCardSheen {
+  0% {
+    opacity: 0;
+    transform: translateX(-45%);
+  }
+  35% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(45%);
+  }
 }
 
 .wide {
