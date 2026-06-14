@@ -157,6 +157,7 @@ interface SwissResult {
   pairId: string;
   round: number;
   stage: SeriesStage;
+  laneKey?: string;
   label: string;
   bestOf: number;
   left: FieldTeam;
@@ -170,11 +171,17 @@ interface SwissResult {
   played: boolean;
 }
 
+interface SwissLaneResult {
+  laneKey: string;
+  result: SwissResult;
+}
+
 interface ActiveSeries {
   id: string;
   pairId: string;
   round: number;
   stage: SeriesStage;
+  laneKey?: string;
   label: string;
   bestOf: number;
   maps: MapId[];
@@ -500,6 +507,11 @@ function App() {
         ]
     : [];
 
+  function openSeriesResult(id: string) {
+    setSelectedResultId(id);
+    setScreen("series-detail");
+  }
+
   useEffect(() => {
     document.documentElement.style.setProperty("--accent", settings.accent);
   }, [settings.accent]);
@@ -672,6 +684,7 @@ function App() {
       pairId: activePair?.id ?? `${phase}-${recordKey(record)}-user`,
       round: phase === "playoffs" ? playoffRoundNumber(playoffRound) : record.wins + record.losses + 1,
       stage: phase === "playoffs" ? playoffRound : "swiss",
+      laneKey: phase === "swiss" ? laneKeyForRecord(record) : undefined,
       label: currentSeriesLabel,
       bestOf: currentBestOf,
       maps,
@@ -1228,6 +1241,7 @@ function App() {
                       locked={pair.active || runDone || swissUserFinished}
                       bestOf={pair.active ? currentBestOf : swissPairBestOf(pair, swissRecords)}
                       onPick={(teamId) => pickWinner(pair, teamId)}
+                      onOpenResult={openSeriesResult}
                     />
                   ))
                 ) : (
@@ -1245,7 +1259,15 @@ function App() {
               </div>
               <span>Click an ended series later to inspect match stats</span>
             </div>
-            <SwissBoard user={yourTeam} field={swissField} record={record} opponent={opponent} records={swissRecords} />
+            <SwissBoard
+              user={yourTeam}
+              field={swissField}
+              record={record}
+              opponent={opponent}
+              records={swissRecords}
+              results={matchResults}
+              onOpenResult={openSeriesResult}
+            />
           </section>
 
           <section className="swiss-roster-bar">
@@ -1325,6 +1347,7 @@ function App() {
                     locked
                     bestOf={playoffBestOf(playoffRound)}
                     onPick={() => undefined}
+                    onOpenResult={openSeriesResult}
                   />
                 ))}
               </div>
@@ -1368,10 +1391,7 @@ function App() {
         <RunResultsPage
           results={matchResults}
           selectedResultId={selectedResultId}
-          onOpen={(id) => {
-            setSelectedResultId(id);
-            setScreen("series-detail");
-          }}
+          onOpen={openSeriesResult}
           onBack={() => setScreen(phase === "playoffs" ? "playoffs" : "swiss")}
         />
       )}
@@ -2192,6 +2212,7 @@ function SwissMatchRow({
   locked,
   bestOf,
   onPick,
+  onOpenResult,
 }: {
   pair: SwissPair;
   pick?: string;
@@ -2201,12 +2222,28 @@ function SwissMatchRow({
   locked: boolean;
   bestOf: number;
   onPick: (teamId: string) => void;
+  onOpenResult?: (id: string) => void;
 }) {
   const completedRounds = record.wins + record.losses;
   const leftRecord = pair.left.id === "user" ? record : teamRecords[pair.left.id];
   const rightRecord = pair.right.id === "user" ? record : teamRecords[pair.right.id];
   return (
-    <div className={`${pair.active ? "swiss-match-row active" : "swiss-match-row"}${result ? " completed" : ""}`}>
+    <div
+      className={`${pair.active ? "swiss-match-row active" : "swiss-match-row"}${result ? " completed clickable" : ""}`}
+      onClick={result && onOpenResult ? () => onOpenResult(result.id) : undefined}
+      role={result && onOpenResult ? "button" : undefined}
+      tabIndex={result && onOpenResult ? 0 : undefined}
+      onKeyDown={
+        result && onOpenResult
+          ? (event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                onOpenResult(result.id);
+              }
+            }
+          : undefined
+      }
+    >
       <SwissTeamName team={pair.left} record={leftRecord} completedRounds={completedRounds} />
       {result ? (
         <div className="swiss-result-score">
@@ -2257,20 +2294,50 @@ function SwissBoard({
   record,
   opponent,
   records,
+  results,
+  onOpenResult,
 }: {
   user: FieldTeam;
   field: FieldTeam[];
   record: SwissRecord;
   opponent: FieldTeam;
   records: Record<string, SwissRecord>;
+  results: SwissResult[];
+  onOpenResult: (id: string) => void;
 }) {
   const lanes = buildSwissLaneData(user, field, record, opponent, records);
+  const completedByLane = swissLaneResults(results).reduce(
+    (acc, item) => {
+      acc[item.laneKey] = [...(acc[item.laneKey] ?? []), item.result];
+      return acc;
+    },
+    {} as Record<string, SwissResult[]>,
+  );
   const roundGroups = [
-    { round: 1, lanes: [{ key: "0:0", teams: lanes["0:0"] ?? [] }] },
-    { round: 2, lanes: [{ key: "1:0", teams: lanes["1:0"] ?? [] }, { key: "0:1", teams: lanes["0:1"] ?? [] }] },
-    { round: 3, lanes: [{ key: "2:0", teams: lanes["2:0"] ?? [] }, { key: "1:1", teams: lanes["1:1"] ?? [] }, { key: "0:2", teams: lanes["0:2"] ?? [] }] },
-    { round: 4, lanes: [{ key: "2:1", teams: lanes["2:1"] ?? [] }, { key: "1:2", teams: lanes["1:2"] ?? [] }] },
-    { round: 5, lanes: [{ key: "2:2", teams: lanes["2:2"] ?? [] }] },
+    { round: 1, lanes: [{ key: "0:0", teams: lanes["0:0"] ?? [], results: completedByLane["0:0"] ?? [] }] },
+    {
+      round: 2,
+      lanes: [
+        { key: "1:0", teams: lanes["1:0"] ?? [], results: completedByLane["1:0"] ?? [] },
+        { key: "0:1", teams: lanes["0:1"] ?? [], results: completedByLane["0:1"] ?? [] },
+      ],
+    },
+    {
+      round: 3,
+      lanes: [
+        { key: "2:0", teams: lanes["2:0"] ?? [], results: completedByLane["2:0"] ?? [] },
+        { key: "1:1", teams: lanes["1:1"] ?? [], results: completedByLane["1:1"] ?? [] },
+        { key: "0:2", teams: lanes["0:2"] ?? [], results: completedByLane["0:2"] ?? [] },
+      ],
+    },
+    {
+      round: 4,
+      lanes: [
+        { key: "2:1", teams: lanes["2:1"] ?? [], results: completedByLane["2:1"] ?? [] },
+        { key: "1:2", teams: lanes["1:2"] ?? [], results: completedByLane["1:2"] ?? [] },
+      ],
+    },
+    { round: 5, lanes: [{ key: "2:2", teams: lanes["2:2"] ?? [], results: completedByLane["2:2"] ?? [] }] },
   ];
 
   return (
@@ -2281,7 +2348,7 @@ function SwissBoard({
             <div className="swiss-round-label">Round {group.round}</div>
             <div className="swiss-round-lanes">
               {group.lanes.map((lane) => (
-                <SwissLane key={lane.key} title={lane.key} teams={lane.teams} />
+                <SwissLane key={lane.key} title={lane.key} teams={lane.teams} results={lane.results} onOpenResult={onOpenResult} />
               ))}
             </div>
           </div>
@@ -2295,8 +2362,19 @@ function SwissBoard({
   );
 }
 
-function SwissLane({ title, teams }: { title: string; teams: FieldTeam[] }) {
+function SwissLane({
+  title,
+  teams,
+  results,
+  onOpenResult,
+}: {
+  title: string;
+  teams: FieldTeam[];
+  results: SwissResult[];
+  onOpenResult: (id: string) => void;
+}) {
   const isCurrent = teams.some((team) => team.id === "user");
+  const laneCount = teams.length + results.length * 2;
 
   // Pair teams into matchup rows for visual clarity
   const pairs: [FieldTeam, FieldTeam | undefined][] = [];
@@ -2308,10 +2386,14 @@ function SwissLane({ title, teams }: { title: string; teams: FieldTeam[] }) {
     <div className={`swiss-lane${isCurrent ? " current" : ""}`}>
       <div className="lane-header">
         <strong>{title}</strong>
-        {teams.length > 0 && <span className="lane-count">{teams.length}</span>}
+        {laneCount > 0 && <span className="lane-count">{laneCount}</span>}
       </div>
       <div className="lane-matchups">
-        {pairs.length ? (
+        {results.length > 0 &&
+          results.map((result) => (
+            <SwissLaneResultCard key={result.id} result={result} onOpen={() => onOpenResult(result.id)} />
+          ))}
+        {pairs.length > 0 &&
           pairs.map(([left, right], idx) => (
             <div className="lane-matchup-row" key={`${title}-pair-${idx}`}>
               <SwissLaneTeam team={left} />
@@ -2324,8 +2406,8 @@ function SwissLane({ title, teams }: { title: string; teams: FieldTeam[] }) {
                 <span className="lane-bye">bye</span>
               )}
             </div>
-          ))
-        ) : (
+          ))}
+        {!results.length && !pairs.length && (
           <div className="lane-matchup-row empty">
             <span className="empty-lane">?</span>
           </div>
@@ -2335,12 +2417,26 @@ function SwissLane({ title, teams }: { title: string; teams: FieldTeam[] }) {
   );
 }
 
-function SwissLaneTeam({ team }: { team: FieldTeam }) {
+function SwissLaneResultCard({ result, onOpen }: { result: SwissResult; onOpen: () => void }) {
   return (
-    <span className={team.id === "user" ? "lane-team user" : "lane-team"}>
+    <button className="lane-matchup-row completed" type="button" onClick={onOpen}>
+      <SwissLaneTeam team={result.left} winner={result.winnerId === result.left.id} />
+      <span className="lane-result-score">
+        <b className={result.winnerId === result.left.id ? "winner" : ""}>{result.leftScore}</b>
+        <em>-</em>
+        <b className={result.winnerId === result.right.id ? "winner" : ""}>{result.rightScore}</b>
+      </span>
+      <SwissLaneTeam team={result.right} winner={result.winnerId === result.right.id} />
+    </button>
+  );
+}
+
+function SwissLaneTeam({ team, winner = false }: { team: FieldTeam; winner?: boolean }) {
+  return (
+    <span className={`${team.id === "user" ? "lane-team user" : "lane-team"}${winner ? " winner" : ""}`}>
       <TeamLogo team={team} small />
       <b>{team.tag}</b>
-      {team.id === "user" && <small>you</small>}
+      {winner ? <small>win</small> : team.id === "user" && <small>you</small>}
     </span>
   );
 }
@@ -3256,6 +3352,21 @@ function buildSwissLaneData(user: FieldTeam, field: FieldTeam[], record: SwissRe
   return lanes;
 }
 
+function swissLaneResults(results: SwissResult[]): SwissLaneResult[] {
+  return results
+    .filter((result) => result.stage === "swiss")
+    .map((result) => ({ result, laneKey: result.laneKey ?? inferSwissLaneKey(result) }))
+    .filter((item) => Boolean(item.laneKey));
+}
+
+function inferSwissLaneKey(result: SwissResult) {
+  const direct = result.pairId.match(/^(\d)-(\d)-/);
+  if (direct) return `${direct[1]}:${direct[2]}`;
+  const simulated = result.pairId.match(/^swiss-sim-\d+-(\d)-(\d)-/);
+  if (simulated) return `${simulated[1]}:${simulated[2]}`;
+  return "";
+}
+
 function syntheticSwissRecord(team: FieldTeam, index: number, completedRounds: number): SwissRecord {
   if (completedRounds <= 0) return { wins: 0, losses: 0 };
   const strength = averageOvr(team.players);
@@ -3501,6 +3612,7 @@ function seriesResultFromMaps(series: ActiveSeries, played: boolean): SwissResul
     pairId: series.pairId,
     round: series.round,
     stage: series.stage,
+    laneKey: series.laneKey,
     label: series.label,
     bestOf: series.bestOf,
     left: series.left,
@@ -3523,7 +3635,9 @@ function simulateSwissSeries(
   records: Record<string, SwissRecord>,
 ) {
   const bestOf = swissPairBestOf(pair, records);
-  return simulateSeries(pair, round, "swiss", `Swiss round ${round}`, bestOf, settings, difficulty);
+  const result = simulateSeries(pair, round, "swiss", `Swiss round ${round}`, bestOf, settings, difficulty);
+  result.laneKey = laneKeyForRecord(records[pair.left.id] ?? { wins: 0, losses: 0 });
+  return result;
 }
 
 function simulatePlayoffSeries(pair: SwissPair, round: PlayoffRound, settings: CustomSettings, difficulty: Difficulty) {
@@ -3734,6 +3848,10 @@ function playoffSeeds(field: FieldTeam[], records: Record<string, SwissRecord>, 
 
 function recordKey(record: SwissRecord) {
   return `${record.wins}-${record.losses}`;
+}
+
+function laneKeyForRecord(record: SwissRecord) {
+  return `${record.wins}:${record.losses}`;
 }
 
 function tacticalTimeoutPlan(match: MatchState, you: FieldTeam, opponent: FieldTeam): TimeoutPlan {

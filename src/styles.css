@@ -1264,6 +1264,16 @@ meter::-webkit-meter-optimum-value {
     #222832;
 }
 
+.swiss-match-row.clickable {
+  cursor: pointer;
+}
+
+.swiss-match-row.clickable:hover {
+  background:
+    linear-gradient(90deg, rgba(101, 167, 255, 0.14), transparent 46%),
+    #27303a;
+}
+
 .swiss-team-name {
   display: flex;
   align-items: center;
@@ -1436,8 +1446,21 @@ meter::-webkit-meter-optimum-value {
   transition: background 0.15s ease;
 }
 
+.lane-matchup-row.completed {
+  width: 100%;
+  border: 1px solid rgba(92, 116, 144, 0.38);
+  color: var(--text);
+  cursor: pointer;
+  text-align: left;
+}
+
 .lane-matchup-row:hover {
   background: rgba(40, 48, 60, 0.9);
+}
+
+.lane-matchup-row.completed:hover {
+  border-color: color-mix(in srgb, var(--gold), transparent 28%);
+  background: rgba(48, 58, 72, 0.95);
 }
 
 .lane-matchup-row.empty {
@@ -1457,6 +1480,28 @@ meter::-webkit-meter-optimum-value {
   text-transform: uppercase;
   letter-spacing: 0.5px;
   opacity: 0.55;
+}
+
+.lane-result-score {
+  display: grid;
+  grid-template-columns: auto auto auto;
+  gap: 3px;
+  place-items: center;
+  flex: 0 0 auto;
+  min-width: 34px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 950;
+  font-variant-numeric: tabular-nums;
+}
+
+.lane-result-score em {
+  font-style: normal;
+  opacity: 0.45;
+}
+
+.lane-result-score .winner {
+  color: var(--gold);
 }
 
 .lane-bye {
@@ -1485,6 +1530,11 @@ meter::-webkit-meter-optimum-value {
 .lane-team.user {
   border: 1px solid color-mix(in srgb, var(--gold), transparent 50%);
   background: color-mix(in srgb, var(--gold), transparent 90%);
+}
+
+.lane-team.winner {
+  border: 1px solid color-mix(in srgb, var(--green), transparent 42%);
+  background: color-mix(in srgb, var(--green), transparent 88%);
 }
 
 .lane-team .team-logo.small {
