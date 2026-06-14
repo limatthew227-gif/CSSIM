@@ -1837,13 +1837,6 @@ meter::-webkit-meter-optimum-value {
   text-transform: uppercase;
 }
 
-.map-card small {
-  min-height: 28px;
-  padding: 0 8px;
-  color: var(--muted);
-  font-size: 11px;
-}
-
 .map-card.decider {
   border-color: var(--gold);
 }
@@ -3049,13 +3042,14 @@ meter::-webkit-meter-optimum-value {
 }
 
 .match-layout {
-  width: min(1240px, calc(100vw - 32px));
-  margin-top: 12px;
+  width: min(1760px, calc(100vw - 28px));
+  margin-top: 8px;
+  margin-bottom: 16px;
 }
 
 .match-layout .live-top {
-  margin-bottom: 10px;
-  padding: 9px 12px;
+  margin-bottom: 8px;
+  padding: 7px 10px;
   background: linear-gradient(180deg, #1e232a, #181b20);
 }
 
@@ -3074,11 +3068,11 @@ meter::-webkit-meter-optimum-value {
 }
 
 .score-hero.live-scoreboard {
-  grid-template-columns: minmax(0, 1fr) 150px minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) 130px minmax(0, 1fr);
   gap: 10px;
-  min-height: 96px;
-  padding: 10px 12px;
-  margin-bottom: 10px;
+  min-height: 76px;
+  padding: 8px 10px;
+  margin-bottom: 8px;
   background:
     linear-gradient(90deg, rgba(101, 167, 255, 0.09), transparent 45%, rgba(236, 106, 106, 0.1)),
     #181c22;
@@ -3090,18 +3084,18 @@ meter::-webkit-meter-optimum-value {
 }
 
 .live-scoreboard .team-logo {
-  width: 42px;
-  height: 42px;
+  width: 34px;
+  height: 34px;
   border-radius: 7px;
   font-size: 12px;
 }
 
 .live-scoreboard .team-plate strong {
-  font-size: 14px;
+  font-size: 13px;
 }
 
 .live-scoreboard .team-plate span {
-  font-size: 12px;
+  font-size: 11px;
 }
 
 .score {
@@ -3134,7 +3128,7 @@ meter::-webkit-meter-optimum-value {
 }
 
 .live-scoreboard .score b {
-  font-size: clamp(34px, 4vw, 54px);
+  font-size: clamp(30px, 3.2vw, 44px);
   line-height: 0.95;
 }
 
@@ -3152,8 +3146,8 @@ meter::-webkit-meter-optimum-value {
 }
 
 .match-layout .live-grid {
-  grid-template-columns: 1fr 440px;
-  gap: 20px;
+  grid-template-columns: minmax(0, 1fr) 380px;
+  gap: 12px;
 }
 
 .feed-panel,
@@ -3164,21 +3158,21 @@ meter::-webkit-meter-optimum-value {
 .match-layout .feed-panel,
 .match-layout .tactics-panel,
 .match-layout .stats-table {
-  padding: 16px;
+  padding: 10px;
   box-shadow: 0 10px 26px rgba(0, 0, 0, 0.18);
   overflow-x: visible;
 }
 
 .match-layout .feed-panel,
 .match-layout .tactics-panel {
-  min-height: 206px;
+  min-height: 176px;
 }
 
 .feed-list {
   display: grid;
   gap: 2px;
-  margin-top: 8px;
-  max-height: 250px;
+  margin-top: 6px;
+  max-height: 162px;
   overflow-y: auto;
   padding-right: 4px;
 }
@@ -3251,12 +3245,12 @@ meter::-webkit-meter-optimum-value {
   align-items: center;
   width: 100%;
   box-sizing: border-box;
-  min-height: 34px;
-  padding: 6px 16px;
+  min-height: 27px;
+  padding: 4px 12px;
   border-radius: 9999px;
   background: rgba(18, 22, 28, 0.75);
   border: 1px solid transparent;
-  font-size: 13px;
+  font-size: 12px;
   color: #ffffff;
   backdrop-filter: blur(4px);
   margin-bottom: 2px;
@@ -3429,7 +3423,7 @@ meter::-webkit-meter-optimum-value {
 }
 
 .match-layout .tactic-grid button {
-  min-height: 32px;
+  min-height: 29px;
   padding-inline: 8px;
   border-radius: 6px;
   font-size: 11px;
@@ -3443,12 +3437,12 @@ meter::-webkit-meter-optimum-value {
 }
 
 .match-layout .tactics-panel p {
-  min-height: 54px;
-  padding: 9px;
+  min-height: 40px;
+  padding: 7px;
   border: 1px solid var(--line);
   border-radius: 6px;
   background: #171b21;
-  font-size: 13px;
+  font-size: 12px;
 }
 
 .econ-row {
@@ -3479,28 +3473,112 @@ meter::-webkit-meter-optimum-value {
 
 .match-stats-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(720px, 1fr));
-  gap: 20px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
   align-items: start;
-  margin-top: 20px;
+  margin-top: 10px;
 }
 
 .match-stats-grid .stats-table {
   margin-top: 0;
   border: 1px solid #1e2630;
-  border-radius: 12px;
+  border-radius: 10px;
   background: #111820;
+  overflow-x: hidden;
 }
 
 .match-layout table {
-  margin-top: 8px;
-  font-size: 13px;
+  margin-top: 6px;
+  font-size: 12px;
 }
 
 .match-layout th,
 .match-layout td {
   min-height: 0;
-  padding: 7px 8px;
+  padding: 5px 6px;
+}
+
+.match-layout .stats-table th:nth-child(1),
+.match-layout .stats-table td:nth-child(1) {
+  width: 118px;
+}
+
+.match-layout .stats-table th:nth-child(2),
+.match-layout .stats-table td:nth-child(2) {
+  width: 60px;
+}
+
+.match-layout .stats-table th:nth-child(3),
+.match-layout .stats-table td:nth-child(3) {
+  width: 70px;
+}
+
+.match-layout .stats-table th:nth-child(4),
+.match-layout .stats-table td:nth-child(4) {
+  width: 64px;
+}
+
+.match-layout .stats-table th:nth-child(5),
+.match-layout .stats-table td:nth-child(5) {
+  width: 42px;
+}
+
+.match-layout .stats-table th:nth-child(6),
+.match-layout .stats-table td:nth-child(6) {
+  width: 48px;
+}
+
+.match-layout .stats-table th:nth-child(7),
+.match-layout .stats-table td:nth-child(7) {
+  width: 42px;
+}
+
+.match-layout .stats-table th:nth-child(8),
+.match-layout .stats-table td:nth-child(8) {
+  width: 58px;
+}
+
+.match-layout .stats-table th {
+  font-size: 9px;
+  letter-spacing: 0.03em;
+}
+
+.match-layout .stats-table td {
+  font-size: 12px;
+}
+
+.match-layout .stats-table td strong {
+  font-size: 13px;
+}
+
+.match-layout .stats-table td span {
+  font-size: 9px;
+}
+
+.match-layout .stats-player-identity {
+  gap: 5px;
+}
+
+.match-layout .player-ovr-tag {
+  font-size: 9px;
+}
+
+.match-layout .weapon-cell-content {
+  justify-content: center;
+  gap: 4px;
+}
+
+.match-layout .weapon-icon-img {
+  height: 13px;
+  max-width: 38px;
+}
+
+.match-layout .money-cell {
+  font-size: 11px;
+}
+
+.match-layout .armor-badge {
+  font-size: 10px;
 }
 
 .stats-table {

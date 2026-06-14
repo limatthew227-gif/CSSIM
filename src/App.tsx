@@ -1435,7 +1435,6 @@ function App() {
                   <div className="map-art" />
                   <span>{vetoMapLabel(veto, map.id)}</span>
                   <strong>{map.name}</strong>
-                  <small>{map.lane}</small>
                 </button>
               ))}
             </div>
