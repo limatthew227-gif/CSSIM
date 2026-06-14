@@ -220,10 +220,10 @@ interface PlayerDatabaseRow {
 }
 
 const speedDelays: Record<number, number> = {
-  0.5: 1800,
-  1: 1050,
-  2: 620,
-  4: 260,
+  0.5: 3500,
+  1: 2200,
+  2: 1000,
+  4: 400,
 };
 
 const CASE_ROLL_WINNER_INDEX = 31;
