@@ -110,6 +110,7 @@ type SeriesStage = "swiss" | PlayoffRound;
 type StatsSideFilter = "both" | "T" | "CT";
 type StatsMapFilter = "all" | number;
 type StatsScope = "all" | "mine";
+type LiveFeedView = "feed" | "map";
 
 interface TeamFormPlayer {
   handle: string;
@@ -462,6 +463,7 @@ function App() {
   const [tactic, setTactic] = useState<Tactic>("standard");
   const [timeouts, setTimeouts] = useState(2);
   const [timeoutPlan, setTimeoutPlan] = useState<TimeoutPlan>({ boost: 0, rounds: 0 });
+  const [liveFeedView, setLiveFeedView] = useState<LiveFeedView>("feed");
   const builtInRosterCount = hltvTop20Rosters.length;
   const rosterPool = useMemo(() => [...hltvTop20Rosters, ...customRosters], [customRosters]);
   const coachPool = useMemo(() => hltvTop20Coaches, []);
@@ -1593,10 +1595,23 @@ function App() {
           </section>
           <section className="live-grid">
             <div className="feed-panel">
-              <div className="section-title">
-                <FastForward size={18} />
-                <span>Killfeed</span>
+              <div className="feed-panel-head">
+                <div className="section-title">
+                  <FastForward size={18} />
+                  <span>{liveFeedView === "feed" ? "Killfeed" : "Map view"}</span>
+                </div>
+                <div className="segmented compact feed-view-toggle">
+                  <button className={liveFeedView === "feed" ? "selected" : ""} onClick={() => setLiveFeedView("feed")}>
+                    Feed
+                  </button>
+                  <button className={liveFeedView === "map" ? "selected" : ""} onClick={() => setLiveFeedView("map")}>
+                    Map
+                  </button>
+                </div>
               </div>
+              {liveFeedView === "map" ? (
+                <MatchMapView match={match} you={yourTeam} opponent={opponent} />
+              ) : (
               <div className="feed-list">
                 {match.feed.length ? (
                   match.feed.map((feed, index) => {
@@ -1700,6 +1715,7 @@ function App() {
                   <div className="feed-empty">Waiting for the opener...</div>
                 )}
               </div>
+              )}
             </div>
             <div className="tactics-panel">
               <div className="section-title">
@@ -2218,6 +2234,182 @@ function Bench({ players, coach }: { players: Player[]; coach?: Coach }) {
       </div>
     </section>
   );
+}
+
+interface RadarPosition {
+  x: number;
+  y: number;
+}
+
+function MatchMapView({ match, you, opponent }: { match: MatchState; you: FieldTeam; opponent: FieldTeam }) {
+  const activeRound = match.pendingEvents?.[0]?.round ?? match.feed[0]?.round ?? match.round;
+  const roundEvents = match.feed.filter((event) => event.round === activeRound);
+  const chronologicalEvents = [...roundEvents].reverse();
+  const killEvents = chronologicalEvents.filter(isKillFeedEvent).slice(-6);
+  const displayEvents = chronologicalEvents.filter((event) => event.type !== "round_start").slice(-4);
+  const deadIds = new Set(chronologicalEvents.filter(isKillFeedEvent).map((event) => event.victimId));
+  const yourSide = match.side;
+  const opponentSide = oppositeMatchSide(match.side);
+  const mapInfo = mapPool.find((map) => map.id === match.map);
+  const motionSeed = chronologicalEvents.length + match.round * 3;
+  const radarPlayers = [
+    ...you.players.map((player, index) => ({
+      player,
+      team: "you" as const,
+      side: yourSide,
+      position: radarPlayerPosition(player, index, yourSide, match.map, motionSeed),
+      alive: !deadIds.has(player.id),
+    })),
+    ...opponent.players.map((player, index) => ({
+      player,
+      team: "opponent" as const,
+      side: opponentSide,
+      position: radarPlayerPosition(player, index, opponentSide, match.map, motionSeed + 5),
+      alive: !deadIds.has(player.id),
+    })),
+  ];
+  const positions = new Map(radarPlayers.map((entry) => [entry.player.id, entry.position]));
+
+  return (
+    <div className="radar-shell">
+      <div
+        className={`radar-map radar-map-${match.map}`}
+        style={{ "--map-accent": mapInfo?.accent ?? "#65a7ff" } as React.CSSProperties}
+      >
+        <div className="radar-map-label">
+          <strong>{mapName(match.map)}</strong>
+          <span>Round {activeRound}</span>
+        </div>
+        <div className="radar-site site-a">A</div>
+        <div className="radar-site site-b">B</div>
+        <div className="radar-midline" />
+        <svg className="radar-traces" viewBox="0 0 100 100" preserveAspectRatio="none">
+          {killEvents.map((event, index) => {
+            const killer = positions.get(event.killerId);
+            const victim = positions.get(event.victimId);
+            if (!killer || !victim) return null;
+            const side = radarEventSide(event, yourSide);
+            return (
+              <line
+                key={`${event.round}-${event.killerId}-${event.victimId}-${index}`}
+                className={`radar-trace ${side.toLowerCase()}`}
+                x1={killer.x}
+                y1={killer.y}
+                x2={victim.x}
+                y2={victim.y}
+              />
+            );
+          })}
+        </svg>
+        {killEvents.map((event, index) => {
+          const victim = positions.get(event.victimId);
+          if (!victim) return null;
+          const side = radarEventSide(event, yourSide);
+          return (
+            <span
+              className={`radar-ping ${side.toLowerCase()}`}
+              key={`${event.round}-${event.victimId}-ping-${index}`}
+              style={{ left: `${victim.x}%`, top: `${victim.y}%`, "--ping-delay": `${index * 90}ms` } as React.CSSProperties}
+            />
+          );
+        })}
+        {radarPlayers.map(({ player, team, side, position, alive }, index) => (
+          <div
+            className={`radar-player ${side.toLowerCase()} ${team} ${alive ? "alive" : "dead"}`}
+            key={player.id}
+            style={
+              {
+                left: `${position.x}%`,
+                top: `${position.y}%`,
+                "--float-x": `${((hashText(player.id) % 7) - 3) * 0.9}px`,
+                "--float-y": `${((hashText(player.handle) % 7) - 3) * 0.9}px`,
+                "--float-delay": `${index * 120}ms`,
+              } as React.CSSProperties
+            }
+          >
+            <span>{player.handle.slice(0, 2).toUpperCase()}</span>
+            <small>{player.handle}</small>
+          </div>
+        ))}
+        <div className="radar-event-stack">
+          {displayEvents.length ? (
+            displayEvents.map((event, index) => (
+              <span key={`${event.round}-radar-event-${index}`}>{radarEventText(event, yourSide)}</span>
+            ))
+          ) : (
+            <span>Waiting for contact...</span>
+          )}
+        </div>
+        <div className="radar-legend">
+          <span className="ct-team">CT</span>
+          <span className="t-team">T</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function isKillFeedEvent(event: MatchState["feed"][number]) {
+  return (!event.type || event.type === "kill") && Boolean(event.killerId && event.victimId);
+}
+
+function radarEventSide(event: MatchState["feed"][number], yourSide: "CT" | "T") {
+  if (event.team === "neutral") return "neutral";
+  return event.team === "you" ? yourSide : oppositeMatchSide(yourSide);
+}
+
+function radarEventText(event: MatchState["feed"][number], yourSide: "CT" | "T") {
+  if (isKillFeedEvent(event)) {
+    const side = radarEventSide(event, yourSide);
+    return `${side}: ${event.killer}${event.assistant ? ` + ${event.assistant}` : ""} -> ${event.victim}`;
+  }
+  if (event.type === "plant") return `${radarEventSide(event, yourSide)} plant by ${event.killer}`;
+  if (event.type === "defuse") return `${radarEventSide(event, yourSide)} defuse by ${event.killer}`;
+  if (event.type === "explode") return "Bomb exploded";
+  if (event.type === "round_over") return `Round over: ${event.reason}`;
+  return "Round started";
+}
+
+function oppositeMatchSide(side: "CT" | "T") {
+  return side === "CT" ? "T" : "CT";
+}
+
+function radarPlayerPosition(player: Player, index: number, side: "CT" | "T", map: MapId, motionSeed: number): RadarPosition {
+  const ctBase: RadarPosition[] = [
+    { x: 24, y: 28 },
+    { x: 42, y: 22 },
+    { x: 31, y: 54 },
+    { x: 50, y: 66 },
+    { x: 18, y: 74 },
+  ];
+  const tBase: RadarPosition[] = [
+    { x: 76, y: 74 },
+    { x: 59, y: 82 },
+    { x: 70, y: 48 },
+    { x: 51, y: 34 },
+    { x: 84, y: 25 },
+  ];
+  const roleShift: Partial<Record<Role, RadarPosition>> = {
+    AWP: { x: -3, y: -5 },
+    Entry: { x: side === "T" ? -7 : 7, y: side === "T" ? -8 : 8 },
+    Lurker: { x: side === "T" ? 8 : -8, y: 5 },
+    IGL: { x: 0, y: 0 },
+    Support: { x: side === "T" ? -3 : 3, y: 8 },
+  };
+  const mapShift = ((hashText(map) % 9) - 4) * 0.7;
+  const jitter = ((hashText(`${player.id}-${map}`) % 11) - 5) * 0.45;
+  const pulse = ((motionSeed + index * 2) % 7) - 3;
+  const base = (side === "CT" ? ctBase : tBase)[index % 5];
+  const shift = roleShift[player.role] ?? { x: 0, y: 0 };
+
+  return {
+    x: clampPercent(base.x + shift.x + jitter + pulse * 0.35 + mapShift),
+    y: clampPercent(base.y + shift.y - jitter + pulse * 0.25 - mapShift),
+  };
+}
+
+function clampPercent(value: number) {
+  return Math.max(7, Math.min(93, value));
 }
 
 function Pairing({
