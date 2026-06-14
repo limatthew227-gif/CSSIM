@@ -1627,7 +1627,7 @@ function App() {
                 </div>
               </div>
               {liveFeedView === "map" ? (
-                <MatchMapView match={match} you={yourTeam} opponent={opponent} />
+                <MatchMapView match={match} you={yourTeam} opponent={opponent} speed={speed} />
               ) : (
               <div className="feed-list">
                 {match.feed.length ? (
@@ -2253,7 +2253,7 @@ function Bench({ players, coach }: { players: Player[]; coach?: Coach }) {
   );
 }
 
-function MatchMapView({ match, you, opponent }: { match: MatchState; you: FieldTeam; opponent: FieldTeam }) {
+function MatchMapView({ match, you, opponent, speed = 1 }: { match: MatchState; you: FieldTeam; opponent: FieldTeam; speed?: number }) {
   const activeRound = match.pendingEvents?.[0]?.round ?? match.feed[0]?.round ?? match.round;
   const roundEvents = match.feed.filter((event) => event.round === activeRound);
   const chronologicalEvents = [...roundEvents].reverse();
@@ -2267,6 +2267,8 @@ function MatchMapView({ match, you, opponent }: { match: MatchState; you: FieldT
   const { players: radarPlayers, traces: radarTraces } = simulateRadarPlayers(match, you, opponent);
   const radarImage = radarImages[match.map];
 
+  const duration = speed === 0.5 ? 1500 : speed === 1 ? 850 : speed === 2 ? 500 : 200;
+
   return (
     <div className="radar-shell">
       <div
@@ -2277,6 +2279,7 @@ function MatchMapView({ match, you, opponent }: { match: MatchState; you: FieldT
             backgroundImage: radarImage ? `url(${radarImage})` : undefined,
             backgroundSize: "100% 100%",
             backgroundPosition: "center",
+            "--transition-duration": `${duration}ms`,
           } as React.CSSProperties
         }
       >

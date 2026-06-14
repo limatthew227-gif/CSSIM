@@ -3992,30 +3992,30 @@ meter::-webkit-meter-optimum-value {
   transform: translate(-50%, -50%);
   animation: radarDrift 2.8s ease-in-out infinite alternate;
   animation-delay: var(--float-delay, 0ms);
-  transition: left 1.5s cubic-bezier(0.25, 0.46, 0.45, 0.94), top 1.5s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  transition: left var(--transition-duration, 1s) cubic-bezier(0.25, 0.46, 0.45, 0.94), top var(--transition-duration, 1s) cubic-bezier(0.25, 0.46, 0.45, 0.94);
 }
 
 .radar-player span {
   display: grid;
   place-items: center;
-  width: 28px;
-  height: 28px;
-  border: 2px solid rgba(255, 255, 255, 0.72);
+  width: 21px;
+  height: 21px;
+  border: 1.5px solid rgba(255, 255, 255, 0.72);
   border-radius: 50%;
   color: #fff;
-  font-size: 10px;
+  font-size: 8px;
   font-weight: 950;
-  box-shadow: 0 7px 18px rgba(0, 0, 0, 0.45);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.4);
 }
 
 .radar-player small {
-  max-width: 70px;
+  max-width: 65px;
   overflow: hidden;
   border-radius: 999px;
-  padding: 2px 5px;
+  padding: 1px 4px;
   color: var(--text);
   background: rgba(8, 10, 13, 0.62);
-  font-size: 9px;
+  font-size: 8px;
   font-weight: 900;
   text-overflow: ellipsis;
   white-space: nowrap;

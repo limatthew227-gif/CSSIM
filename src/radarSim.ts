@@ -298,6 +298,12 @@ export function getClosestNodeKey(pos: Position, layout: MapLayout): string {
 export function getPathBetween(n1: string, n2: string, layout: MapLayout): Position[] {
   if (n1 === n2) return [];
   
+  if ((n1 === "tSpawn" && n2 === "ctSpawn") || (n1 === "ctSpawn" && n2 === "tSpawn")) {
+    const p1 = getPathBetween(n1, "mid", layout);
+    const p2 = getPathBetween("mid", n2, layout);
+    return [...p1, layout.mid, ...p2];
+  }
+  
   const pathKeyMap: Record<string, keyof MapLayout> = {
     "tSpawn-bombsiteA": "tSpawnToA" as any,
     "tSpawn-bombsiteB": "tSpawnToB" as any,
