@@ -641,3 +641,63 @@ export function simulateRadarPlayers(
     bomb: currentBombPos,
   };
 }
+
+const speedDelays: Record<number, number> = {
+  0.5: 3500,
+  1: 2200,
+  2: 1000,
+  4: 400,
+};
+
+export function getStepDistance(
+  match: MatchState,
+  you: FieldTeam,
+  opponent: FieldTeam,
+  stepIndex: number
+): number {
+  if (stepIndex <= 0) return 0;
+
+  // Get positions at stepIndex - 1
+  const resPrev = simulateRadarPlayers(match, you, opponent, stepIndex - 1);
+  // Get positions at stepIndex
+  const resCurr = simulateRadarPlayers(match, you, opponent, stepIndex);
+
+  let maxDist = 0;
+  resCurr.players.forEach((pCurr) => {
+    const pPrev = resPrev.players.find((p) => p.id === pCurr.id);
+    if (pPrev && pCurr.alive && pPrev.alive) {
+      const dx = pCurr.x - pPrev.x;
+      const dy = pCurr.y - pPrev.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist > maxDist) {
+        maxDist = dist;
+      }
+    }
+  });
+
+  return maxDist;
+}
+
+export function getStepDelay(
+  match: MatchState,
+  you: FieldTeam,
+  opponent: FieldTeam,
+  stepIndex: number,
+  speed: number,
+  liveFeedView: "feed" | "map"
+): number {
+  const baseDelay = speedDelays[speed] ?? 2200;
+  if (liveFeedView === "feed") {
+    return baseDelay;
+  }
+
+  // Map view: use distance-based delay to keep player speed constant and realistic
+  const maxDist = getStepDistance(match, you, opponent, stepIndex);
+
+  // Speed scaling factor
+  const speedScale = speed === 0.5 ? 1.6 : speed === 1 ? 1.0 : speed === 2 ? 0.5 : 0.25;
+  const dynamicDelay = (1400 + maxDist * 75) * speedScale;
+
+  // Clamp dynamic delay to prevent infinite stall or too fast jumps
+  return Math.max(1200 * speedScale, Math.min(8500 * speedScale, dynamicDelay));
+}

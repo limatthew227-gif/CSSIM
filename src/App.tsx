@@ -66,7 +66,7 @@ import {
   toFieldTeam,
 } from "./sim";
 import { hltvTop20Coaches, hltvTop20Rosters } from "./hltvTop20";
-import { simulateRadarPlayers, MAP_LAYOUTS } from "./radarSim";
+import { simulateRadarPlayers, MAP_LAYOUTS, getStepDelay } from "./radarSim";
 import "./styles.css";
 
 import mirageRadar from "./assets/radar/mirage.png";
@@ -559,6 +559,12 @@ function App() {
   useEffect(() => {
     if (screen !== "match" || !match?.running || match.ended) return;
     const activeTimeoutBoost = timeoutPlan.rounds > 0 ? timeoutPlan.boost : 0;
+    
+    const activeRound = match.pendingEvents?.[0]?.round ?? match.feed[0]?.round ?? match.round;
+    const completedEvents = match.feed.filter((e) => e.round === activeRound);
+    const nextStepIndex = completedEvents.length + 1;
+    const delay = getStepDelay(match, yourTeam, opponent, nextStepIndex, speed, liveFeedView);
+
     const timer = window.setTimeout(() => {
       setMatch((current) => {
         if (!current) return current;
@@ -583,9 +589,9 @@ function App() {
         }
         return next;
       });
-    }, speedDelays[speed] ?? speedDelays[1]);
+    }, delay);
     return () => window.clearTimeout(timer);
-  }, [screen, match, speed, yourTeam, opponent, settings, difficulty, tactic, timeoutPlan, realTimeRounds]);
+  }, [screen, match, speed, yourTeam, opponent, settings, difficulty, tactic, timeoutPlan, realTimeRounds, liveFeedView]);
 
   useEffect(() => {
     if (screen !== "match" || !match?.ended) return;
@@ -2271,7 +2277,7 @@ function MatchMapView({ match, you, opponent, speed = 1 }: { match: MatchState; 
     const currentStep = roundEvents.length;
     if (currentStep !== prevStepRef.current) {
       const startTime = performance.now();
-      const duration = speedDelays[speed] ?? 1050;
+      const duration = getStepDelay(match, you, opponent, currentStep, speed, "map");
       let animId: number;
 
       const tick = () => {
@@ -2288,7 +2294,7 @@ function MatchMapView({ match, you, opponent, speed = 1 }: { match: MatchState; 
 
       return () => cancelAnimationFrame(animId);
     }
-  }, [roundEvents.length, speed]);
+  }, [roundEvents.length, speed, match, you, opponent]);
 
   const stepIndex = smoothMovement && roundEvents.length > 0
     ? roundEvents.length - 1 + fraction
@@ -2298,7 +2304,8 @@ function MatchMapView({ match, you, opponent, speed = 1 }: { match: MatchState; 
   const { players: radarPlayers, traces: radarTraces, bomb } = simulateRadarPlayers(match, you, opponent, stepIndex);
   const radarImage = radarImages[match.map];
 
-  const duration = smoothMovement ? 0 : (speed === 0.5 ? 1500 : speed === 1 ? 850 : speed === 2 ? 500 : 200);
+  const currentStepDelay = getStepDelay(match, you, opponent, roundEvents.length, speed, "map");
+  const duration = smoothMovement ? 0 : Math.max(100, currentStepDelay - 150);
 
   return (
     <div className="radar-shell">
