@@ -423,6 +423,7 @@ export interface RadarTrace {
 export interface RadarSimulationResult {
   players: SimulatedRadarPlayer[];
   traces: RadarTrace[];
+  bomb: Position | null;
 }
 
 export function simulateRadarPlayers(
@@ -518,7 +519,7 @@ export function simulateRadarPlayers(
     
     if (event.type === "plant") {
        const plantSitePos = plantSite === "A" ? layout.bombsiteA : layout.bombsiteB;
-       for (const { p } of allPlayers) {
+       for (const { p, idx, team } of allPlayers) {
          if (!deadIdsSet.has(p.id)) {
            const wps = playerWaypoints.get(p.id)!;
            const lastWp = wps[wps.length - 1];
@@ -526,7 +527,23 @@ export function simulateRadarPlayers(
            if (lastWp.step < i) {
              wps.push({ step: i, pos: lastWp.pos });
            }
-           playerBaseDest.set(p.id, plantSitePos);
+           
+           const actualSide = team === "you" ? yourSide : opponentSide;
+           if (actualSide === "T") {
+             if (idx === 0) {
+               playerBaseDest.set(p.id, layout.mid);
+             } else if (idx === 1) {
+               playerBaseDest.set(p.id, plantSitePos);
+             } else {
+               const offsetPos = {
+                 x: plantSitePos.x + (idx === 2 ? 3 : idx === 3 ? -3 : 0),
+                 y: plantSitePos.y + (idx === 2 ? 0 : idx === 3 ? 3 : -3)
+               };
+               playerBaseDest.set(p.id, offsetPos);
+             }
+           } else {
+             playerBaseDest.set(p.id, plantSitePos);
+           }
          }
        }
     }
@@ -613,8 +630,14 @@ export function simulateRadarPlayers(
     return step !== -1 && step < stepIndex;
   }).slice(-6);
 
+  let currentBombPos: Position | null = null;
+  if (plantEventIndex !== -1 && stepIndex >= plantEventIndex) {
+    currentBombPos = plantSite === "A" ? layout.bombsiteA : layout.bombsiteB;
+  }
+
   return {
     players: [...youSimulated, ...opponentSimulated],
-    traces: activeTraces
+    traces: activeTraces,
+    bomb: currentBombPos,
   };
 }

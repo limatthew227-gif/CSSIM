@@ -3898,6 +3898,24 @@ meter::-webkit-meter-optimum-value {
   box-shadow: 0 0 10px rgba(0, 0, 0, 0.5), inset 0 0 6px rgba(255, 255, 255, 0.05);
 }
 
+.radar-bomb {
+  position: absolute;
+  z-index: 6;
+  font-size: 14px;
+  transform: translate(-50%, -50%);
+  filter: drop-shadow(0 0 6px rgba(255, 0, 0, 0.7));
+}
+
+@keyframes blinkFast {
+  0% { opacity: 1; }
+  50% { opacity: 0.3; }
+  100% { opacity: 1; }
+}
+
+.blink-fast {
+  animation: blinkFast 0.5s infinite;
+}
+
 .radar-spawn {
   position: absolute;
   z-index: 2;

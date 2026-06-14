@@ -2295,7 +2295,7 @@ function MatchMapView({ match, you, opponent, speed = 1 }: { match: MatchState; 
     : roundEvents.length;
 
   // Get simulated coordinates and state for all 10 players, and active firefight traces
-  const { players: radarPlayers, traces: radarTraces } = simulateRadarPlayers(match, you, opponent, stepIndex);
+  const { players: radarPlayers, traces: radarTraces, bomb } = simulateRadarPlayers(match, you, opponent, stepIndex);
   const radarImage = radarImages[match.map];
 
   const duration = smoothMovement ? 0 : (speed === 0.5 ? 1500 : speed === 1 ? 850 : speed === 2 ? 500 : 200);
@@ -2335,6 +2335,13 @@ function MatchMapView({ match, you, opponent, speed = 1 }: { match: MatchState; 
         {/* Spawn points labels */}
         <div className="radar-spawn t-spawn-label" style={{ left: `${layout.tSpawn.x}%`, top: `${layout.tSpawn.y}%` }}>T Spawn</div>
         <div className="radar-spawn ct-spawn-label" style={{ left: `${layout.ctSpawn.x}%`, top: `${layout.ctSpawn.y}%` }}>CT Spawn</div>
+
+        {/* Bomb icon */}
+        {bomb && (
+          <div className="radar-bomb blink-fast" style={{ left: `${bomb.x}%`, top: `${bomb.y}%` }}>
+            <span role="img" aria-label="bomb">💣</span>
+          </div>
+        )}
 
         {/* SVG schematic corridor map layout - fallback if no image */}
         {!radarImage && (
