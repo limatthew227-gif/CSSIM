@@ -36,6 +36,13 @@ export interface FieldTeam {
   coach?: Coach;
 }
 
+export type MatchStageContext = "swiss" | "quarterfinal" | "semifinal" | "final";
+
+export interface MatchContext {
+  map: MapId;
+  stage?: MatchStageContext;
+}
+
 export interface VetoState {
   bestOf: number;
   available: MapId[];
@@ -95,6 +102,7 @@ export interface FeedLine {
 
 export interface MatchState {
   map: MapId;
+  context: MatchContext;
   round: number;
   you: number;
   opponent: number;
@@ -228,7 +236,7 @@ export function composition(players: Player[], settings: CustomSettings, isUserT
   });
   const bestCore = Array.from(hltvCores.entries()).sort((a, b) => b[1] - a[1])[0];
   if (bestCore?.[1] >= 3) {
-    bonuses.push({ label: `${bestCore[0]} core`, value: 5, tone: "good" });
+    bonuses.push({ label: `${bestCore[0]} core`, value: 10, tone: "good" });
   }
 
   const eraChemistry = eraChemistryValue(players, bestCore?.[1] ?? 0);
@@ -438,7 +446,7 @@ export function mapName(map: MapId) {
   return mapPool.find((item) => item.id === map)?.name ?? map;
 }
 
-export function initMatch(map: MapId, you: FieldTeam, opponent: FieldTeam): MatchState {
+export function initMatch(map: MapId, you: FieldTeam, opponent: FieldTeam, context?: Omit<MatchContext, "map">): MatchState {
   const yourMoney: Record<string, number> = {};
   const opponentMoney: Record<string, number> = {};
   const yourWeapons: Record<string, string> = {};
@@ -460,6 +468,7 @@ export function initMatch(map: MapId, you: FieldTeam, opponent: FieldTeam): Matc
 
   return {
     map,
+    context: { ...context, map },
     round: 1,
     you: 0,
     opponent: 0,
@@ -1206,6 +1215,7 @@ export function playRound(
     state.side,
     youScore,
     opponentScore,
+    state.context,
   );
 
   // Add kill rewards to player money
@@ -1220,8 +1230,8 @@ export function playRound(
     }
   });
 
-  const yourRoundPatch = createRoundStatPatch(you.players, feed, "you", youWin);
-  const opponentRoundPatch = createRoundStatPatch(opponent.players, feed, "opponent", !youWin);
+  const yourRoundPatch = createRoundStatPatch(you.players, feed, "you", youWin, state.context);
+  const opponentRoundPatch = createRoundStatPatch(opponent.players, feed, "opponent", !youWin, state.context);
 
   if (youWin) {
     yourLossStreak = Math.max(0, yourLossStreak - 1);
@@ -1465,6 +1475,7 @@ function createRoundFeed(
   side: MatchSide,
   youScore: number,
   opponentScore: number,
+  context: MatchContext,
 ) {
   const teams = { you: you.players, opponent: opponent.players };
   const alive = {
@@ -1577,8 +1588,8 @@ function createRoundFeed(
       continue;
     }
 
-    const killer = pickWeightedBy(killerPool, killWeight);
-    const victim = pickWeightedBy(victimPool, deathWeight);
+    const killer = pickWeightedBy(killerPool, (player) => killWeight(player, context));
+    const victim = pickWeightedBy(victimPool, (player) => deathWeight(player, context));
     alive[victimSide] = alive[victimSide].filter((player) => player.id !== victim.id);
     remainingKills[sideKey] -= 1;
 
@@ -1735,13 +1746,13 @@ function pickWeightedBy(players: Player[], weightFor: (player: Player) => number
   return players[0];
 }
 
-function killWeight(player: Player) {
+function killWeight(player: Player, context: MatchContext) {
   const roleMod =
     player.role === "Entry" ? 1.10 :
     player.role === "AWP" ? 1.06 :
     player.role === "IGL" ? 0.88 :
     player.role === "Support" ? 0.94 :
-    player.role === "Lurker" ? 1.00 :
+    player.role === "Lurker" ? 1.02 :
     1;
 
   const styleMod =
@@ -1754,10 +1765,10 @@ function killWeight(player: Player) {
   // 60 OVR ≈ 0.92, 80 OVR ≈ 1.46, 95 OVR ≈ 1.87
   const baseWeight = 0.65 + skill * 1.35;
 
-  return baseWeight * roleMod * styleMod;
+  return baseWeight * roleMod * styleMod * playerPerformanceMultiplier(player, context);
 }
 
-function deathWeight(player: Player) {
+function deathWeight(player: Player, context: MatchContext) {
   const roleMod =
     player.role === "Entry" ? 1.12 :
     player.role === "IGL" ? 1.05 :
@@ -1776,7 +1787,18 @@ function deathWeight(player: Player) {
   // 60 OVR ≈ 1.24, 80 OVR ≈ 1.02, 95 OVR ≈ 0.86
   const baseWeight = 1.35 - skill * 0.55;
 
-  return baseWeight * roleMod * styleMod;
+  return (baseWeight * roleMod * styleMod) / playerPerformanceMultiplier(player, context);
+}
+
+function playerPerformanceMultiplier(player: Player, context: MatchContext) {
+  const handle = player.handle.toLowerCase();
+  let multiplier = 1;
+
+  if (handle === "makazze" && context.map === "ancient") multiplier *= 1.05;
+  if (handle === "m0nesy" && context.stage && context.stage !== "swiss") multiplier *= 1.05;
+  if (handle === "niko" && player.source.year === "2026" && context.stage === "final") multiplier *= 0.9;
+
+  return multiplier;
 }
 
 function updateStats(
@@ -1794,8 +1816,10 @@ function createRoundStatPatch(
   feed: FeedLine[],
   team: "you" | "opponent",
   roundWon: boolean,
+  context?: MatchContext,
 ) {
   const patch = makeLines(players);
+  const playersById = new Map(players.map((player) => [player.id, player]));
   const killsThisRound = new Map<string, number>();
   const deathsThisRound = new Set<string>();
   const assistedThisRound = new Set<string>();
@@ -1810,8 +1834,10 @@ function createRoundStatPatch(
     if (event.team === team) {
       const killerId = event.killerId;
       if (killerId) {
+        const killer = playersById.get(killerId);
+        const performance = killer && context ? playerPerformanceMultiplier(killer, context) : 1;
         patch[killerId].kills += 1;
-        patch[killerId].damage += event.killerDamage ?? killDamage(event.weapon);
+        patch[killerId].damage += (event.killerDamage ?? killDamage(event.weapon)) * performance;
         killsThisRound.set(killerId, (killsThisRound.get(killerId) ?? 0) + 1);
         if (event.first) patch[killerId].firstKills += 1;
       }
@@ -1839,7 +1865,7 @@ function createRoundStatPatch(
     if (roundKills > 1) line.multiKills += roundKills - 1;
     if (roundWon && survived && roundKills >= 2 && Math.random() < 0.12) line.clutchWins += 1;
     if (roundKills > 0 || assistedThisRound.has(player.id) || survived || traded) line.kastRounds += 1;
-    line.damage += chipDamage(player, roundKills, survived);
+    line.damage += chipDamage(player, roundKills, survived, context);
   });
   return patch;
 }
@@ -1872,12 +1898,13 @@ function killDamage(weapon: string) {
   return base + Math.random() * 24;
 }
 
-function chipDamage(player: Player, roundKills: number, survived: boolean) {
+function chipDamage(player: Player, roundKills: number, survived: boolean, context?: MatchContext) {
   const activity = player.style === "Aggressive" ? 14 : player.style === "Passive" ? 7 : 10;
   const survivalBonus = survived ? 4 : 0;
   const skillBonus = (player.ovr - 70) * 0.4;
+  const performance = context ? playerPerformanceMultiplier(player, context) : 1;
   // Boosted baseline to ensure players don't drop to impossible 0.1 ratings
-  return Math.max(12, 22 + activity + survivalBonus + skillBonus - roundKills * 4 + Math.random() * 20);
+  return Math.max(12, (22 + activity + survivalBonus + skillBonus - roundKills * 4 + Math.random() * 20) * performance);
 }
 
 function pickAssistant(players: Player[], killerId: string) {

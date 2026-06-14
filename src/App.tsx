@@ -726,7 +726,7 @@ function App() {
     setTimeoutPlan({ boost: 0, rounds: 0 });
     setTactic("standard");
     setSeries(nextSeries);
-    setMatch(initMatch(maps[0], yourTeam, opponent));
+    setMatch(initMatch(maps[0], yourTeam, opponent, { stage: nextSeries.stage }));
     setScreen("match");
   }
 
@@ -782,7 +782,7 @@ function App() {
       setTimeouts(2);
       setTimeoutPlan({ boost: 0, rounds: 0 });
       setTactic("standard");
-      setMatch(initMatch(nextMap, activeSeries.left, activeSeries.right));
+      setMatch(initMatch(nextMap, activeSeries.left, activeSeries.right, { stage: activeSeries.stage }));
       setScreen("match");
       return;
     }
@@ -805,7 +805,7 @@ function App() {
       setTimeouts(2);
       setTimeoutPlan({ boost: 0, rounds: 0 });
       setTactic("standard");
-      setMatch(initMatch(nextMap, yourTeam, opponent));
+      setMatch(initMatch(nextMap, yourTeam, opponent, { stage: series.stage }));
       setScreen("match");
       return;
     }
@@ -3728,7 +3728,7 @@ function simulateSeries(
     mapResults: [],
   };
   for (const map of maps) {
-    let state = initMatch(map, pair.left, pair.right);
+    let state = initMatch(map, pair.left, pair.right, { stage });
     let guard = 0;
     while (!state.ended && guard < 40) {
       state = playRound(state, pair.left, pair.right, settings, neutralDifficulty, "standard", 0, true);

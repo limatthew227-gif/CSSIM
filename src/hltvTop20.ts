@@ -26,6 +26,7 @@ interface HltvPlayerSeed {
   role: Role;
   style: Style;
   hltvRating: number;
+  statOverrides?: Partial<PlayerStats>;
   samples?: Partial<Record<RatingFilter, RatingSample>>;
   recentRating?: number;
 }
@@ -318,7 +319,7 @@ function makeRoster(team: HltvTeamSeed): Roster {
     tagline: `${rankingLabel}${pointsCopy}. OVR is opposition, role, sample-size, recent-form, and team-context adjusted.${team.note ? ` ${team.note}` : ""}`,
     mapPool: maps,
     players: team.players.map((player, index) => {
-      const stats = statsFromHltv(player, team);
+      const stats = { ...statsFromHltv(player, team), ...player.statOverrides };
       return {
         id: `hltv-${team.id}-${slugify(player.handle)}`,
         handle: player.handle,
@@ -438,7 +439,7 @@ const hltvTeams: HltvTeamSeed[] = [
           top10: { rating: 1.15, maps: 38 },
         },
       },
-      { handle: "makazze", realName: "Drin Shaqiri", country: "XK", role: "Rifler", style: "Aggressive", hltvRating: 1.16 },
+      { handle: "makazze", realName: "Drin Shaqiri", country: "XK", role: "Entry", style: "Aggressive", hltvRating: 1.16 },
     ],
   },
   {
@@ -577,7 +578,7 @@ const hltvTeams: HltvTeamSeed[] = [
     coachWinrate: 54,
     mapBias: { nuke: 2, dust2: 3, anubis: 1, inferno: -1 },
     players: [
-      { handle: "karrigan", realName: "Finn Andersen", country: "DK", role: "IGL", style: "Balanced", hltvRating: 0.72 },
+      { handle: "karrigan", realName: "Finn Andersen", country: "DK", role: "IGL", style: "Balanced", hltvRating: 0.72, statOverrides: { igl: 90 } },
       { handle: "NiKo", realName: "Nikola Kovac", country: "BA", role: "Rifler", style: "Aggressive", hltvRating: 1.13 },
       { handle: "TeSeS", realName: "Rene Madsen", country: "DK", role: "Support", style: "Balanced", hltvRating: 1.03 },
       { handle: "m0NESY", realName: "Ilya Osipov", country: "RU", role: "AWP", style: "Aggressive", hltvRating: 1.26 },
