@@ -569,39 +569,94 @@ function spendMoney(
     const weapon = carriedWeapons[p.id] ?? (side === "CT" ? "USP-S" : "Glock-18");
     const hasRifle = weapon === "AK-47" || weapon === "M4A4" || weapon === "AWP" || weapon === "M4A1-S" || weapon === "M4A1";
     const hasSMG = weapon === "MP9" || weapon === "MAC-10" || weapon === "Famas" || weapon === "Galil AR" || weapon === "Galil";
+    const playerMoney = nextMoney[p.id] ?? 800;
 
     if (buyState === "FULL") {
+      const wantWeapon = p.role === "AWP" ? "AWP" : (side === "CT" ? "M4A4" : "AK-47");
+      const weaponCost = p.role === "AWP" ? 4750 : (side === "CT" ? 2900 : 2700);
+      const fullCost = p.role === "AWP" ? (side === "CT" ? 6950 : 6550) : (side === "CT" ? 4900 : 4500);
+      const minCost = weaponCost + 1000; // Weapon + helmet
+
       if (hasRifle) {
-        costs[p.id] = 0;
-        finalWeapons[p.id] = weapon;
-      } else if (hasSMG) {
-        const upgradeCost = p.role === "AWP" ? (side === "CT" ? 6950 : 6550) : (side === "CT" ? 4900 : 4500);
-        const playerMoney = nextMoney[p.id] ?? 800;
-        if (playerMoney >= upgradeCost) {
-          costs[p.id] = upgradeCost;
-          finalWeapons[p.id] = p.role === "AWP" ? "AWP" : (side === "CT" ? "M4A4" : "AK-47");
-          finalArmor[p.id] = "helmet";
+        if (p.role === "AWP" && weapon !== "AWP") {
+          // AWPer wants to upgrade from regular rifle to AWP
+          if (playerMoney >= minCost) {
+            costs[p.id] = Math.min(playerMoney, fullCost);
+            finalWeapons[p.id] = "AWP";
+            finalArmor[p.id] = "helmet";
+          } else {
+            costs[p.id] = fullCost;
+            finalWeapons[p.id] = "AWP";
+            finalArmor[p.id] = "helmet";
+          }
         } else {
+          // Keep current rifle
           costs[p.id] = 0;
           finalWeapons[p.id] = weapon;
         }
-      } else {
+      } else if (hasSMG) {
         if (p.role === "AWP") {
-          costs[p.id] = side === "CT" ? 6950 : 6550;
-          finalWeapons[p.id] = "AWP";
+          if (playerMoney >= minCost) {
+            costs[p.id] = Math.min(playerMoney, fullCost);
+            finalWeapons[p.id] = "AWP";
+            finalArmor[p.id] = "helmet";
+          } else {
+            costs[p.id] = fullCost;
+            finalWeapons[p.id] = "AWP";
+            finalArmor[p.id] = "helmet";
+          }
         } else {
-          costs[p.id] = side === "CT" ? 4900 : 4500;
-          finalWeapons[p.id] = side === "CT" ? "M4A4" : "AK-47";
+          if (playerMoney >= fullCost) {
+            costs[p.id] = fullCost;
+            finalWeapons[p.id] = wantWeapon;
+            finalArmor[p.id] = "helmet";
+          } else {
+            costs[p.id] = 0;
+            finalWeapons[p.id] = weapon;
+          }
         }
-        finalArmor[p.id] = "helmet";
+      } else {
+        if (playerMoney >= minCost) {
+          costs[p.id] = Math.min(playerMoney, fullCost);
+          finalWeapons[p.id] = wantWeapon;
+          finalArmor[p.id] = "helmet";
+        } else {
+          costs[p.id] = fullCost;
+          finalWeapons[p.id] = wantWeapon;
+          finalArmor[p.id] = "helmet";
+        }
       }
     } else if (buyState === "FORCE") {
-      if (hasRifle || hasSMG) {
+      if (p.role === "AWP") {
+        if (weapon === "AWP") {
+          costs[p.id] = 0;
+          finalWeapons[p.id] = "AWP";
+        } else if (playerMoney >= 5750) {
+          costs[p.id] = 5750;
+          finalWeapons[p.id] = "AWP";
+          finalArmor[p.id] = "helmet";
+        } else if (playerMoney >= 5400) {
+          costs[p.id] = 5400;
+          finalWeapons[p.id] = "AWP";
+          finalArmor[p.id] = "kevlar";
+        } else if (playerMoney >= 4750) {
+          costs[p.id] = 4750;
+          finalWeapons[p.id] = "AWP";
+          finalArmor[p.id] = "none";
+        } else if (hasRifle || hasSMG) {
+          costs[p.id] = 0;
+          finalWeapons[p.id] = weapon;
+        } else {
+          costs[p.id] = side === "CT" ? 2450 : 2350;
+          finalWeapons[p.id] = Math.random() < 0.5 ? (side === "CT" ? "Famas" : "Galil AR") : (side === "CT" ? "MP9" : "MAC-10");
+          finalArmor[p.id] = "kevlar";
+        }
+      } else if (hasRifle || hasSMG) {
         costs[p.id] = 0;
         finalWeapons[p.id] = weapon;
       } else {
         costs[p.id] = side === "CT" ? 2450 : 2350;
-        finalWeapons[p.id] = p.role === "AWP" && Math.random() < 0.5 ? (side === "CT" ? "Famas" : "Galil AR") : (side === "CT" ? "MP9" : "MAC-10");
+        finalWeapons[p.id] = Math.random() < 0.5 ? (side === "CT" ? "Famas" : "Galil AR") : (side === "CT" ? "MP9" : "MAC-10");
         finalArmor[p.id] = "kevlar";
       }
     } else {
@@ -609,7 +664,6 @@ function spendMoney(
         costs[p.id] = 0;
         finalWeapons[p.id] = weapon;
       } else {
-        const playerMoney = nextMoney[p.id] ?? 800;
         if (playerMoney >= 1000) {
           costs[p.id] = 500;
           finalWeapons[p.id] = Math.random() < 0.35 ? "Desert Eagle" : "P250";
@@ -633,13 +687,53 @@ function spendMoney(
       }
     });
 
-    needy.forEach((n) => {
-      const dropper = players.find((p) => {
+    // Sort needy list so that AWPer gets top priority, IGL gets lowest priority, and star players (OVR desc) get dropped first
+    const needySorted = [...needy].sort((a, b) => {
+      const playerA = players.find(p => p.id === a.playerId)!;
+      const playerB = players.find(p => p.id === b.playerId)!;
+      if (playerA.role === "AWP" && playerB.role !== "AWP") return -1;
+      if (playerB.role === "AWP" && playerA.role !== "AWP") return 1;
+      if (playerA.role === "IGL" && playerB.role !== "IGL") return 1;
+      if (playerB.role === "IGL" && playerA.role !== "IGL") return -1;
+      return playerB.ovr - playerA.ovr;
+    });
+
+    needySorted.forEach((n) => {
+      // 1. Look for free droppers (who don't have to sacrifice their own buy)
+      // Prefer IGL if they can afford it as a free dropper
+      const iglFreeDropper = players.find((p) => {
         if (p.id === n.playerId) return false;
+        if (p.role !== "IGL") return false;
         const currentVal = nextMoney[p.id] ?? 800;
-        const selfCost = costs[p.id];
+        const selfCost = costs[p.id] ?? 0;
         return currentVal >= selfCost + n.weaponCost;
       });
+
+      const otherFreeDropper = players.find((p) => {
+        if (p.id === n.playerId) return false;
+        if (p.role === "IGL") return false;
+        const currentVal = nextMoney[p.id] ?? 800;
+        const selfCost = costs[p.id] ?? 0;
+        return currentVal >= selfCost + n.weaponCost;
+      });
+
+      let dropper = iglFreeDropper ?? otherFreeDropper;
+
+      // 2. If no free dropper, and needy player is not IGL, check if IGL can sacrifice their buy to drop
+      if (!dropper && n.playerId !== players.find(p => p.role === "IGL")?.id) {
+        const igl = players.find(p => p.role === "IGL");
+        if (igl) {
+          const iglMoney = nextMoney[igl.id] ?? 800;
+          if (iglMoney >= n.weaponCost) {
+            dropper = igl;
+            // The IGL is sacrificing their buy.
+            // We set the IGL's own planned cost to 0 and their weapon/armor to default
+            costs[igl.id] = 0;
+            finalWeapons[igl.id] = side === "CT" ? "USP-S" : "Glock-18";
+            finalArmor[igl.id] = "none";
+          }
+        }
+      }
 
       if (dropper) {
         nextMoney[dropper.id] = (nextMoney[dropper.id] ?? 800) - n.weaponCost;
@@ -656,22 +750,62 @@ function spendMoney(
       if (totalCost > 0) {
         const currentVal = nextMoney[p.id] ?? 800;
         if (currentVal < totalCost) {
-          const forceCost = side === "CT" ? 2450 : 2350;
-          if (currentVal >= forceCost) {
-            costs[p.id] = forceCost;
-            finalWeapons[p.id] = p.role === "AWP" && Math.random() < 0.5 ? (side === "CT" ? "Famas" : "Galil AR") : (side === "CT" ? "MP9" : "MAC-10");
+          const wantWeapon = p.role === "AWP" ? "AWP" : (side === "CT" ? "M4A4" : "AK-47");
+          const weaponCost = p.role === "AWP" ? 4750 : (side === "CT" ? 2900 : 2700);
+
+          if (currentVal >= weaponCost + 1000) {
+            costs[p.id] = weaponCost + 1000;
+            finalWeapons[p.id] = wantWeapon;
+            finalArmor[p.id] = "helmet";
+          } else if (currentVal >= weaponCost + 650) {
+            costs[p.id] = weaponCost + 650;
+            finalWeapons[p.id] = wantWeapon;
             finalArmor[p.id] = "kevlar";
+          } else if (currentVal >= weaponCost) {
+            costs[p.id] = weaponCost;
+            finalWeapons[p.id] = wantWeapon;
+            finalArmor[p.id] = "none";
           } else {
-            if (currentVal >= 1000) {
-              costs[p.id] = 500;
-              finalWeapons[p.id] = Math.random() < 0.35 ? "Desert Eagle" : "P250";
-              finalArmor[p.id] = "none";
+            const forceCost = side === "CT" ? 2450 : 2350;
+            if (currentVal >= forceCost) {
+              costs[p.id] = forceCost;
+              finalWeapons[p.id] = p.role === "AWP" && Math.random() < 0.5 ? (side === "CT" ? "Famas" : "Galil AR") : (side === "CT" ? "MP9" : "MAC-10");
+              finalArmor[p.id] = "kevlar";
             } else {
-              costs[p.id] = 0;
-              finalWeapons[p.id] = side === "CT" ? "USP-S" : "Glock-18";
-              finalArmor[p.id] = "none";
+              if (currentVal >= 1000) {
+                costs[p.id] = 500;
+                finalWeapons[p.id] = Math.random() < 0.35 ? "Desert Eagle" : "P250";
+                finalArmor[p.id] = "none";
+              } else {
+                costs[p.id] = 0;
+                finalWeapons[p.id] = side === "CT" ? "USP-S" : "Glock-18";
+                finalArmor[p.id] = "none";
+              }
             }
           }
+        }
+      }
+    });
+
+    // Post-drop force buy fallback for default sidearm/pistol players (like a sacrificing IGL)
+    players.forEach((p) => {
+      const weapon = finalWeapons[p.id] ?? (side === "CT" ? "USP-S" : "Glock-18");
+      const isDefaultPistol = weapon === "USP-S" || weapon === "Glock-18";
+      if (isDefaultPistol) {
+        const remMoney = nextMoney[p.id] ?? 800;
+        const mp9Mac10Cost = side === "CT" ? 1900 : 1700;
+        if (remMoney >= mp9Mac10Cost) {
+          nextMoney[p.id] = remMoney - mp9Mac10Cost;
+          finalWeapons[p.id] = side === "CT" ? "MP9" : "MAC-10";
+          finalArmor[p.id] = "kevlar";
+        } else if (remMoney >= 1150) {
+          nextMoney[p.id] = remMoney - 1150;
+          finalWeapons[p.id] = Math.random() < 0.35 ? "Desert Eagle" : "P250";
+          finalArmor[p.id] = "kevlar";
+        } else if (remMoney >= 500) {
+          nextMoney[p.id] = remMoney - 500;
+          finalWeapons[p.id] = Math.random() < 0.35 ? "Desert Eagle" : "P250";
+          finalArmor[p.id] = "none";
         }
       }
     });
