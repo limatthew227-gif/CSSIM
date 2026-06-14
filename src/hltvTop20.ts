@@ -445,7 +445,7 @@ const hltvTeams: HltvTeamSeed[] = [
   {
     id: "natus-vincere-2018",
     rosterId: "hltv-natus-vincere-2018",
-    logoKey: "natus-vincere",
+    logoKey: "natus-vincere-2018",
     era: "CS:GO",
     year: "2018",
     rankingLabel: "2018 NAVI historical CS:GO roster",

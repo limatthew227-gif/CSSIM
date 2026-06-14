@@ -2105,6 +2105,10 @@ function TeamLogo({ team, small = false }: { team: Pick<Roster | FieldTeam, "tag
   const showLogo = Boolean(team.logo && !failed);
   const className = `team-logo${small ? " small" : ""}${showLogo ? " has-image" : ""}`;
 
+  useEffect(() => {
+    setFailed(false);
+  }, [team.logo]);
+
   return (
     <div className={className} style={{ "--crest": team.accent } as React.CSSProperties}>
       {showLogo ? (
