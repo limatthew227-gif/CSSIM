@@ -3821,7 +3821,10 @@ meter::-webkit-meter-optimum-value {
 
 .radar-map {
   position: relative;
-  min-height: 250px;
+  width: 100%;
+  max-width: 480px;
+  aspect-ratio: 1 / 1;
+  margin: 0 auto;
   overflow: hidden;
   border: 1px solid color-mix(in srgb, var(--line), white 6%);
   border-radius: 8px;

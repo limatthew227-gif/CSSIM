@@ -2277,7 +2277,7 @@ function MatchMapView({ match, you, opponent }: { match: MatchState; you: FieldT
           {
             "--map-accent": mapInfo?.accent ?? "#65a7ff",
             backgroundImage: radarImage ? `url(${radarImage})` : undefined,
-            backgroundSize: "cover",
+            backgroundSize: "100% 100%",
             backgroundPosition: "center",
           } as React.CSSProperties
         }
