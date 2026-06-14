@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" role="img" aria-labelledby="title">
+  <title>magic logo</title>
+  <defs>
+    <linearGradient id="magic-bg" x1="16" x2="80" y1="12" y2="86" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#d7c6ff"/>
+      <stop offset=".46" stop-color="#8f63ff"/>
+      <stop offset="1" stop-color="#341a79"/>
+    </linearGradient>
+    <linearGradient id="magic-mark" x1="22" x2="74" y1="30" y2="68" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#fff7c2"/>
+      <stop offset="1" stop-color="#ffffff"/>
+    </linearGradient>
+  </defs>
+  <rect width="96" height="96" rx="20" fill="#11131a"/>
+  <path fill="url(#magic-bg)" d="M48 8 84 25v34c0 17-14 27-36 31-22-4-36-14-36-31V25L48 8Z"/>
+  <path fill="#171125" d="M48 17 75 30v28c0 12-10 19-27 23-17-4-27-11-27-23V30l27-13Z" opacity=".55"/>
+  <path fill="url(#magic-mark)" d="m21 66 9-39 17 22 19-22 9 39H61l-3-16-11 14-11-14-3 16H21Z"/>
+  <path fill="#fff7c2" d="m72 17 3 8 8 3-8 3-3 8-3-8-8-3 8-3 3-8ZM21 17l2 6 6 2-6 2-2 6-2-6-6-2 6-2 2-6Z"/>
+</svg>
