@@ -2263,10 +2263,8 @@ function MatchMapView({ match, you, opponent }: { match: MatchState; you: FieldT
   const mapInfo = mapPool.find((map) => map.id === match.map);
   const layout = MAP_LAYOUTS[match.map] || MAP_LAYOUTS.mirage;
 
-  // Get simulated coordinates and state for all 10 players
-  const radarPlayers = simulateRadarPlayers(match, you, opponent);
-  const positions = new Map(radarPlayers.map((entry) => [entry.id, { x: entry.x, y: entry.y }]));
-
+  // Get simulated coordinates and state for all 10 players, and active firefight traces
+  const { players: radarPlayers, traces: radarTraces } = simulateRadarPlayers(match, you, opponent);
   const radarImage = radarImages[match.map];
 
   return (
@@ -2307,32 +2305,25 @@ function MatchMapView({ match, you, opponent }: { match: MatchState; you: FieldT
         )}
 
         <svg className="radar-traces" viewBox="0 0 100 100" preserveAspectRatio="none">
-          {killEvents.map((event, index) => {
-            const killer = positions.get(event.killerId);
-            const victim = positions.get(event.victimId);
-            if (!killer || !victim) return null;
-            const side = radarEventSide(event, yourSide);
+          {radarTraces.map((trace, index) => {
             return (
               <line
-                key={`${event.round}-${event.killerId}-${event.victimId}-${index}`}
-                className={`radar-trace ${side.toLowerCase()}`}
-                x1={killer.x}
-                y1={killer.y}
-                x2={victim.x}
-                y2={victim.y}
+                key={`${trace.round}-${trace.killerId}-${trace.victimId}-${index}`}
+                className={`radar-trace ${trace.side.toLowerCase()}`}
+                x1={trace.killerPos.x}
+                y1={trace.killerPos.y}
+                x2={trace.victimPos.x}
+                y2={trace.victimPos.y}
               />
             );
           })}
         </svg>
-        {killEvents.map((event, index) => {
-          const victim = positions.get(event.victimId);
-          if (!victim) return null;
-          const side = radarEventSide(event, yourSide);
+        {radarTraces.map((trace, index) => {
           return (
             <span
-              className={`radar-ping ${side.toLowerCase()}`}
-              key={`${event.round}-${event.victimId}-ping-${index}`}
-              style={{ left: `${victim.x}%`, top: `${victim.y}%`, "--ping-delay": `${index * 90}ms` } as React.CSSProperties}
+              className={`radar-ping ${trace.side.toLowerCase()}`}
+              key={`${trace.round}-${trace.victimId}-ping-${index}`}
+              style={{ left: `${trace.victimPos.x}%`, top: `${trace.victimPos.y}%`, "--ping-delay": `${index * 90}ms` } as React.CSSProperties}
             />
           );
         })}
