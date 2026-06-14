@@ -9,6 +9,7 @@ import {
   Database,
   Dice5,
   Download,
+  Eye,
   FastForward,
   Gauge,
   Pause,
@@ -117,12 +118,13 @@ const weaponIcons: Record<string, string> = {
 const COACH_SHORTLIST_SIZE = 5;
 
 type Screen = "setup" | "teams" | "draft" | "coach" | "swiss" | "playoffs" | "veto" | "match" | "result" | "stats" | "results" | "series-detail";
-type Mode = "classic" | "blind" | "random";
+type Mode = "classic" | "blind" | "random" | "spectator";
+type RunKind = "player" | "spectator";
 type SwissRecord = { wins: number; losses: number };
 type TimeoutPlan = { boost: number; rounds: number };
 type TournamentPhase = "swiss" | "playoffs";
 type PlayoffRound = "quarterfinal" | "semifinal" | "final";
-type TournamentOutcome = "running" | "eliminated" | "champion";
+type TournamentOutcome = "running" | "eliminated" | "champion" | "complete";
 type SeriesStage = "swiss" | PlayoffRound;
 type StatsSideFilter = "both" | "T" | "CT";
 type StatsMapFilter = "all" | number;
@@ -446,6 +448,7 @@ function App() {
   const [teamLabMessage, setTeamLabMessage] = useState("");
   const [teamName, setTeamName] = useState("My Five");
   const [mode, setMode] = useState<Mode>("classic");
+  const [runKind, setRunKind] = useState<RunKind>("player");
   const [difficulty, setDifficulty] = useState<Difficulty>(difficulties[0]);
   const [selected, setSelected] = useState<Player[]>([]);
   const [coach, setCoach] = useState<Coach | undefined>();
@@ -461,8 +464,10 @@ function App() {
   const [playoffRound, setPlayoffRound] = useState<PlayoffRound>("quarterfinal");
   const [playoffPairs, setPlayoffPairs] = useState<SwissPair[]>([]);
   const [tournamentOutcome, setTournamentOutcome] = useState<TournamentOutcome>("running");
+  const [tournamentWinner, setTournamentWinner] = useState<FieldTeam | undefined>();
   const [swissField, setSwissField] = useState<FieldTeam[]>(() => buildSwissField(hltvTop20Rosters));
   const [swissRecords, setSwissRecords] = useState<Record<string, SwissRecord>>({});
+  const [spectatorSwissRound, setSpectatorSwissRound] = useState(1);
   const [playedOpponentIds, setPlayedOpponentIds] = useState<string[]>([]);
   const [matchResults, setMatchResults] = useState<SwissResult[]>([]);
   const [selectedResultId, setSelectedResultId] = useState<string>();
@@ -499,8 +504,16 @@ function App() {
   const opponentBonuses = useMemo(() => composition(opponent.players, settings, opponent.id === "user"), [opponent, settings]);
   const missingRoles = requiredRoles.filter((role) => !selected.some((player) => player.role === role));
   const swissPairs = useMemo(() => buildSwissPairs(yourTeam, opponent, swissField, record, swissRecords), [yourTeam, opponent, swissField, record, swissRecords]);
-  const swissUserFinished = phase === "swiss" && (record.wins >= 3 || record.losses >= 3);
+  const swissUserFinished = runKind === "player" && phase === "swiss" && (record.wins >= 3 || record.losses >= 3);
   const swissCanSim = swissUserFinished && !isSwissStageResolved(swissField, swissRecords, record);
+  const spectatorSwissResolved = runKind === "spectator" && phase === "swiss" && isNeutralSwissStageResolved(swissField, swissRecords);
+  const spectatorSwissPairs = useMemo(
+    () =>
+      runKind === "spectator" && phase === "swiss" && !spectatorSwissResolved
+        ? buildRemainingSwissPairs(swissField, swissRecords, spectatorSwissRound)
+        : [],
+    [phase, runKind, spectatorSwissResolved, spectatorSwissRound, swissField, swissRecords],
+  );
   const swissDisplayPairs = useMemo(
     () => (swissUserFinished ? buildRemainingSwissPairs(swissField, swissRecords, record.wins + record.losses + 1) : swissPairs),
     [record, swissField, swissPairs, swissRecords, swissUserFinished],
@@ -510,7 +523,13 @@ function App() {
     () => matchResults.find((result) => result.id === selectedResultId) ?? matchResults[matchResults.length - 1],
     [matchResults, selectedResultId],
   );
-  const runDone = tournamentOutcome !== "running" || (phase === "swiss" && record.losses >= 3);
+  const runDone = runKind === "player" && (tournamentOutcome !== "running" || (phase === "swiss" && record.losses >= 3));
+  const canSimPlayoffPhase =
+    phase === "playoffs" &&
+    playoffPairs.length > 0 &&
+    tournamentOutcome !== "champion" &&
+    tournamentOutcome !== "complete" &&
+    (runKind === "spectator" || tournamentOutcome === "eliminated");
   const currentBestOf = phase === "playoffs" ? playoffBestOf(playoffRound) : swissBestOf(record);
   const currentSeriesLabel = phase === "playoffs" ? playoffRoundLabel(playoffRound) : `Swiss round ${record.wins + record.losses + 1}`;
   const strengthBreakdown = teamStrengthBreakdown(yourTeam, settings);
@@ -644,6 +663,11 @@ function App() {
   }
 
   function startDraft() {
+    if (mode === "spectator") {
+      startSpectatorRun();
+      return;
+    }
+    setRunKind("player");
     setSelected([]);
     setCoach(undefined);
     setCoachOptions([]);
@@ -659,7 +683,9 @@ function App() {
     setPlayoffRound("quarterfinal");
     setPlayoffPairs([]);
     setTournamentOutcome("running");
+    setTournamentWinner(undefined);
     setSwissRecords({});
+    setSpectatorSwissRound(1);
     setPlayedOpponentIds([]);
     setMatchResults([]);
     setSelectedResultId(undefined);
@@ -676,6 +702,42 @@ function App() {
     }
     setScreen("draft");
     rollRoster([]);
+  }
+
+  function startSpectatorRun() {
+    const nextSwissField = buildSpectatorField(rosterPool);
+    const nextSwissRecords = initialSwissRecords(nextSwissField);
+    setRunKind("spectator");
+    setSelected([]);
+    setCoach(undefined);
+    setCoachOptions([]);
+    setCoachRevealKey(0);
+    setRecord({ wins: 0, losses: 0 });
+    setPickems({});
+    setPickemScore(0);
+    setLastPickemDelta(0);
+    setAchievements([]);
+    setPlayerForm({});
+    setUsedRosterIds([]);
+    setPhase("swiss");
+    setPlayoffRound("quarterfinal");
+    setPlayoffPairs([]);
+    setTournamentOutcome("running");
+    setTournamentWinner(undefined);
+    setSwissField(nextSwissField);
+    setSwissRecords(nextSwissRecords);
+    setSpectatorSwissRound(1);
+    setOpponent(nextSwissField[0] ?? opponent);
+    setPlayedOpponentIds([]);
+    setMatchResults([]);
+    setSelectedResultId(undefined);
+    setStatsScope("all");
+    setSeries(undefined);
+    setMatch(undefined);
+    setRolling(false);
+    setRollSequence([]);
+    setVeto(createVeto());
+    setScreen("swiss");
   }
 
   function choosePlayer(player: Player) {
@@ -697,6 +759,7 @@ function App() {
   }
 
   function chooseCoach(nextCoach: Coach) {
+    setRunKind("player");
     setCoach(nextCoach);
     const nextSwissField = buildSwissField(rosterPool);
     const nextSwissRecords = initialSwissRecords(nextSwissField);
@@ -705,8 +768,10 @@ function App() {
     setPlayoffRound("quarterfinal");
     setPlayoffPairs([]);
     setTournamentOutcome("running");
+    setTournamentWinner(undefined);
     setSwissField(nextSwissField);
     setSwissRecords(nextSwissRecords);
+    setSpectatorSwissRound(1);
     setOpponent(rival);
     setPlayedOpponentIds([]);
     setMatchResults([]);
@@ -880,6 +945,10 @@ function App() {
       setVeto(createVeto());
     } else {
       setTournamentOutcome("eliminated");
+      if (isSwissStageResolved(swissField, nextSwissRecords, nextRecord)) {
+        enterNeutralPlayoffs(nextSwissRecords, "eliminated");
+        return;
+      }
     }
     setScreen("swiss");
   }
@@ -891,7 +960,20 @@ function App() {
     setPlayoffRound("quarterfinal");
     setPlayoffPairs(pairs);
     setTournamentOutcome("running");
+    setTournamentWinner(undefined);
     setOpponent(active.right.id === "user" ? active.left : active.right);
+    setVeto(createVeto());
+    setScreen("playoffs");
+  }
+
+  function enterNeutralPlayoffs(nextSwissRecords: Record<string, SwissRecord>, outcome: TournamentOutcome = "eliminated") {
+    const pairs = buildNeutralInitialPlayoffPairs(swissField, nextSwissRecords, settings, difficulty);
+    setPhase("playoffs");
+    setPlayoffRound("quarterfinal");
+    setPlayoffPairs(pairs);
+    setTournamentOutcome(outcome);
+    setTournamentWinner(undefined);
+    setOpponent(pairs[0]?.right ?? pairs[0]?.left ?? opponent);
     setVeto(createVeto());
     setScreen("playoffs");
   }
@@ -923,8 +1005,62 @@ function App() {
       return;
     }
 
-    setTournamentOutcome("eliminated");
-    setScreen("swiss");
+    enterNeutralPlayoffs(nextSwissRecords, "eliminated");
+  }
+
+  function simSpectatorSwissPhase() {
+    if (runKind !== "spectator" || phase !== "swiss") return;
+    if (isNeutralSwissStageResolved(swissField, swissRecords)) {
+      enterNeutralPlayoffs(swissRecords, "running");
+      return;
+    }
+
+    const pairs = buildRemainingSwissPairs(swissField, swissRecords, spectatorSwissRound);
+    if (!pairs.length) {
+      enterNeutralPlayoffs(swissRecords, "running");
+      return;
+    }
+
+    const roundResults = pairs.map((pair) => simulateSwissSeries(pair, spectatorSwissRound, settings, difficulty, swissRecords));
+    const nextSwissRecords = applyResultsToSwissRecords(swissRecords, roundResults);
+    setSwissRecords(nextSwissRecords);
+    setPickems({});
+    setLastPickemDelta(0);
+    setMatchResults((current) => [...current, ...roundResults]);
+    setSelectedResultId(roundResults[roundResults.length - 1]?.id);
+
+    if (isNeutralSwissStageResolved(swissField, nextSwissRecords) || spectatorSwissRound >= 5) {
+      enterNeutralPlayoffs(nextSwissRecords, "running");
+      return;
+    }
+
+    setSpectatorSwissRound((round) => Math.min(5, round + 1));
+  }
+
+  function simPlayoffPhase() {
+    if (!playoffPairs.length || tournamentOutcome === "champion" || tournamentOutcome === "complete") return;
+    const roundResults = playoffPairs.map((pair) => simulatePlayoffSeries(pair, playoffRound, settings, difficulty));
+    const winners = roundResults.map((result) => (result.winnerId === result.left.id ? result.left : result.right));
+    setMatchResults((current) => [...current, ...roundResults]);
+    setSelectedResultId(roundResults[roundResults.length - 1]?.id);
+
+    if (playoffRound === "final") {
+      const winner = winners[0];
+      setTournamentWinner(winner);
+      setTournamentOutcome(winner?.id === "user" ? "champion" : "complete");
+      setScreen("playoffs");
+      return;
+    }
+
+    const nextRound = playoffRound === "quarterfinal" ? "semifinal" : "final";
+    const pairs = winners.some((team) => team.id === "user")
+      ? buildNextPlayoffPairs(nextRound, winners, yourTeam)
+      : buildNeutralNextPlayoffPairs(nextRound, winners);
+    const active = pairs.find((pair) => pair.active) ?? pairs[0];
+    setPlayoffRound(nextRound);
+    setPlayoffPairs(pairs);
+    setOpponent(active ? (active.right.id === "user" ? active.left : active.right) : opponent);
+    setScreen("playoffs");
   }
 
   function continuePlayoffs(playedResult: SwissResult) {
@@ -938,11 +1074,24 @@ function App() {
     setMatch(undefined);
 
     if (playedResult.winnerId !== "user") {
+      const winners = roundResults.map((result) => (result.winnerId === result.left.id ? result.left : result.right));
+      if (playoffRound === "final") {
+        setTournamentWinner(winners[0]);
+        setTournamentOutcome("complete");
+        setScreen("playoffs");
+        return;
+      }
+      const nextRound = playoffRound === "quarterfinal" ? "semifinal" : "final";
+      const pairs = buildNeutralNextPlayoffPairs(nextRound, winners);
+      setPlayoffRound(nextRound);
+      setPlayoffPairs(pairs);
+      setOpponent(pairs[0]?.right ?? pairs[0]?.left ?? opponent);
       setTournamentOutcome("eliminated");
       setScreen("playoffs");
       return;
     }
     if (playoffRound === "final") {
+      setTournamentWinner(yourTeam);
       setTournamentOutcome("champion");
       setScreen("playoffs");
       return;
@@ -965,6 +1114,7 @@ function App() {
 
   function restartRun() {
     setScreen("setup");
+    setRunKind("player");
     setSelected([]);
     setCoach(undefined);
     setRecord({ wins: 0, losses: 0 });
@@ -977,7 +1127,9 @@ function App() {
     setPlayoffRound("quarterfinal");
     setPlayoffPairs([]);
     setTournamentOutcome("running");
+    setTournamentWinner(undefined);
     setSwissRecords({});
+    setSpectatorSwissRound(1);
     setPlayedOpponentIds([]);
     setMatchResults([]);
     setSelectedResultId(undefined);
@@ -1076,6 +1228,10 @@ function App() {
                     <Dice5 size={16} />
                     Random
                   </button>
+                  <button className={mode === "spectator" ? "selected" : ""} onClick={() => setMode("spectator")}>
+                    <Eye size={16} />
+                    Spectator
+                  </button>
                 </div>
               </div>
               <div>
@@ -1094,8 +1250,8 @@ function App() {
                 </div>
               </div>
               <button className="primary large" onClick={startDraft}>
-                <Dice5 size={19} />
-                Start draft
+                {mode === "spectator" ? <FastForward size={19} /> : <Dice5 size={19} />}
+                {mode === "spectator" ? "Start spectator" : "Start draft"}
               </button>
             </div>
           </section>
@@ -1227,7 +1383,90 @@ function App() {
         </main>
       )}
 
-      {screen === "swiss" && (
+      {screen === "swiss" && runKind === "spectator" && (
+        <main className="layout swiss-stage">
+          <section className="swiss-round-panel">
+            <div className="swiss-round-header">
+              <div className="section-title">
+                <Eye size={18} />
+                <span>
+                  Spectator mode - Swiss - {spectatorSwissResolved ? "Complete" : `Round ${spectatorSwissRound}`}
+                </span>
+              </div>
+              <div className="swiss-actions">
+                <button className="secondary" onClick={() => setScreen("stats")}>
+                  <Target size={16} />
+                  Stats
+                </button>
+                <button className="secondary" disabled={!matchResults.length} onClick={() => setScreen("results")}>
+                  <Database size={16} />
+                  Results
+                </button>
+                <button className="primary" onClick={simSpectatorSwissPhase}>
+                  <FastForward size={17} />
+                  {spectatorSwissResolved ? "Build playoffs" : "Sim games"}
+                </button>
+                <button className="secondary" onClick={restartRun}>
+                  <RefreshCcw size={17} />
+                  New run
+                </button>
+              </div>
+            </div>
+            <div className="run-status qualified">
+              <strong>{spectatorSwissResolved ? "Swiss settled" : `Round ${spectatorSwissRound} ready`}</strong>
+              <span>
+                {spectatorSwissResolved
+                  ? "The eight playoff teams are set. Build the bracket, then sim one playoff phase at a time."
+                  : "Each click simulates only the visible Swiss round, saving results and player stats as it goes."}
+              </span>
+            </div>
+            <div className="pickem-strip">
+              <div className="pickem-title">
+                <Target size={17} />
+                <span>{spectatorSwissResolved ? "Qualified teams are locked" : `Swiss round ${spectatorSwissRound} pairings`}</span>
+                <b>{swissField.length} teams</b>
+              </div>
+              <div className="swiss-match-list">
+                {spectatorSwissPairs.length ? (
+                  spectatorSwissPairs.map((pair) => (
+                    <SwissMatchRow
+                      key={pair.id}
+                      pair={pair}
+                      record={record}
+                      teamRecords={swissRecords}
+                      result={latestResultForPair(matchResults, pair.id)}
+                      locked
+                      bestOf={swissPairBestOf(pair, swissRecords)}
+                      onPick={() => undefined}
+                      onOpenResult={openSeriesResult}
+                    />
+                  ))
+                ) : (
+                  <div className="swiss-empty-row">Swiss stage is complete.</div>
+                )}
+              </div>
+            </div>
+          </section>
+
+          <section className="swiss-board-shell">
+            <div className="swiss-board-title">
+              <div className="section-title">
+                <Target size={18} />
+                <span>Swiss stage</span>
+              </div>
+              <span>Completed series stay clickable for stats</span>
+            </div>
+            <SpectatorSwissBoard
+              field={swissField}
+              records={swissRecords}
+              results={matchResults}
+              onOpenResult={openSeriesResult}
+            />
+          </section>
+        </main>
+      )}
+
+      {screen === "swiss" && runKind !== "spectator" && (
         <main className="layout swiss-stage">
           <section className="swiss-round-panel">
             <div className="swiss-round-header">
@@ -1258,6 +1497,17 @@ function App() {
                         Retry run
                       </button>
                     )}
+                  </>
+                ) : runDone && record.losses >= 3 && isSwissStageResolved(swissField, swissRecords, record) ? (
+                  <>
+                    <button className="primary" onClick={() => enterNeutralPlayoffs(swissRecords, "eliminated")}>
+                      <FastForward size={17} />
+                      Continue bracket
+                    </button>
+                    <button className="secondary" onClick={restartRun}>
+                      <RefreshCcw size={17} />
+                      Retry run
+                    </button>
                   </>
                 ) : runDone ? (
                   <button className="primary" onClick={restartRun}>
@@ -1376,10 +1626,15 @@ function App() {
                   <Database size={16} />
                   Results
                 </button>
-                {tournamentOutcome === "running" ? (
+                {runKind === "player" && tournamentOutcome === "running" ? (
                   <button className="primary" onClick={startVeto}>
                     <Play size={17} />
                     Play series
+                  </button>
+                ) : canSimPlayoffPhase ? (
+                  <button className="primary" onClick={simPlayoffPhase}>
+                    <FastForward size={17} />
+                    Sim games
                   </button>
                 ) : (
                   <button className="primary" onClick={restartRun}>
@@ -1389,10 +1644,26 @@ function App() {
                 )}
               </div>
             </div>
-            {tournamentOutcome !== "running" && (
-              <div className={tournamentOutcome === "champion" ? "run-status qualified" : "run-status eliminated"}>
-                <strong>{tournamentOutcome === "champion" ? "Major champions" : "Eliminated"}</strong>
-                <span>{tournamentOutcome === "champion" ? "Your five lifted the trophy." : "The playoff bracket ended your run."}</span>
+            {(runKind === "spectator" || tournamentOutcome !== "running") && (
+              <div className={tournamentOutcome === "champion" || runKind === "spectator" ? "run-status qualified" : "run-status eliminated"}>
+                <strong>
+                  {tournamentOutcome === "champion"
+                    ? "Major champions"
+                    : tournamentOutcome === "complete"
+                      ? "Tournament complete"
+                      : runKind === "spectator"
+                        ? "Spectator bracket"
+                        : "Eliminated"}
+                </strong>
+                <span>
+                  {tournamentOutcome === "champion"
+                    ? "Your five lifted the trophy."
+                    : tournamentOutcome === "complete"
+                      ? `${tournamentWinner?.name ?? "The winner"} lifted the trophy.`
+                      : runKind === "spectator"
+                        ? "Sim one playoff phase at a time: quarterfinals, semifinals, then the BO5 final."
+                        : "Your run is over, but you can keep simming the bracket to the end."}
+                </span>
               </div>
             )}
             <div className="pickem-strip">
@@ -1421,24 +1692,35 @@ function App() {
 
           <section className="swiss-roster-bar">
             <div className="record-pill">
-              <strong>{record.wins}-{record.losses}</strong>
-              <span>Swiss record</span>
+              <strong>{runKind === "spectator" ? playoffPairs.length : `${record.wins}-${record.losses}`}</strong>
+              <span>{runKind === "spectator" ? "series this phase" : "Swiss record"}</span>
             </div>
             <div className="compact-roster">
-              {selected.map((player) => (
-                <span key={player.id}>
-                  <b>{player.handle}</b>
-                  {player.role}
-                </span>
-              ))}
-              {coach && (
-                <span>
-                  <b>{coach.handle}</b>
-                  Coach
-                </span>
-              )}
+              {runKind === "spectator"
+                ? playoffPairs.flatMap((pair) => [pair.left, pair.right]).map((team) => (
+                    <span key={team.id}>
+                      <b>{team.tag}</b>
+                      {team.name}
+                    </span>
+                  ))
+                : (
+                    <>
+                      {selected.map((player) => (
+                        <span key={player.id}>
+                          <b>{player.handle}</b>
+                          {player.role}
+                        </span>
+                      ))}
+                      {coach && (
+                        <span>
+                          <b>{coach.handle}</b>
+                          Coach
+                        </span>
+                      )}
+                    </>
+                  )}
             </div>
-            <AchievementStrip achievements={achievements} />
+            {runKind === "player" && <AchievementStrip achievements={achievements} />}
           </section>
         </main>
       )}
@@ -2646,6 +2928,74 @@ function SwissBoard({
   );
 }
 
+function SpectatorSwissBoard({
+  field,
+  records,
+  results,
+  onOpenResult,
+}: {
+  field: FieldTeam[];
+  records: Record<string, SwissRecord>;
+  results: SwissResult[];
+  onOpenResult: (id: string) => void;
+}) {
+  const lanes = buildNeutralSwissLaneData(field, records);
+  const completedByLane = swissLaneResults(results).reduce(
+    (acc, item) => {
+      acc[item.laneKey] = [...(acc[item.laneKey] ?? []), item.result];
+      return acc;
+    },
+    {} as Record<string, SwissResult[]>,
+  );
+  const roundGroups = [
+    { round: 1, lanes: [{ key: "0:0", teams: lanes["0:0"] ?? [], results: completedByLane["0:0"] ?? [] }] },
+    {
+      round: 2,
+      lanes: [
+        { key: "1:0", teams: lanes["1:0"] ?? [], results: completedByLane["1:0"] ?? [] },
+        { key: "0:1", teams: lanes["0:1"] ?? [], results: completedByLane["0:1"] ?? [] },
+      ],
+    },
+    {
+      round: 3,
+      lanes: [
+        { key: "2:0", teams: lanes["2:0"] ?? [], results: completedByLane["2:0"] ?? [] },
+        { key: "1:1", teams: lanes["1:1"] ?? [], results: completedByLane["1:1"] ?? [] },
+        { key: "0:2", teams: lanes["0:2"] ?? [], results: completedByLane["0:2"] ?? [] },
+      ],
+    },
+    {
+      round: 4,
+      lanes: [
+        { key: "2:1", teams: lanes["2:1"] ?? [], results: completedByLane["2:1"] ?? [] },
+        { key: "1:2", teams: lanes["1:2"] ?? [], results: completedByLane["1:2"] ?? [] },
+      ],
+    },
+    { round: 5, lanes: [{ key: "2:2", teams: lanes["2:2"] ?? [], results: completedByLane["2:2"] ?? [] }] },
+  ];
+
+  return (
+    <div className="swiss-board">
+      <div className="swiss-rounds-flow">
+        {roundGroups.map((group) => (
+          <div className="swiss-round-group" key={`spectator-round-${group.round}`}>
+            <div className="swiss-round-label">Round {group.round}</div>
+            <div className="swiss-round-lanes">
+              {group.lanes.map((lane) => (
+                <SwissLane key={lane.key} title={lane.key} teams={lane.teams} results={lane.results} onOpenResult={onOpenResult} />
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="swiss-outcome-zone">
+        <SwissOutcome title="Qualified" tone="qualified" teams={lanes.qualified ?? []} labels={["3:0", "3:1", "3:2"]} />
+        <SwissOutcome title="Eliminated" tone="eliminated" teams={lanes.eliminated ?? []} labels={["0:3", "1:3", "2:3"]} />
+      </div>
+    </div>
+  );
+}
+
 function SwissLane({
   title,
   teams,
@@ -3648,6 +3998,30 @@ function buildSwissLaneData(user: FieldTeam, field: FieldTeam[], record: SwissRe
   return lanes;
 }
 
+function buildNeutralSwissLaneData(field: FieldTeam[], records: Record<string, SwissRecord>) {
+  const lanes: Record<string, FieldTeam[]> = {
+    "0:0": [],
+    "1:0": [],
+    "0:1": [],
+    "2:0": [],
+    "1:1": [],
+    "0:2": [],
+    "2:1": [],
+    "1:2": [],
+    "2:2": [],
+    qualified: [],
+    eliminated: [],
+  };
+
+  field.forEach((team) => {
+    const teamRecord = records[team.id] ?? { wins: 0, losses: 0 };
+    const key = teamRecord.wins >= 3 ? "qualified" : teamRecord.losses >= 3 ? "eliminated" : `${teamRecord.wins}:${teamRecord.losses}`;
+    lanes[key] = [...(lanes[key] ?? []), team];
+  });
+
+  return lanes;
+}
+
 function swissLaneResults(results: SwissResult[]): SwissLaneResult[] {
   return results
     .filter((result) => result.stage === "swiss")
@@ -3697,6 +4071,10 @@ function toTournamentTeam(roster: Roster): FieldTeam {
 
 function buildSwissField(rosterPool: Roster[]) {
   return shuffle(rosterPool).slice(0, SWISS_OPPONENT_COUNT).map(toTournamentTeam);
+}
+
+function buildSpectatorField(rosterPool: Roster[]) {
+  return shuffle(rosterPool).slice(0, SWISS_FIELD_SIZE).map(toTournamentTeam);
 }
 
 function buildSwissPairs(
@@ -3776,6 +4154,18 @@ function isSwissStageResolved(field: FieldTeam[], records: Record<string, SwissR
     return teamRecord.wins < 3 && teamRecord.losses < 3;
   }).length;
   return userQualified + qualifiedTeams >= SWISS_FIELD_SIZE / 2 || liveTeams === 0;
+}
+
+function isNeutralSwissStageResolved(field: FieldTeam[], records: Record<string, SwissRecord>) {
+  const qualifiedTeams = field.filter((team) => {
+    const teamRecord = records[team.id] ?? { wins: 0, losses: 0 };
+    return teamRecord.wins >= 3;
+  }).length;
+  const liveTeams = field.filter((team) => {
+    const teamRecord = records[team.id] ?? { wins: 0, losses: 0 };
+    return teamRecord.wins < 3 && teamRecord.losses < 3;
+  }).length;
+  return qualifiedTeams >= SWISS_FIELD_SIZE / 2 || liveTeams === 0;
 }
 
 function initialSwissRecords(field: FieldTeam[]) {
@@ -4103,9 +4493,51 @@ function buildInitialPlayoffPairs(
   return buildPlayoffPairs("quarterfinal", [user, ...seeds], user);
 }
 
+function buildNeutralInitialPlayoffPairs(
+  field: FieldTeam[],
+  records: Record<string, SwissRecord>,
+  settings: CustomSettings,
+  difficulty: Difficulty,
+) {
+  const orderedSeeds = playoffSeeds(field, records, settings, difficulty);
+  const qualifiedSeeds = orderedSeeds.filter((team) => (records[team.id]?.wins ?? 0) >= 3);
+  const backupSeeds = orderedSeeds.filter((team) => !qualifiedSeeds.some((qualified) => qualified.id === team.id));
+  return buildNeutralPlayoffPairs("quarterfinal", [...qualifiedSeeds, ...backupSeeds].slice(0, SWISS_FIELD_SIZE / 2));
+}
+
 function buildNextPlayoffPairs(round: PlayoffRound, winners: FieldTeam[], user: FieldTeam) {
   const ordered = [user, ...winners.filter((team) => team.id !== "user")];
   return buildPlayoffPairs(round, ordered, user);
+}
+
+function buildNeutralNextPlayoffPairs(round: PlayoffRound, winners: FieldTeam[]) {
+  return buildNeutralPlayoffPairs(round, winners);
+}
+
+function buildNeutralPlayoffPairs(round: PlayoffRound, teams: FieldTeam[]): SwissPair[] {
+  const seeds = teams.slice(0, SWISS_FIELD_SIZE / 2);
+  const order =
+    round === "quarterfinal" && seeds.length >= 8
+      ? [
+          [0, 7],
+          [3, 4],
+          [2, 5],
+          [1, 6],
+        ]
+      : Array.from({ length: Math.floor(seeds.length / 2) }, (_, index) => [index * 2, index * 2 + 1]);
+
+  return order
+    .map(([leftIndex, rightIndex], pairIndex) => {
+      const left = seeds[leftIndex];
+      const right = seeds[rightIndex];
+      if (!left || !right) return undefined;
+      return {
+        id: `${round}-${pairIndex}-${left.id}-${right.id}`,
+        left,
+        right,
+      };
+    })
+    .filter(Boolean) as SwissPair[];
 }
 
 function buildPlayoffPairs(round: PlayoffRound, teams: FieldTeam[], user: FieldTeam): SwissPair[] {

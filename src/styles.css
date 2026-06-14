@@ -395,7 +395,7 @@ textarea {
 }
 
 .setup-form .segmented {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
 .choice {
@@ -4595,6 +4595,10 @@ input[type="range"] {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .setup-form .segmented {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .match-stats-top,
   .stats-map-bar {
     display: grid;
@@ -4709,6 +4713,7 @@ input[type="range"] {
   .coach-grid,
   .difficulty-grid,
   .segmented,
+  .setup-form .segmented,
   .team-form-grid,
   .map-editor-grid,
   .player-editor-grid {
