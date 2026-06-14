@@ -424,20 +424,8 @@ export function simulateRadarPlayers(
   const completedEvents = match.feed.filter((e) => e.round === activeRound);
   const remainingEvents = (match.pendingEvents || []).filter((e) => e.round === activeRound);
   const allEvents = [...[...completedEvents].reverse(), ...remainingEvents];
-
-  const elapsedSeconds = match.elapsedSeconds;
-  const roundEndTime = match.roundEndTime;
-
-  const stepIndex = elapsedSeconds !== undefined ? elapsedSeconds : completedEvents.length;
-  const totalSteps = roundEndTime !== undefined ? roundEndTime : Math.max(1, allEvents.length);
-
-  const getEventStep = (idx: number): number => {
-    if (elapsedSeconds !== undefined) {
-      const event = allEvents[idx];
-      return event?.time !== undefined ? event.time : idx;
-    }
-    return idx;
-  };
+  const stepIndex = completedEvents.length;
+  const totalSteps = Math.max(1, allEvents.length);
 
   const deadIds = new Set(completedEvents.filter((e) => !e.type || e.type === "kill").map((e) => e.victimId));
 
@@ -463,8 +451,6 @@ export function simulateRadarPlayers(
     ...opponent.players.map((p, idx) => ({ p, idx, side: opponentSide, team: "opponent" as const }))
   ];
 
-  const reachStep = elapsedSeconds !== undefined ? 15 : Math.max(1, Math.floor(totalSteps * 0.3));
-
   for (const { p, idx, side } of allPlayers) {
     const spawn = side === "CT" ? layout.ctSpawn : layout.tSpawn;
     
@@ -486,27 +472,25 @@ export function simulateRadarPlayers(
     
     const destPos = initDest === "bombsiteA" ? layout.bombsiteA : initDest === "bombsiteB" ? layout.bombsiteB : layout.mid;
     
-    // Create base route waypoints (step 0 at spawn, step reachStep at target site, step totalSteps at target site)
+    // Create base route waypoints (step 0 at spawn, step totalSteps at target site)
     const wps: Waypoint[] = [
       { step: 0, pos: spawn },
-      { step: reachStep, pos: destPos },
       { step: totalSteps, pos: destPos }
     ];
     playerWaypoints.set(p.id, wps);
   }
 
   // 2. Adjust target destinations for bomb plant (rotate to plant site)
-  const plantStep = plantEventIndex !== -1 ? getEventStep(plantEventIndex) : -1;
-  if (plantStep !== -1) {
+  if (plantEventIndex !== -1) {
     const plantSitePos = plantSite === "A" ? layout.bombsiteA : layout.bombsiteB;
     for (const { p } of allPlayers) {
       const wps = playerWaypoints.get(p.id)!;
-      // Filter out base waypoints after plantStep, and insert rotation
-      const cleaned = wps.filter((w) => w.step < plantStep);
-      const posAtPlant = getPlayerPositionAtStep(wps, plantStep, layout);
-      cleaned.push({ step: plantStep, pos: posAtPlant });
-      cleaned.push({ step: totalSteps, pos: plantSitePos });
-      playerWaypoints.set(p.id, cleaned);
+      // Capture holding position at plant step
+      const currentDest = wps[wps.length - 1].pos;
+      
+      // Make them hold at currentDest up to plant step, then move to plant site
+      wps[wps.length - 1] = { step: plantEventIndex, pos: currentDest };
+      wps.push({ step: totalSteps, pos: plantSitePos });
     }
   }
 
@@ -518,20 +502,19 @@ export function simulateRadarPlayers(
     if ((!event.type || event.type === "kill") && event.victimId) {
       const victimId = event.victimId;
       const killerId = event.killerId;
-      const eventStep = getEventStep(i);
       
       const victimWps = playerWaypoints.get(victimId);
       if (victimWps) {
-        // Find victim position at eventStep before death
-        const victimPos = getPlayerPositionAtStep(victimWps, eventStep, layout);
+        // Find victim position at step i before death
+        const victimPos = getPlayerPositionAtStep(victimWps, i, layout);
         
-        // Victim dies here: freeze them at victimPos from eventStep onwards
-        const cleanedWps = victimWps.filter((w) => w.step < eventStep);
-        cleanedWps.push({ step: eventStep, pos: victimPos });
+        // Victim dies here: freeze them at victimPos from step i onwards
+        const cleanedWps = victimWps.filter((w) => w.step < i);
+        cleanedWps.push({ step: i, pos: victimPos });
         cleanedWps.push({ step: totalSteps, pos: victimPos });
         playerWaypoints.set(victimId, cleanedWps);
         
-        // Force the killer to match the victim's position at eventStep (offset slightly for line-of-sight)
+        // Force the killer to match the victim's position at step i (offset slightly for line-of-sight)
         if (killerId) {
           const killerWps = playerWaypoints.get(killerId);
           if (killerWps) {
@@ -550,17 +533,17 @@ export function simulateRadarPlayers(
               side: traceSide
             });
 
-            // Insert the fight waypoint for the killer at eventStep
-            const insertIdx = killerWps.findIndex((w) => w.step > eventStep);
+            // Insert the fight waypoint for the killer at step i
+            const insertIdx = killerWps.findIndex((w) => w.step > i);
             if (insertIdx !== -1) {
               const before = killerWps.slice(0, insertIdx);
               const after = killerWps.slice(insertIdx);
               
-              if (before.length > 0 && before[before.length - 1].step === eventStep) {
+              if (before.length > 0 && before[before.length - 1].step === i) {
                 before[before.length - 1].pos = killerFightPos;
                 playerWaypoints.set(killerId, [...before, ...after]);
               } else {
-                playerWaypoints.set(killerId, [...before, { step: eventStep, pos: killerFightPos }, ...after]);
+                playerWaypoints.set(killerId, [...before, { step: i, pos: killerFightPos }, ...after]);
               }
             }
           }
@@ -599,9 +582,8 @@ export function simulateRadarPlayers(
   // Keep last 6 traces that have already occurred in the round
   const activeTraces = roundTraces.filter((_, idx) => {
     const killTrace = roundTraces[idx];
-    const eventIdx = allEvents.findIndex((e) => (!e.type || e.type === "kill") && e.victimId === killTrace.victimId);
-    const eventStep = eventIdx !== -1 ? getEventStep(eventIdx) : -1;
-    return eventStep !== -1 && eventStep < stepIndex;
+    const step = allEvents.findIndex((e) => (!e.type || e.type === "kill") && e.victimId === killTrace.victimId);
+    return step !== -1 && step < stepIndex;
   }).slice(-6);
 
   return {
