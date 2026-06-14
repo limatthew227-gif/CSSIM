@@ -372,6 +372,10 @@ textarea {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+.setup-form .segmented {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .choice {
   display: flex;
   align-items: center;

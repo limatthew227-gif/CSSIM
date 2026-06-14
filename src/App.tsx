@@ -98,7 +98,7 @@ const weaponIcons: Record<string, string> = {
 
 
 type Screen = "setup" | "teams" | "draft" | "coach" | "swiss" | "playoffs" | "veto" | "match" | "result" | "stats" | "results" | "series-detail";
-type Mode = "classic" | "blind";
+type Mode = "classic" | "blind" | "random";
 type SwissRecord = { wins: number; losses: number };
 type TimeoutPlan = { boost: number; rounds: number };
 type TournamentPhase = "swiss" | "playoffs";
@@ -372,6 +372,38 @@ function mergeRosterLists(current: Roster[], incoming: Roster[]) {
   return Array.from(byId.values());
 }
 
+function shuffled<T>(items: T[]) {
+  const copy = [...items];
+  for (let index = copy.length - 1; index > 0; index -= 1) {
+    const swapIndex = Math.floor(Math.random() * (index + 1));
+    [copy[index], copy[swapIndex]] = [copy[swapIndex], copy[index]];
+  }
+  return copy;
+}
+
+function draftPoolPlayers(rosterPool: Roster[]) {
+  const byIdentity = new Map<string, Player>();
+  rosterPool.forEach((roster) => {
+    roster.players.forEach((player) => {
+      const identity = `${player.handle.toLowerCase()}|${player.realName.toLowerCase()}|${player.country}`;
+      if (!byIdentity.has(identity)) byIdentity.set(identity, player);
+    });
+  });
+  return Array.from(byIdentity.values());
+}
+
+function randomFiveWithIgl(rosterPool: Roster[]) {
+  const players = shuffled(draftPoolPlayers(rosterPool));
+  const draft = players.slice(0, 5);
+  if (draft.some((player) => player.role === "IGL") || draft.length < 5) return draft;
+
+  const igl = shuffled(players.filter((player) => player.role === "IGL"))[0];
+  if (!igl) return draft;
+
+  draft[Math.floor(Math.random() * draft.length)] = igl;
+  return draft;
+}
+
 function App() {
   const [settings, setSettings] = useState<CustomSettings>(defaultSettings);
   const [showSettings, setShowSettings] = useState(false);
@@ -568,7 +600,14 @@ function App() {
     setStatsScope("all");
     setSeries(undefined);
     setMatch(undefined);
+    setRolling(false);
+    setRollSequence([]);
     setRollsLeft(settings.draftRolls);
+    if (mode === "random") {
+      setSelected(randomFiveWithIgl(rosterPool));
+      setScreen("coach");
+      return;
+    }
     setScreen("draft");
     rollRoster([]);
   }
@@ -965,6 +1004,10 @@ function App() {
                   <button className={mode === "blind" ? "selected" : ""} onClick={() => setMode("blind")}>
                     <Shield size={16} />
                     Almanac
+                  </button>
+                  <button className={mode === "random" ? "selected" : ""} onClick={() => setMode("random")}>
+                    <Dice5 size={16} />
+                    Random
                   </button>
                 </div>
               </div>
