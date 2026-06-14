@@ -38,6 +38,8 @@ export interface Player {
   traits: string[];
   stats: PlayerStats;
   ovr: number;
+  hltvRating?: number;
+  hltvMaps?: number;
   source: SourceTeam;
   maps: Record<MapId, number>;
 }

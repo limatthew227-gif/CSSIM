@@ -1406,17 +1406,23 @@ function App() {
                 {veto.prompt}
               </div>
             )}
-            {veto.selected.length > 0 && (
-              <div className="map-set-strip">
-                <strong>Map set</strong>
-                {veto.selected.map((map, index) => (
+            <div className="map-set-strip">
+              <strong>Map set</strong>
+              {Array.from({ length: currentBestOf }).map((_, index) => {
+                const map = veto.selected[index];
+                return map ? (
                   <span key={`${map}-${index}`}>
                     {index + 1}. {mapName(map)}
                     <small>{veto.picked[map] === "you" ? "your pick" : veto.picked[map] === "opponent" ? `${opponent.tag} pick` : "decider"}</small>
                   </span>
-                ))}
-              </div>
-            )}
+                ) : (
+                  <span className="pending" key={`pending-map-${index}`}>
+                    {index + 1}. TBD
+                    <small>pending</small>
+                  </span>
+                );
+              })}
+            </div>
             <div className="map-grid">
               {mapPool.map((map) => (
                 <button
@@ -2555,16 +2561,22 @@ function LineupColumn({ title, players }: { title: string; players: Player[] }) 
   return (
     <div className="lineup-column">
       <strong>{title}</strong>
-      {players.map((player) => (
-        <span key={player.id}>
-          <div className="lineup-player-main">
-            <Flag country={player.country} />
-            <b>{player.handle}</b>
-            <span className="lineup-ovr">{player.ovr}</span>
+      {players.map((player) => {
+        const hltvRating = typeof player.hltvRating === "number" && (player.hltvMaps ?? 0) > 0 ? player.hltvRating.toFixed(2) : undefined;
+        return (
+          <div className="lineup-row" key={player.id}>
+            <div className="lineup-player-main">
+              <Flag country={player.country} />
+              <b>{player.handle}</b>
+              <span className="lineup-ovr">{player.ovr}</span>
+            </div>
+            <div className="lineup-player-sub">
+              <small>{player.role} / {player.style}</small>
+              {hltvRating && <em>HLTV {hltvRating}</em>}
+            </div>
           </div>
-          <small>{player.role} / {player.style}</small>
-        </span>
-      ))}
+        );
+      })}
     </div>
   );
 }
@@ -3801,8 +3813,8 @@ function shiftPlayerForm(current: Record<string, number>, players: Player[], mat
         kdPerRound * 5 +
         (line.adr - 75) * 0.045 +
         (kast - 0.72) * 3;
-      const drift = clampWhole(performance, -6, 7);
-      acc[player.id] = clampNumber((current[player.id] ?? 0) + drift, -15, 15);
+      const drift = clampWhole(performance, -2, 2);
+      acc[player.id] = clampNumber((current[player.id] ?? 0) + drift, -5, 5);
       return acc;
     },
     { ...current },

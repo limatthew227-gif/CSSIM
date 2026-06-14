@@ -322,6 +322,8 @@ function makeRoster(team: HltvTeamSeed): Roster {
         traits: traitsFor(player, stats),
         stats,
         ovr: rateStatsForRole(stats, player.role),
+        hltvRating: player.hltvRating,
+        hltvMaps: ratingSample(player, team, "overall").maps,
         source,
         maps: playerMapPool(index, player, team, maps),
       };
@@ -824,14 +826,14 @@ const hltvTeams: HltvTeamSeed[] = [
     coachTrophies: 0,
     coachWinrate: 52,
     mapBias: { mirage: 2, dust2: 2, nuke: 1, ancient: 1 },
-    note: "HLTV showed an unknown active fifth on the profile, so a neutral stand-in keeps FaZe playable.",
+    note: "Twistzz is modeled as the caller, with Neityu as the French support stand-in.",
     players: [
       {
         handle: "frozen",
         realName: "David Cernansky",
         country: "SK",
-        role: "Rifler",
-        style: "Balanced",
+        role: "Lurker",
+        style: "Passive",
         hltvRating: 1.22,
         samples: {
           overall: { rating: 1.22, maps: 54 },
@@ -844,8 +846,8 @@ const hltvTeams: HltvTeamSeed[] = [
         handle: "Twistzz",
         realName: "Russel Van Dulken",
         country: "CA",
-        role: "Rifler",
-        style: "Aggressive",
+        role: "IGL",
+        style: "Balanced",
         hltvRating: 1.17,
         recentRating: 1.2,
         samples: {
@@ -857,7 +859,7 @@ const hltvTeams: HltvTeamSeed[] = [
       },
       { handle: "broky", realName: "Helvijs Saukants", country: "LV", role: "AWP", style: "Passive", hltvRating: 1.08 },
       { handle: "jcobbb", realName: "Jakub Pietruszewski", country: "PL", role: "Entry", style: "Aggressive", hltvRating: 0.98 },
-      { handle: "trial", realName: "Unannounced fifth", country: "INT", role: "Support", style: "Balanced", hltvRating: 0.98 },
+      { handle: "Neityu", realName: "Ryan Aubry", country: "FR", role: "Support", style: "Balanced", hltvRating: 1.06 },
     ],
   },
   {
