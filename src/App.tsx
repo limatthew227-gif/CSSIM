@@ -1661,7 +1661,7 @@ function App() {
       )}
 
       {screen === "result" && match && (
-        <main className="layout">
+        <main className="layout result-layout">
           <section className="score-hero result">
             <TeamPlate team={yourTeam} />
             <div className="score">

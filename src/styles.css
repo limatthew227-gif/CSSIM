@@ -1946,6 +1946,96 @@ meter::-webkit-meter-optimum-value {
   padding: 0 12px 12px;
 }
 
+.result-layout {
+  width: min(1760px, calc(100vw - 28px));
+  margin-top: 8px;
+  margin-bottom: 16px;
+}
+
+.result-layout .score-hero.result {
+  grid-template-columns: minmax(0, 1fr) 160px minmax(0, 1fr);
+  min-height: 92px;
+  margin-bottom: 10px;
+  padding: 10px 14px;
+  background:
+    linear-gradient(90deg, rgba(101, 167, 255, 0.1), transparent 44%, rgba(236, 106, 106, 0.11)),
+    #181c22;
+}
+
+.result-layout .team-plate {
+  gap: 10px;
+}
+
+.result-layout .team-logo {
+  width: 40px;
+  height: 40px;
+  border-radius: 7px;
+  font-size: 12px;
+}
+
+.result-layout .team-plate strong {
+  font-size: 14px;
+}
+
+.result-layout .team-plate span {
+  font-size: 12px;
+}
+
+.result-layout .score {
+  gap: 8px;
+}
+
+.result-layout .score b {
+  font-size: clamp(40px, 4vw, 64px);
+  line-height: 0.95;
+}
+
+.result-layout .score span {
+  font-size: 26px;
+}
+
+.result-layout .score small {
+  font-size: 11px;
+}
+
+.result-layout .series-analysis {
+  width: min(1160px, 100%);
+  margin-bottom: 10px;
+}
+
+.result-layout .series-analysis-head {
+  min-height: 40px;
+  padding: 8px 12px;
+}
+
+.result-layout .analysis-note-grid {
+  gap: 8px;
+  padding: 10px;
+}
+
+.result-layout .analysis-note {
+  min-height: 70px;
+  gap: 5px;
+  padding: 10px;
+}
+
+.result-layout .analysis-note b {
+  font-size: 11px;
+}
+
+.result-layout .analysis-note span {
+  font-size: 14px;
+  line-height: 1.25;
+}
+
+.result-layout .series-analysis-actions {
+  padding: 0 10px 10px;
+}
+
+.result-layout .series-analysis-actions .primary {
+  min-height: 38px;
+}
+
 .match-stats-page {
   width: 100%;
   min-width: 0;
@@ -1956,6 +2046,115 @@ meter::-webkit-meter-optimum-value {
   border: 1px solid #1e2630;
   color: #9ea8b2;
   box-shadow: 0 12px 48px rgba(0, 0, 0, 0.4);
+}
+
+.result-layout .match-stats-page {
+  margin-top: 10px;
+  padding: 12px;
+  border-radius: 10px;
+}
+
+.result-layout .match-stats-top {
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.result-layout .match-stats-top h2 {
+  font-size: 22px;
+}
+
+.result-layout .stats-filter-strip {
+  font-size: 16px;
+}
+
+.result-layout .stats-filter-strip > span {
+  padding: 0 10px;
+}
+
+.result-layout .stats-filter {
+  min-height: 34px;
+  padding-inline: 10px;
+  font-size: 12px;
+}
+
+.result-layout .stats-map-bar {
+  min-height: 42px;
+  padding: 0 14px;
+}
+
+.result-layout .stats-map-tabs {
+  gap: 14px;
+}
+
+.result-layout .stats-map-tabs button,
+.result-layout .detailed-stats-button {
+  font-size: 16px;
+}
+
+.result-layout .team-stats-stack {
+  gap: 12px;
+  margin-top: 10px;
+}
+
+.result-layout .team-stats-grid {
+  grid-template-columns: minmax(220px, 1fr) 64px 74px 58px 64px 64px 58px 52px 70px;
+  min-width: 860px;
+}
+
+.result-layout .team-stats-head {
+  min-height: 38px;
+}
+
+.result-layout .team-stats-title {
+  gap: 8px;
+  padding-left: 10px;
+}
+
+.result-layout .team-stats-title .team-logo.small {
+  width: 24px;
+  height: 24px;
+}
+
+.result-layout .team-stats-title strong {
+  font-size: 15px;
+}
+
+.result-layout .team-stats-head > b {
+  font-size: 10px;
+}
+
+.result-layout .team-stats-head > b span {
+  font-size: 8px;
+}
+
+.result-layout .team-stats-row {
+  min-height: 38px;
+}
+
+.result-layout .team-stats-row > span {
+  font-size: 13px;
+}
+
+.result-layout .stats-player {
+  gap: 6px;
+  padding: 0 10px;
+}
+
+.result-layout .stats-player .flat-flag {
+  width: 14px;
+}
+
+.result-layout .country-code {
+  min-width: 20px;
+  font-size: 9px;
+}
+
+.result-layout .player-name .player-real {
+  font-size: 10px;
+}
+
+.result-layout .player-name b {
+  font-size: 13px;
 }
 
 .fullscreen-page {
