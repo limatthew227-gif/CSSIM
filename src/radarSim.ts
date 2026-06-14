@@ -383,7 +383,7 @@ interface Waypoint {
   pos: Position;
 }
 
-function getPlayerPositionAtStep(wps: Waypoint[], step: number, layout: MapLayout): Position {
+function getPlayerPositionAtStep(wps: Waypoint[], step: number, layout: MapLayout, isAlive: boolean = true): Position {
   if (wps.length === 0) return { x: 50, y: 50 };
   if (wps.length === 1) return wps[0].pos;
   if (step >= wps[wps.length - 1].step) return wps[wps.length - 1].pos;
@@ -399,7 +399,7 @@ function getPlayerPositionAtStep(wps: Waypoint[], step: number, layout: MapLayou
   }
 
   const denominator = w2.step - w1.step;
-  const t = denominator > 0 ? (step - w1.step) / denominator : 0;
+  const t_linear = denominator > 0 ? (step - w1.step) / denominator : 0;
 
   const n1 = getClosestNodeKey(w1.pos, layout);
   const n2 = getClosestNodeKey(w2.pos, layout);
@@ -408,7 +408,36 @@ function getPlayerPositionAtStep(wps: Waypoint[], step: number, layout: MapLayou
   const fullPath = [w1.pos, ...pathNodes, w2.pos];
   const cleaned = cleanRoute(fullPath);
 
-  return getPathPosition(cleaned, t);
+  // Compute total path length to implement constant-velocity-then-hold logic
+  let pathLength = 0;
+  for (let j = 0; j < cleaned.length - 1; j++) {
+    const dx = cleaned[j + 1].x - cleaned[j].x;
+    const dy = cleaned[j + 1].y - cleaned[j].y;
+    pathLength += Math.sqrt(dx * dx + dy * dy);
+  }
+
+  // Calculate the walking fraction (player walks at constant velocity, then holds)
+  const f_walk = pathLength > 0 ? pathLength / (pathLength + 14) : 0;
+
+  let t = 1.0;
+  let isHolding = true;
+  if (f_walk > 0 && t_linear < f_walk) {
+    t = t_linear / f_walk;
+    isHolding = false;
+  }
+
+  const pos = getPathPosition(cleaned, t);
+
+  // Add realistic micro-movement/wobble/jiggle when holding angles or static
+  if (isHolding && isAlive) {
+    const seed = pos.x * 17 + pos.y * 31 + step * 47;
+    const wobbleSpeed = 7.5;
+    const wobbleScale = 0.35;
+    pos.x += Math.sin(seed * wobbleSpeed) * wobbleScale;
+    pos.y += Math.cos(seed * wobbleSpeed) * wobbleScale;
+  }
+
+  return pos;
 }
 
 export interface RadarTrace {
@@ -599,12 +628,13 @@ export function simulateRadarPlayers(
   // 5. Calculate final positions at current stepIndex
   const youSimulated = you.players.map((p) => {
     const wps = playerWaypoints.get(p.id) || [];
-    const pos = getPlayerPositionAtStep(wps, stepIndex, layout);
+    const isAlive = !deadIds.has(p.id);
+    const pos = getPlayerPositionAtStep(wps, stepIndex, layout, isAlive);
     return {
       ...p,
       x: pos.x,
       y: pos.y,
-      alive: !deadIds.has(p.id),
+      alive: isAlive,
       side: yourSide,
       team: "you" as const,
     };
@@ -612,12 +642,13 @@ export function simulateRadarPlayers(
 
   const opponentSimulated = opponent.players.map((p) => {
     const wps = playerWaypoints.get(p.id) || [];
-    const pos = getPlayerPositionAtStep(wps, stepIndex, layout);
+    const isAlive = !deadIds.has(p.id);
+    const pos = getPlayerPositionAtStep(wps, stepIndex, layout, isAlive);
     return {
       ...p,
       x: pos.x,
       y: pos.y,
-      alive: !deadIds.has(p.id),
+      alive: isAlive,
       side: opponentSide,
       team: "opponent" as const,
     };
