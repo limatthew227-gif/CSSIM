@@ -3632,7 +3632,7 @@ function SeriesDetailPage({
   }
 
   return (
-    <main className="layout fullscreen-page">
+    <main className="layout fullscreen-page series-detail-page">
       <section className="fullscreen-head">
         <div>
           <div className="section-title">

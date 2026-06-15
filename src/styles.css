@@ -2691,6 +2691,185 @@ meter::-webkit-meter-optimum-value {
   padding: 4px 0;
 }
 
+.series-detail-page {
+  gap: 10px;
+}
+
+.series-detail-page .fullscreen-head {
+  min-height: 56px;
+  padding: 10px 14px;
+}
+
+.series-detail-page .fullscreen-head h1 {
+  margin: 4px 0 2px;
+  font-size: 22px;
+}
+
+.series-detail-page .fullscreen-head p {
+  font-size: 12px;
+}
+
+.series-detail-page .fullscreen-actions button {
+  min-height: 32px;
+  padding: 0 10px;
+  font-size: 12px;
+}
+
+.series-detail-page .series-detail-hero {
+  min-height: 92px;
+}
+
+.series-detail-page .series-detail-team {
+  gap: 10px;
+  padding: 12px 16px;
+}
+
+.series-detail-page .series-detail-team .team-logo {
+  width: 48px;
+  height: 48px;
+}
+
+.series-detail-page .series-detail-team strong {
+  font-size: 20px;
+}
+
+.series-detail-page .series-detail-team span {
+  font-size: 12px;
+}
+
+.series-detail-page .series-detail-score {
+  min-width: 150px;
+  padding: 10px 16px;
+}
+
+.series-detail-page .series-detail-score strong {
+  gap: 8px;
+  font-size: 38px;
+}
+
+.series-detail-page .series-detail-score small {
+  font-size: 10px;
+}
+
+.series-detail-page .series-map-summary {
+  gap: 6px;
+  padding: 0;
+}
+
+.series-detail-page .series-map-summary span {
+  padding: 5px 8px;
+  font-size: 12px;
+}
+
+.series-detail-page .match-stats-page {
+  margin-top: 0;
+  padding: 10px;
+  border-radius: 10px;
+}
+
+.series-detail-page .match-stats-top {
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.series-detail-page .match-stats-top h2 {
+  font-size: 20px;
+}
+
+.series-detail-page .stats-filter-strip {
+  font-size: 14px;
+}
+
+.series-detail-page .stats-filter-strip > span {
+  padding: 0 8px;
+}
+
+.series-detail-page .stats-filter {
+  min-height: 30px;
+  padding-inline: 9px;
+  font-size: 11px;
+}
+
+.series-detail-page .stats-map-bar {
+  min-height: 34px;
+  padding: 0 10px;
+}
+
+.series-detail-page .stats-map-tabs {
+  gap: 12px;
+}
+
+.series-detail-page .stats-map-tabs button,
+.series-detail-page .detailed-stats-button {
+  font-size: 14px;
+}
+
+.series-detail-page .team-stats-stack {
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.series-detail-page .team-stats-grid {
+  grid-template-columns: minmax(210px, 1fr) 60px 72px 56px 64px 64px 56px 48px 68px;
+  min-width: 760px;
+}
+
+.series-detail-page .team-stats-head {
+  min-height: 30px;
+}
+
+.series-detail-page .team-stats-title {
+  gap: 7px;
+  padding-left: 8px;
+}
+
+.series-detail-page .team-stats-title .team-logo.small {
+  width: 22px;
+  height: 22px;
+}
+
+.series-detail-page .team-stats-title strong {
+  font-size: 14px;
+}
+
+.series-detail-page .team-stats-head > b {
+  font-size: 9px;
+}
+
+.series-detail-page .team-stats-head > b span {
+  font-size: 7px;
+}
+
+.series-detail-page .team-stats-row {
+  min-height: 30px;
+}
+
+.series-detail-page .team-stats-row > span {
+  font-size: 12px;
+}
+
+.series-detail-page .stats-player {
+  gap: 5px;
+  padding: 0 8px;
+}
+
+.series-detail-page .stats-player .flat-flag {
+  width: 13px;
+}
+
+.series-detail-page .country-code {
+  min-width: 18px;
+  font-size: 8px;
+}
+
+.series-detail-page .player-name .player-real {
+  font-size: 9px;
+}
+
+.series-detail-page .player-name b {
+  font-size: 12px;
+}
+
 .empty-fullscreen {
   padding: 28px;
   border: 1px dashed var(--line);
