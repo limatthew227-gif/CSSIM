@@ -1,0 +1,1378 @@
+{
+  "generatedAt": "2026-06-15T05:43:11.406Z",
+  "rankingDate": "2026-06-08",
+  "sources": {
+    "gigobyteHLTV": "https://github.com/gigobyte/HLTV",
+    "jparedesScraper": "https://github.com/jparedesDS/hltv-scraper",
+    "hltvRanking": "https://www.hltv.org/ranking/teams/2026/june/8",
+    "renderedFallback": "https://r.jina.ai/http://r.jina.ai/http://"
+  },
+  "notes": [
+    "Ranking position/points come from gigobyte/HLTV getTeamRanking.",
+    "Lineups, coaches, and current-team-period ratings come from rendered HLTV team pages using a BeautifulSoup-style markdown parse inspired by jparedesDS/hltv-scraper.",
+    "HLTV stats/player filter pages returned Cloudflare verification in direct bot requests, so this report does not claim to verify top5/top10/top20 player-filter splits.",
+    "The local dataset intentionally includes Natus Vincere 2018 as a historical extra and excludes it from the 2026 top-20 comparison."
+  ],
+  "summary": {
+    "remoteTopTeams": 20,
+    "local2026Teams": 20,
+    "historicalExtras": [
+      "Natus Vincere 2018"
+    ],
+    "missingTeams": [],
+    "extraTeams": [],
+    "rankMismatchCount": 0,
+    "playerMismatchCount": 2,
+    "coachMismatchCount": 0,
+    "ratingWarningCount": 0
+  },
+  "comparisons": [
+    {
+      "rank": 1,
+      "name": "Vitality",
+      "hltvId": 9565,
+      "points": 991,
+      "localFound": true,
+      "localRank": 1,
+      "localPoints": 991,
+      "rankMatches": true,
+      "pointsMatch": true,
+      "remoteRankingPlayers": [
+        "apEX",
+        "ropz",
+        "ZywOo",
+        "flameZ",
+        "mezii"
+      ],
+      "remoteTeamPagePlayers": [
+        "apEX",
+        "ZywOo",
+        "flameZ",
+        "mezii",
+        "ropz"
+      ],
+      "localPlayers": [
+        "apEX",
+        "ropz",
+        "ZywOo",
+        "flameZ",
+        "mezii"
+      ],
+      "missingLocalPlayers": [],
+      "extraLocalPlayers": [],
+      "remoteCoach": "XTQZZZ",
+      "localCoach": "XTQZZZ",
+      "coachMatches": true,
+      "ratingChecks": [
+        {
+          "handle": "apEX",
+          "teamPeriodRating3": 1,
+          "localHltvRating": 1,
+          "difference": 0
+        },
+        {
+          "handle": "ZywOo",
+          "teamPeriodRating3": 1.32,
+          "localHltvRating": 1.32,
+          "difference": 0
+        },
+        {
+          "handle": "flameZ",
+          "teamPeriodRating3": 1.14,
+          "localHltvRating": 1.14,
+          "difference": 0
+        },
+        {
+          "handle": "mezii",
+          "teamPeriodRating3": 1.06,
+          "localHltvRating": 1.06,
+          "difference": 0
+        },
+        {
+          "handle": "ropz",
+          "teamPeriodRating3": 1.15,
+          "localHltvRating": 1.16,
+          "difference": 0.01
+        }
+      ]
+    },
+    {
+      "rank": 2,
+      "name": "Natus Vincere",
+      "hltvId": 4608,
+      "points": 712,
+      "localFound": true,
+      "localRank": 2,
+      "localPoints": 712,
+      "rankMatches": true,
+      "pointsMatch": true,
+      "remoteRankingPlayers": [
+        "Aleksib",
+        "iM",
+        "b1t",
+        "w0nderful",
+        "makazze"
+      ],
+      "remoteTeamPagePlayers": [
+        "b1t",
+        "Aleksib",
+        "iM",
+        "w0nderful",
+        "makazze"
+      ],
+      "localPlayers": [
+        "Aleksib",
+        "iM",
+        "b1t",
+        "w0nderful",
+        "makazze"
+      ],
+      "missingLocalPlayers": [],
+      "extraLocalPlayers": [],
+      "remoteCoach": "B1ad3",
+      "localCoach": "B1ad3",
+      "coachMatches": true,
+      "ratingChecks": [
+        {
+          "handle": "b1t",
+          "teamPeriodRating3": 1.12,
+          "localHltvRating": 1.13,
+          "difference": 0.01
+        },
+        {
+          "handle": "Aleksib",
+          "teamPeriodRating3": 0.93,
+          "localHltvRating": 0.93,
+          "difference": 0
+        },
+        {
+          "handle": "iM",
+          "teamPeriodRating3": 1.1,
+          "localHltvRating": 1.06,
+          "difference": -0.04
+        },
+        {
+          "handle": "w0nderful",
+          "teamPeriodRating3": 1.11,
+          "localHltvRating": 1.18,
+          "difference": 0.07
+        },
+        {
+          "handle": "makazze",
+          "teamPeriodRating3": 1.12,
+          "localHltvRating": 1.16,
+          "difference": 0.04
+        }
+      ]
+    },
+    {
+      "rank": 3,
+      "name": "Spirit",
+      "hltvId": 7020,
+      "points": 544,
+      "localFound": true,
+      "localRank": 3,
+      "localPoints": 544,
+      "rankMatches": true,
+      "pointsMatch": true,
+      "remoteRankingPlayers": [
+        "sh1ro",
+        "magixx",
+        "tN1R",
+        "zont1x",
+        "donk"
+      ],
+      "remoteTeamPagePlayers": [
+        "magixx",
+        "donk",
+        "zont1x",
+        "sh1ro",
+        "tN1R"
+      ],
+      "localPlayers": [
+        "sh1ro",
+        "magixx",
+        "tN1R",
+        "zont1x",
+        "donk"
+      ],
+      "missingLocalPlayers": [],
+      "extraLocalPlayers": [],
+      "remoteCoach": "hally",
+      "localCoach": "hally",
+      "coachMatches": true,
+      "ratingChecks": [
+        {
+          "handle": "magixx",
+          "teamPeriodRating3": 1.05,
+          "localHltvRating": 1.01,
+          "difference": -0.04
+        },
+        {
+          "handle": "donk",
+          "teamPeriodRating3": 1.4,
+          "localHltvRating": 1.4,
+          "difference": 0
+        },
+        {
+          "handle": "zont1x",
+          "teamPeriodRating3": 1.09,
+          "localHltvRating": 1.03,
+          "difference": -0.06
+        },
+        {
+          "handle": "sh1ro",
+          "teamPeriodRating3": 1.19,
+          "localHltvRating": 1.18,
+          "difference": -0.01
+        },
+        {
+          "handle": "tN1R",
+          "teamPeriodRating3": 1.03,
+          "localHltvRating": 1.09,
+          "difference": 0.06
+        }
+      ]
+    },
+    {
+      "rank": 4,
+      "name": "Falcons",
+      "hltvId": 11283,
+      "points": 509,
+      "localFound": true,
+      "localRank": 4,
+      "localPoints": 509,
+      "rankMatches": true,
+      "pointsMatch": true,
+      "remoteRankingPlayers": [
+        "karrigan",
+        "NiKo",
+        "TeSeS",
+        "m0NESY",
+        "kyousuke"
+      ],
+      "remoteTeamPagePlayers": [
+        "NiKo",
+        "TeSeS",
+        "m0NESY",
+        "kyousuke",
+        "karrigan"
+      ],
+      "localPlayers": [
+        "karrigan",
+        "NiKo",
+        "TeSeS",
+        "m0NESY",
+        "kyousuke"
+      ],
+      "missingLocalPlayers": [],
+      "extraLocalPlayers": [],
+      "remoteCoach": "zonic",
+      "localCoach": "zonic",
+      "coachMatches": true,
+      "ratingChecks": [
+        {
+          "handle": "NiKo",
+          "teamPeriodRating3": 1.13,
+          "localHltvRating": 1.13,
+          "difference": 0
+        },
+        {
+          "handle": "TeSeS",
+          "teamPeriodRating3": 1.03,
+          "localHltvRating": 1.03,
+          "difference": 0
+        },
+        {
+          "handle": "m0NESY",
+          "teamPeriodRating3": 1.26,
+          "localHltvRating": 1.26,
+          "difference": 0
+        },
+        {
+          "handle": "kyousuke",
+          "teamPeriodRating3": 1.16,
+          "localHltvRating": 1.16,
+          "difference": 0
+        },
+        {
+          "handle": "karrigan",
+          "teamPeriodRating3": 0.72,
+          "localHltvRating": 0.72,
+          "difference": 0
+        }
+      ]
+    },
+    {
+      "rank": 5,
+      "name": "FURIA",
+      "hltvId": 8297,
+      "points": 393,
+      "localFound": true,
+      "localRank": 5,
+      "localPoints": 393,
+      "rankMatches": true,
+      "pointsMatch": true,
+      "remoteRankingPlayers": [
+        "FalleN",
+        "yuurih",
+        "YEKINDAR",
+        "KSCERATO",
+        "molodoy"
+      ],
+      "remoteTeamPagePlayers": [
+        "yuurih",
+        "KSCERATO",
+        "FalleN",
+        "molodoy",
+        "YEKINDAR"
+      ],
+      "localPlayers": [
+        "FalleN",
+        "yuurih",
+        "YEKINDAR",
+        "KSCERATO",
+        "molodoy"
+      ],
+      "missingLocalPlayers": [],
+      "extraLocalPlayers": [],
+      "remoteCoach": "sidde",
+      "localCoach": "sidde",
+      "coachMatches": true,
+      "ratingChecks": [
+        {
+          "handle": "yuurih",
+          "teamPeriodRating3": 1.15,
+          "localHltvRating": 1.16,
+          "difference": 0.01
+        },
+        {
+          "handle": "KSCERATO",
+          "teamPeriodRating3": 1.19,
+          "localHltvRating": 1.19,
+          "difference": 0
+        },
+        {
+          "handle": "FalleN",
+          "teamPeriodRating3": 0.98,
+          "localHltvRating": 0.98,
+          "difference": 0
+        },
+        {
+          "handle": "molodoy",
+          "teamPeriodRating3": 1.14,
+          "localHltvRating": 1.14,
+          "difference": 0
+        },
+        {
+          "handle": "YEKINDAR",
+          "teamPeriodRating3": 1.08,
+          "localHltvRating": 1.08,
+          "difference": 0
+        }
+      ]
+    },
+    {
+      "rank": 6,
+      "name": "Aurora",
+      "hltvId": 11861,
+      "points": 354,
+      "localFound": true,
+      "localRank": 6,
+      "localPoints": 354,
+      "rankMatches": true,
+      "pointsMatch": true,
+      "remoteRankingPlayers": [
+        "MAJ3R",
+        "XANTARES",
+        "woxic",
+        "soulfly",
+        "Wicadia"
+      ],
+      "remoteTeamPagePlayers": [
+        "MAJ3R",
+        "Wicadia",
+        "woxic",
+        "XANTARES",
+        "soulfly"
+      ],
+      "localPlayers": [
+        "MAJ3R",
+        "XANTARES",
+        "woxic",
+        "soulfly",
+        "Wicadia"
+      ],
+      "missingLocalPlayers": [],
+      "extraLocalPlayers": [],
+      "remoteCoach": "Fabre",
+      "localCoach": "Fabre",
+      "coachMatches": true,
+      "ratingChecks": [
+        {
+          "handle": "MAJ3R",
+          "teamPeriodRating3": 0.89,
+          "localHltvRating": 0.89,
+          "difference": 0
+        },
+        {
+          "handle": "Wicadia",
+          "teamPeriodRating3": 1.13,
+          "localHltvRating": 1.12,
+          "difference": -0.01
+        },
+        {
+          "handle": "woxic",
+          "teamPeriodRating3": 1.05,
+          "localHltvRating": 1.05,
+          "difference": 0
+        },
+        {
+          "handle": "XANTARES",
+          "teamPeriodRating3": 1.15,
+          "localHltvRating": 1.15,
+          "difference": 0
+        },
+        {
+          "handle": "soulfly",
+          "teamPeriodRating3": 1.02,
+          "localHltvRating": 1.01,
+          "difference": -0.01
+        }
+      ]
+    },
+    {
+      "rank": 7,
+      "name": "MOUZ",
+      "hltvId": 4494,
+      "points": 301,
+      "localFound": true,
+      "localRank": 7,
+      "localPoints": 301,
+      "rankMatches": true,
+      "pointsMatch": true,
+      "remoteRankingPlayers": [
+        "torzsi",
+        "Spinx",
+        "xertioN",
+        "xelex",
+        "+1"
+      ],
+      "remoteTeamPagePlayers": [
+        "torzsi",
+        "xertioN",
+        "Spinx",
+        "xelex"
+      ],
+      "localPlayers": [
+        "torzsi",
+        "Spinx",
+        "xertioN",
+        "xelex",
+        "Brollan"
+      ],
+      "missingLocalPlayers": [],
+      "extraLocalPlayers": [
+        "brollan"
+      ],
+      "remoteCoach": "sycrone",
+      "localCoach": "sycrone",
+      "coachMatches": true,
+      "ratingChecks": [
+        {
+          "handle": "torzsi",
+          "teamPeriodRating3": 1.12,
+          "localHltvRating": 1.1,
+          "difference": -0.02
+        },
+        {
+          "handle": "xertioN",
+          "teamPeriodRating3": 1.13,
+          "localHltvRating": 1.09,
+          "difference": -0.04
+        },
+        {
+          "handle": "Spinx",
+          "teamPeriodRating3": 1.1,
+          "localHltvRating": 1.12,
+          "difference": 0.02
+        },
+        {
+          "handle": "xelex",
+          "teamPeriodRating3": 1.04,
+          "localHltvRating": 1.04,
+          "difference": 0
+        }
+      ]
+    },
+    {
+      "rank": 8,
+      "name": "Legacy",
+      "hltvId": 12468,
+      "points": 297,
+      "localFound": true,
+      "localRank": 8,
+      "localPoints": 297,
+      "rankMatches": true,
+      "pointsMatch": true,
+      "remoteRankingPlayers": [
+        "arT",
+        "dumau",
+        "latto",
+        "n1ssim",
+        "saadzin"
+      ],
+      "remoteTeamPagePlayers": [
+        "dumau",
+        "latto",
+        "saadzin",
+        "n1ssim",
+        "arT"
+      ],
+      "localPlayers": [
+        "arT",
+        "dumau",
+        "latto",
+        "n1ssim",
+        "saadzin"
+      ],
+      "missingLocalPlayers": [],
+      "extraLocalPlayers": [],
+      "remoteCoach": "adrrr",
+      "localCoach": "adrrr",
+      "coachMatches": true,
+      "ratingChecks": [
+        {
+          "handle": "dumau",
+          "teamPeriodRating3": 1.19,
+          "localHltvRating": 1.19,
+          "difference": 0
+        },
+        {
+          "handle": "latto",
+          "teamPeriodRating3": 1.18,
+          "localHltvRating": 1.18,
+          "difference": 0
+        },
+        {
+          "handle": "saadzin",
+          "teamPeriodRating3": 1.09,
+          "localHltvRating": 1.09,
+          "difference": 0
+        },
+        {
+          "handle": "n1ssim",
+          "teamPeriodRating3": 1.02,
+          "localHltvRating": 1.02,
+          "difference": 0
+        },
+        {
+          "handle": "arT",
+          "teamPeriodRating3": 0.97,
+          "localHltvRating": 0.98,
+          "difference": 0.01
+        }
+      ]
+    },
+    {
+      "rank": 9,
+      "name": "The MongolZ",
+      "hltvId": 6248,
+      "points": 260,
+      "localFound": true,
+      "localRank": 9,
+      "localPoints": 260,
+      "rankMatches": true,
+      "pointsMatch": true,
+      "remoteRankingPlayers": [
+        "bLitz",
+        "Techno",
+        "mzinho",
+        "910",
+        "cobrazera"
+      ],
+      "remoteTeamPagePlayers": [
+        "bLitz",
+        "Techno",
+        "910",
+        "mzinho",
+        "cobrazera"
+      ],
+      "localPlayers": [
+        "bLitz",
+        "Techno",
+        "mzinho",
+        "910",
+        "cobrazera"
+      ],
+      "missingLocalPlayers": [],
+      "extraLocalPlayers": [],
+      "remoteCoach": "maaRaa",
+      "localCoach": "maaRaa",
+      "coachMatches": true,
+      "ratingChecks": [
+        {
+          "handle": "bLitz",
+          "teamPeriodRating3": 1.08,
+          "localHltvRating": 1.08,
+          "difference": 0
+        },
+        {
+          "handle": "Techno",
+          "teamPeriodRating3": 1.02,
+          "localHltvRating": 1.02,
+          "difference": 0
+        },
+        {
+          "handle": "910",
+          "teamPeriodRating3": 1.12,
+          "localHltvRating": 1.12,
+          "difference": 0
+        },
+        {
+          "handle": "mzinho",
+          "teamPeriodRating3": 1.05,
+          "localHltvRating": 1.05,
+          "difference": 0
+        },
+        {
+          "handle": "cobrazera",
+          "teamPeriodRating3": 1.02,
+          "localHltvRating": 1.02,
+          "difference": 0
+        }
+      ]
+    },
+    {
+      "rank": 10,
+      "name": "PARIVISION",
+      "hltvId": 12467,
+      "points": 259,
+      "localFound": true,
+      "localRank": 10,
+      "localPoints": 259,
+      "rankMatches": true,
+      "pointsMatch": true,
+      "remoteRankingPlayers": [
+        "Jame",
+        "BELCHONOKK",
+        "xiELO",
+        "nota",
+        "zweih"
+      ],
+      "remoteTeamPagePlayers": [
+        "BELCHONOKK",
+        "Jame",
+        "nota",
+        "xiELO",
+        "zweih"
+      ],
+      "localPlayers": [
+        "Jame",
+        "BELCHONOKK",
+        "xiELO",
+        "nota",
+        "zweih"
+      ],
+      "missingLocalPlayers": [],
+      "extraLocalPlayers": [],
+      "remoteCoach": "dastan",
+      "localCoach": "dastan",
+      "coachMatches": true,
+      "ratingChecks": [
+        {
+          "handle": "BELCHONOKK",
+          "teamPeriodRating3": 1.07,
+          "localHltvRating": 1.07,
+          "difference": 0
+        },
+        {
+          "handle": "Jame",
+          "teamPeriodRating3": 1.13,
+          "localHltvRating": 1.13,
+          "difference": 0
+        },
+        {
+          "handle": "nota",
+          "teamPeriodRating3": 1.04,
+          "localHltvRating": 1.04,
+          "difference": 0
+        },
+        {
+          "handle": "xiELO",
+          "teamPeriodRating3": 1.06,
+          "localHltvRating": 1.06,
+          "difference": 0
+        },
+        {
+          "handle": "zweih",
+          "teamPeriodRating3": 1.07,
+          "localHltvRating": 1.08,
+          "difference": 0.01
+        }
+      ]
+    },
+    {
+      "rank": 11,
+      "name": "GamerLegion",
+      "hltvId": 9928,
+      "points": 259,
+      "localFound": true,
+      "localRank": 11,
+      "localPoints": 259,
+      "rankMatches": true,
+      "pointsMatch": true,
+      "remoteRankingPlayers": [
+        "Snax",
+        "REZ",
+        "Tauson",
+        "PR",
+        "hypex"
+      ],
+      "remoteTeamPagePlayers": [],
+      "localPlayers": [
+        "Snax",
+        "REZ",
+        "Tauson",
+        "PR",
+        "hypex"
+      ],
+      "missingLocalPlayers": [],
+      "extraLocalPlayers": [],
+      "localCoach": "imd",
+      "ratingChecks": []
+    },
+    {
+      "rank": 12,
+      "name": "Astralis",
+      "hltvId": 6665,
+      "points": 214,
+      "localFound": true,
+      "localRank": 12,
+      "localPoints": 214,
+      "rankMatches": true,
+      "pointsMatch": true,
+      "remoteRankingPlayers": [
+        "HooXi",
+        "phzy",
+        "jabbi",
+        "Staehr",
+        "ryu"
+      ],
+      "remoteTeamPagePlayers": [],
+      "localPlayers": [
+        "HooXi",
+        "phzy",
+        "jabbi",
+        "Staehr",
+        "ryu"
+      ],
+      "missingLocalPlayers": [],
+      "extraLocalPlayers": [],
+      "localCoach": "ruggah",
+      "ratingChecks": []
+    },
+    {
+      "rank": 13,
+      "name": "G2",
+      "hltvId": 5995,
+      "points": 206,
+      "localFound": true,
+      "localRank": 13,
+      "localPoints": 206,
+      "rankMatches": true,
+      "pointsMatch": true,
+      "remoteRankingPlayers": [
+        "huNter-",
+        "NertZ",
+        "SunPayus",
+        "HeavyGod",
+        "MATYS"
+      ],
+      "remoteTeamPagePlayers": [
+        "huNter-",
+        "HeavyGod",
+        "MATYS",
+        "SunPayus",
+        "NertZ"
+      ],
+      "localPlayers": [
+        "huNter-",
+        "NertZ",
+        "SunPayus",
+        "HeavyGod",
+        "MATYS"
+      ],
+      "missingLocalPlayers": [],
+      "extraLocalPlayers": [],
+      "remoteCoach": "sAw",
+      "localCoach": "sAw",
+      "coachMatches": true,
+      "ratingChecks": [
+        {
+          "handle": "huNter-",
+          "teamPeriodRating3": 1.1,
+          "localHltvRating": 1.1,
+          "difference": 0
+        },
+        {
+          "handle": "HeavyGod",
+          "teamPeriodRating3": 1.15,
+          "localHltvRating": 1.08,
+          "difference": -0.07
+        },
+        {
+          "handle": "MATYS",
+          "teamPeriodRating3": 1.09,
+          "localHltvRating": 1.12,
+          "difference": 0.03
+        },
+        {
+          "handle": "SunPayus",
+          "teamPeriodRating3": 1.05,
+          "localHltvRating": 1.08,
+          "difference": 0.03
+        },
+        {
+          "handle": "NertZ",
+          "teamPeriodRating3": 1.09,
+          "localHltvRating": 1.15,
+          "difference": 0.06
+        }
+      ]
+    },
+    {
+      "rank": 14,
+      "name": "FUT",
+      "hltvId": 13286,
+      "points": 190,
+      "localFound": true,
+      "localRank": 14,
+      "localPoints": 190,
+      "rankMatches": true,
+      "pointsMatch": true,
+      "remoteRankingPlayers": [
+        "dem0n",
+        "lauNX",
+        "Krabeni",
+        "cmtry",
+        "dziugss"
+      ],
+      "remoteTeamPagePlayers": [
+        "cmtry",
+        "dem0n",
+        "dziugss",
+        "Krabeni",
+        "lauNX"
+      ],
+      "localPlayers": [
+        "dem0n",
+        "lauNX",
+        "Krabeni",
+        "cmtry",
+        "dziugss"
+      ],
+      "missingLocalPlayers": [],
+      "extraLocalPlayers": [],
+      "remoteCoach": "coolio",
+      "localCoach": "coolio",
+      "coachMatches": true,
+      "ratingChecks": [
+        {
+          "handle": "cmtry",
+          "teamPeriodRating3": 1.03,
+          "localHltvRating": 1.03,
+          "difference": 0
+        },
+        {
+          "handle": "dem0n",
+          "teamPeriodRating3": 1.11,
+          "localHltvRating": 1.11,
+          "difference": 0
+        },
+        {
+          "handle": "dziugss",
+          "teamPeriodRating3": 1.11,
+          "localHltvRating": 1.11,
+          "difference": 0
+        },
+        {
+          "handle": "Krabeni",
+          "teamPeriodRating3": 1.04,
+          "localHltvRating": 1.05,
+          "difference": 0.01
+        },
+        {
+          "handle": "lauNX",
+          "teamPeriodRating3": 1.1,
+          "localHltvRating": 1.1,
+          "difference": 0
+        }
+      ]
+    },
+    {
+      "rank": 15,
+      "name": "B8",
+      "hltvId": 11241,
+      "points": 179,
+      "localFound": true,
+      "localRank": 15,
+      "localPoints": 179,
+      "rankMatches": true,
+      "pointsMatch": true,
+      "remoteRankingPlayers": [
+        "alex666",
+        "npl",
+        "kensizor",
+        "esenthial",
+        "s1zzi"
+      ],
+      "remoteTeamPagePlayers": [
+        "npl",
+        "esenthial",
+        "alex666",
+        "kensizor",
+        "s1zzi"
+      ],
+      "localPlayers": [
+        "alex666",
+        "npl",
+        "kensizor",
+        "esenthial",
+        "s1zzi"
+      ],
+      "missingLocalPlayers": [],
+      "extraLocalPlayers": [],
+      "remoteCoach": "maddened",
+      "localCoach": "maddened",
+      "coachMatches": true,
+      "ratingChecks": [
+        {
+          "handle": "npl",
+          "teamPeriodRating3": 1.16,
+          "localHltvRating": 1.16,
+          "difference": 0
+        },
+        {
+          "handle": "esenthial",
+          "teamPeriodRating3": 0.98,
+          "localHltvRating": 0.98,
+          "difference": 0
+        },
+        {
+          "handle": "alex666",
+          "teamPeriodRating3": 1.04,
+          "localHltvRating": 1.04,
+          "difference": 0
+        },
+        {
+          "handle": "kensizor",
+          "teamPeriodRating3": 1.03,
+          "localHltvRating": 1.03,
+          "difference": 0
+        },
+        {
+          "handle": "s1zzi",
+          "teamPeriodRating3": 0.99,
+          "localHltvRating": 0.99,
+          "difference": 0
+        }
+      ]
+    },
+    {
+      "rank": 16,
+      "name": "FaZe",
+      "hltvId": 6667,
+      "points": 171,
+      "localFound": true,
+      "localRank": 16,
+      "localPoints": 171,
+      "rankMatches": true,
+      "pointsMatch": true,
+      "remoteRankingPlayers": [
+        "frozen",
+        "Twistzz",
+        "broky",
+        "jcobbb",
+        "-1"
+      ],
+      "remoteTeamPagePlayers": [
+        "broky",
+        "frozen",
+        "jcobbb",
+        "Twistzz"
+      ],
+      "localPlayers": [
+        "frozen",
+        "Twistzz",
+        "broky",
+        "jcobbb",
+        "Neityu"
+      ],
+      "missingLocalPlayers": [],
+      "extraLocalPlayers": [
+        "neityu"
+      ],
+      "remoteCoach": "enkay J",
+      "localCoach": "enkay J",
+      "coachMatches": true,
+      "ratingChecks": [
+        {
+          "handle": "broky",
+          "teamPeriodRating3": 1.11,
+          "localHltvRating": 1.08,
+          "difference": -0.03
+        },
+        {
+          "handle": "frozen",
+          "teamPeriodRating3": 1.16,
+          "localHltvRating": 1.22,
+          "difference": 0.06
+        },
+        {
+          "handle": "jcobbb",
+          "teamPeriodRating3": 0.97,
+          "localHltvRating": 0.98,
+          "difference": 0.01
+        },
+        {
+          "handle": "Twistzz",
+          "teamPeriodRating3": 1.15,
+          "localHltvRating": 1.17,
+          "difference": 0.02
+        }
+      ]
+    },
+    {
+      "rank": 17,
+      "name": "BetBoom",
+      "hltvId": 12394,
+      "points": 145,
+      "localFound": true,
+      "localRank": 17,
+      "localPoints": 145,
+      "rankMatches": true,
+      "pointsMatch": true,
+      "remoteRankingPlayers": [
+        "Boombl4",
+        "zorte",
+        "S1ren",
+        "d1Ledez",
+        "Magnojez"
+      ],
+      "remoteTeamPagePlayers": [
+        "S1ren",
+        "Magnojez",
+        "Boombl4",
+        "d1Ledez",
+        "zorte"
+      ],
+      "localPlayers": [
+        "Boombl4",
+        "zorte",
+        "S1ren",
+        "d1Ledez",
+        "Magnojez"
+      ],
+      "missingLocalPlayers": [],
+      "extraLocalPlayers": [],
+      "remoteCoach": "Fierce",
+      "localCoach": "Fierce",
+      "coachMatches": true,
+      "ratingChecks": [
+        {
+          "handle": "S1ren",
+          "teamPeriodRating3": 1.06,
+          "localHltvRating": 1.06,
+          "difference": 0
+        },
+        {
+          "handle": "Magnojez",
+          "teamPeriodRating3": 1.16,
+          "localHltvRating": 1.16,
+          "difference": 0
+        },
+        {
+          "handle": "Boombl4",
+          "teamPeriodRating3": 0.98,
+          "localHltvRating": 0.98,
+          "difference": 0
+        },
+        {
+          "handle": "d1Ledez",
+          "teamPeriodRating3": 1.1,
+          "localHltvRating": 1.1,
+          "difference": 0
+        },
+        {
+          "handle": "zorte",
+          "teamPeriodRating3": 0.95,
+          "localHltvRating": 0.98,
+          "difference": 0.03
+        }
+      ]
+    },
+    {
+      "rank": 18,
+      "name": "magic",
+      "hltvId": 13592,
+      "points": 135,
+      "localFound": true,
+      "localRank": 18,
+      "localPoints": 135,
+      "rankMatches": true,
+      "pointsMatch": true,
+      "remoteRankingPlayers": [
+        "MaSvAl",
+        "sFade8",
+        "AW",
+        "mo0N",
+        "tenzy"
+      ],
+      "remoteTeamPagePlayers": [
+        "MaSvAl",
+        "sFade8",
+        "tenzy",
+        "AW",
+        "mo0N"
+      ],
+      "localPlayers": [
+        "MaSvAl",
+        "sFade8",
+        "AW",
+        "mo0N",
+        "tenzy"
+      ],
+      "missingLocalPlayers": [],
+      "extraLocalPlayers": [],
+      "remoteCoach": "eksiver",
+      "localCoach": "eksiver",
+      "coachMatches": true,
+      "ratingChecks": [
+        {
+          "handle": "MaSvAl",
+          "teamPeriodRating3": 1.17,
+          "localHltvRating": 1.17,
+          "difference": 0
+        },
+        {
+          "handle": "sFade8",
+          "teamPeriodRating3": 0.95,
+          "localHltvRating": 0.95,
+          "difference": 0
+        },
+        {
+          "handle": "tenzy",
+          "teamPeriodRating3": 1.19,
+          "localHltvRating": 1.19,
+          "difference": 0
+        },
+        {
+          "handle": "AW",
+          "teamPeriodRating3": 1.05,
+          "localHltvRating": 1.05,
+          "difference": 0
+        },
+        {
+          "handle": "mo0N",
+          "teamPeriodRating3": 1.05,
+          "localHltvRating": 1.05,
+          "difference": 0
+        }
+      ]
+    },
+    {
+      "rank": 19,
+      "name": "paiN",
+      "hltvId": 4773,
+      "points": 128,
+      "localFound": true,
+      "localRank": 19,
+      "localPoints": 128,
+      "rankMatches": true,
+      "pointsMatch": true,
+      "remoteRankingPlayers": [
+        "vsm",
+        "biguzera",
+        "piriajr",
+        "saffee",
+        "snow"
+      ],
+      "remoteTeamPagePlayers": [],
+      "localPlayers": [
+        "vsm",
+        "biguzera",
+        "piriajr",
+        "saffee",
+        "snow"
+      ],
+      "missingLocalPlayers": [],
+      "extraLocalPlayers": [],
+      "localCoach": "rikz",
+      "ratingChecks": []
+    },
+    {
+      "rank": 20,
+      "name": "MIBR",
+      "hltvId": 9215,
+      "points": 124,
+      "localFound": true,
+      "localRank": 20,
+      "localPoints": 124,
+      "rankMatches": true,
+      "pointsMatch": true,
+      "remoteRankingPlayers": [
+        "LNZ",
+        "brnz4n",
+        "insani",
+        "venomzera",
+        "kl1m"
+      ],
+      "remoteTeamPagePlayers": [],
+      "localPlayers": [
+        "LNZ",
+        "brnz4n",
+        "insani",
+        "venomzera",
+        "kl1m"
+      ],
+      "missingLocalPlayers": [],
+      "extraLocalPlayers": [],
+      "localCoach": "LETN1",
+      "ratingChecks": []
+    }
+  ],
+  "rankMismatches": [],
+  "playerMismatches": [
+    {
+      "rank": 7,
+      "name": "MOUZ",
+      "hltvId": 4494,
+      "points": 301,
+      "localFound": true,
+      "localRank": 7,
+      "localPoints": 301,
+      "rankMatches": true,
+      "pointsMatch": true,
+      "remoteRankingPlayers": [
+        "torzsi",
+        "Spinx",
+        "xertioN",
+        "xelex",
+        "+1"
+      ],
+      "remoteTeamPagePlayers": [
+        "torzsi",
+        "xertioN",
+        "Spinx",
+        "xelex"
+      ],
+      "localPlayers": [
+        "torzsi",
+        "Spinx",
+        "xertioN",
+        "xelex",
+        "Brollan"
+      ],
+      "missingLocalPlayers": [],
+      "extraLocalPlayers": [
+        "brollan"
+      ],
+      "remoteCoach": "sycrone",
+      "localCoach": "sycrone",
+      "coachMatches": true,
+      "ratingChecks": [
+        {
+          "handle": "torzsi",
+          "teamPeriodRating3": 1.12,
+          "localHltvRating": 1.1,
+          "difference": -0.02
+        },
+        {
+          "handle": "xertioN",
+          "teamPeriodRating3": 1.13,
+          "localHltvRating": 1.09,
+          "difference": -0.04
+        },
+        {
+          "handle": "Spinx",
+          "teamPeriodRating3": 1.1,
+          "localHltvRating": 1.12,
+          "difference": 0.02
+        },
+        {
+          "handle": "xelex",
+          "teamPeriodRating3": 1.04,
+          "localHltvRating": 1.04,
+          "difference": 0
+        }
+      ]
+    },
+    {
+      "rank": 16,
+      "name": "FaZe",
+      "hltvId": 6667,
+      "points": 171,
+      "localFound": true,
+      "localRank": 16,
+      "localPoints": 171,
+      "rankMatches": true,
+      "pointsMatch": true,
+      "remoteRankingPlayers": [
+        "frozen",
+        "Twistzz",
+        "broky",
+        "jcobbb",
+        "-1"
+      ],
+      "remoteTeamPagePlayers": [
+        "broky",
+        "frozen",
+        "jcobbb",
+        "Twistzz"
+      ],
+      "localPlayers": [
+        "frozen",
+        "Twistzz",
+        "broky",
+        "jcobbb",
+        "Neityu"
+      ],
+      "missingLocalPlayers": [],
+      "extraLocalPlayers": [
+        "neityu"
+      ],
+      "remoteCoach": "enkay J",
+      "localCoach": "enkay J",
+      "coachMatches": true,
+      "ratingChecks": [
+        {
+          "handle": "broky",
+          "teamPeriodRating3": 1.11,
+          "localHltvRating": 1.08,
+          "difference": -0.03
+        },
+        {
+          "handle": "frozen",
+          "teamPeriodRating3": 1.16,
+          "localHltvRating": 1.22,
+          "difference": 0.06
+        },
+        {
+          "handle": "jcobbb",
+          "teamPeriodRating3": 0.97,
+          "localHltvRating": 0.98,
+          "difference": 0.01
+        },
+        {
+          "handle": "Twistzz",
+          "teamPeriodRating3": 1.15,
+          "localHltvRating": 1.17,
+          "difference": 0.02
+        }
+      ]
+    }
+  ],
+  "coachMismatches": [],
+  "ratingWarnings": []
+}
