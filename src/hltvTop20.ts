@@ -60,11 +60,11 @@ interface HltvTeamSeed {
 const ids = mapPool.map((map) => map.id) as MapId[];
 const ratingFilters: RatingFilter[] = ["top5", "top10", "top20", "top50", "overall"];
 const requiredMaps: Record<RatingFilter, number> = {
-  top5: 15,
-  top10: 20,
-  top20: 30,
-  top50: 45,
-  overall: 60,
+  top5: 45,
+  top10: 60,
+  top20: 80,
+  top50: 100,
+  overall: 120,
 };
 const filterWeights: Record<RatingFilter, number> = {
   top5: 0.14,

@@ -264,10 +264,9 @@ export const hltvPlayerSplits2026: Record<string, Partial<Record<HltvRatingFilte
   },
   "legacy|latto": {
     overall: { rating: 1.15, maps: 109 },
-    top5: { rating: 1.17, maps: 16 },
-    top10: { rating: 1.15, maps: 38 },
-    top20: { rating: 1.12, maps: 60 },
-    top50: { rating: 1.13, maps: 93 },
+    top10: { rating: 1.27, maps: 17 },
+    top20: { rating: 1.13, maps: 65 },
+    top50: { rating: 1.15, maps: 97 },
   },
   "legacy|n1ssim": {
     overall: { rating: 1.04, maps: 109 },
