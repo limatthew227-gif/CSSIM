@@ -475,13 +475,29 @@ export function initMatch(map: MapId, you: FieldTeam, opponent: FieldTeam, conte
   const stage = context?.stage;
   if (stage && stage !== "swiss") {
     you.players.forEach((p) => {
-      if (p.ovr >= 90 && Math.random() < 0.18) {
-        peakingPlayers.push(p.id);
+      if (p.ovr >= 85) {
+        const pBase = 0.08 + (p.ovr - 90) * 0.015;
+        const delta = getPlayoffDelta(p, opponent.rank);
+        const deltaAdj = delta * 0.5;
+        const volatility = Math.max(0, (95 - p.stats.consistency) / 200);
+        const clutchAdj = Math.max(0, (p.stats.clutch - 75) / 200);
+        const peakProb = clamp(pBase + deltaAdj + volatility + clutchAdj, 0.02, 0.35);
+        if (Math.random() < peakProb) {
+          peakingPlayers.push(p.id);
+        }
       }
     });
     opponent.players.forEach((p) => {
-      if (p.ovr >= 90 && Math.random() < 0.18) {
-        peakingPlayers.push(p.id);
+      if (p.ovr >= 85) {
+        const pBase = 0.08 + (p.ovr - 90) * 0.015;
+        const delta = getPlayoffDelta(p, you.rank);
+        const deltaAdj = delta * 0.5;
+        const volatility = Math.max(0, (95 - p.stats.consistency) / 200);
+        const clutchAdj = Math.max(0, (p.stats.clutch - 75) / 200);
+        const peakProb = clamp(pBase + deltaAdj + volatility + clutchAdj, 0.02, 0.35);
+        if (Math.random() < peakProb) {
+          peakingPlayers.push(p.id);
+        }
       }
     });
   }
