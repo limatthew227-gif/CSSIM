@@ -1984,8 +1984,9 @@ function pickWeightedBy(players: Player[], weightFor: (player: Player) => number
 }
 
 function killWeight(player: Player, context: MatchContext, weapon?: string) {
+  const eliteEntryControl = player.role === "Entry" ? clamp((player.ovr - 86) / 12, 0, 1) : 0;
   const roleMod =
-    player.role === "Entry" ? 1.10 :
+    player.role === "Entry" ? 1.10 + eliteEntryControl * 0.03 :
     player.role === "AWP" ? 1.06 :
     player.role === "IGL" ? 0.88 :
     player.role === "Support" ? 0.94 :
@@ -2006,8 +2007,9 @@ function killWeight(player: Player, context: MatchContext, weapon?: string) {
 }
 
 function deathWeight(player: Player, context: MatchContext, weapon?: string) {
+  const eliteEntryControl = player.role === "Entry" ? clamp((player.ovr - 86) / 12, 0, 1) : 0;
   const roleMod =
-    player.role === "Entry" ? 1.12 :
+    player.role === "Entry" ? 1.12 - eliteEntryControl * 0.12 :
     player.role === "IGL" ? 1.05 :
     player.role === "AWP" ? 0.92 :
     player.role === "Lurker" ? 0.96 :
@@ -2015,7 +2017,7 @@ function deathWeight(player: Player, context: MatchContext, weapon?: string) {
     1;
 
   const styleMod =
-    player.style === "Aggressive" ? 1.06 :
+    player.style === "Aggressive" ? 1.06 - eliteEntryControl * 0.04 :
     player.style === "Passive" ? 0.94 :
     1;
 
