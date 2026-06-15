@@ -474,6 +474,17 @@ export function initMatch(map: MapId, you: FieldTeam, opponent: FieldTeam, conte
   const peakingPlayers: string[] = [];
   const stage = context?.stage;
   if (stage && stage !== "swiss") {
+    // Calculate Team boosts
+    const youIgl = you.players.find((p) => p.role === "IGL");
+    const youSupport = you.players.find((p) => p.role === "Support");
+    const youIglBoost = youIgl ? Math.max(0, (youIgl.stats.igl - 70) / 200) : 0;
+    const youSupportBoost = youSupport ? Math.max(0, (youSupport.ovr - 70) / 250) : 0;
+
+    const oppIgl = opponent.players.find((p) => p.role === "IGL");
+    const oppSupport = opponent.players.find((p) => p.role === "Support");
+    const oppIglBoost = oppIgl ? Math.max(0, (oppIgl.stats.igl - 70) / 200) : 0;
+    const oppSupportBoost = oppSupport ? Math.max(0, (oppSupport.ovr - 70) / 250) : 0;
+
     you.players.forEach((p) => {
       if (p.ovr >= 85) {
         const pBase = 0.08 + (p.ovr - 90) * 0.015;
@@ -481,7 +492,12 @@ export function initMatch(map: MapId, you: FieldTeam, opponent: FieldTeam, conte
         const deltaAdj = delta * 0.5;
         const volatility = Math.max(0, (95 - p.stats.consistency) / 200);
         const clutchAdj = Math.max(0, (p.stats.clutch - 75) / 200);
-        const peakProb = clamp(pBase + deltaAdj + volatility + clutchAdj, 0.02, 0.35);
+        
+        let roleBoosts = 0;
+        if (p.role !== "IGL") roleBoosts += youIglBoost;
+        if (p.role !== "Support") roleBoosts += youSupportBoost;
+
+        const peakProb = clamp(pBase + deltaAdj + volatility + clutchAdj + roleBoosts, 0.02, 0.35);
         if (Math.random() < peakProb) {
           peakingPlayers.push(p.id);
         }
@@ -494,7 +510,12 @@ export function initMatch(map: MapId, you: FieldTeam, opponent: FieldTeam, conte
         const deltaAdj = delta * 0.5;
         const volatility = Math.max(0, (95 - p.stats.consistency) / 200);
         const clutchAdj = Math.max(0, (p.stats.clutch - 75) / 200);
-        const peakProb = clamp(pBase + deltaAdj + volatility + clutchAdj, 0.02, 0.35);
+
+        let roleBoosts = 0;
+        if (p.role !== "IGL") roleBoosts += oppIglBoost;
+        if (p.role !== "Support") roleBoosts += oppSupportBoost;
+
+        const peakProb = clamp(pBase + deltaAdj + volatility + clutchAdj + roleBoosts, 0.02, 0.35);
         if (Math.random() < peakProb) {
           peakingPlayers.push(p.id);
         }
