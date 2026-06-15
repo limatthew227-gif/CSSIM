@@ -1,6 +1,6 @@
 # HLTV Top 20 Verification - 2026-06-08
 
-Generated: 2026-06-15T05:43:11.406Z
+Generated: 2026-06-15T05:58:53.400Z
 
 ## Sources
 
@@ -34,20 +34,20 @@ Generated: 2026-06-15T05:43:11.406Z
 | 8 | Legacy | 297 | 8 / 297 | OK | OK | OK |
 | 9 | The MongolZ | 260 | 9 / 260 | OK | OK | OK |
 | 10 | PARIVISION | 259 | 10 / 259 | OK | OK | OK |
-| 11 | GamerLegion | 259 | 11 / 259 | OK | n/a | OK |
-| 12 | Astralis | 214 | 12 / 214 | OK | n/a | OK |
+| 11 | GamerLegion | 259 | 11 / 259 | OK | OK | OK |
+| 12 | Astralis | 214 | 12 / 214 | OK | OK | OK |
 | 13 | G2 | 206 | 13 / 206 | OK | OK | OK |
 | 14 | FUT | 190 | 14 / 190 | OK | OK | OK |
 | 15 | B8 | 179 | 15 / 179 | OK | OK | OK |
 | 16 | FaZe | 171 | 16 / 171 | missing - / extra neityu | OK | OK |
 | 17 | BetBoom | 145 | 17 / 145 | OK | OK | OK |
 | 18 | magic | 135 | 18 / 135 | OK | OK | OK |
-| 19 | paiN | 128 | 19 / 128 | OK | n/a | OK |
-| 20 | MIBR | 124 | 20 / 124 | OK | n/a | OK |
+| 19 | paiN | 128 | 19 / 128 | OK | OK | OK |
+| 20 | MIBR | 124 | 20 / 124 | OK | OK | OK |
 
 ## Notes
 
-- Ranking position/points come from gigobyte/HLTV getTeamRanking.
+- gigobyte/HLTV getTeamRanking was attempted but blocked during this run: Access denied | www.hltv.org used Cloudflare to restrict access
 - Lineups, coaches, and current-team-period ratings come from rendered HLTV team pages using a BeautifulSoup-style markdown parse inspired by jparedesDS/hltv-scraper.
 - HLTV stats/player filter pages returned Cloudflare verification in direct bot requests, so this report does not claim to verify top5/top10/top20 player-filter splits.
 - The local dataset intentionally includes Natus Vincere 2018 as a historical extra and excludes it from the 2026 top-20 comparison.

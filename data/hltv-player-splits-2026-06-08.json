@@ -1,0 +1,222 @@
+{
+  "generatedAt": "2026-06-15T05:59:01.583900+00:00",
+  "rankingDate": "2026-06-08",
+  "dateWindow": {
+    "startDate": "2026-01-01",
+    "endDate": "2026-06-08"
+  },
+  "source": "https://www.hltv.org/stats/players",
+  "method": "cloudscraper",
+  "cloudscraperVersion": "1.2.71",
+  "playersRequested": 73,
+  "missingPlayerIds": [
+    {
+      "team": "FURIA",
+      "rank": 5,
+      "handle": "FalleN"
+    },
+    {
+      "team": "FURIA",
+      "rank": 5,
+      "handle": "yuurih"
+    },
+    {
+      "team": "FURIA",
+      "rank": 5,
+      "handle": "YEKINDAR"
+    },
+    {
+      "team": "FURIA",
+      "rank": 5,
+      "handle": "KSCERATO"
+    },
+    {
+      "team": "FURIA",
+      "rank": 5,
+      "handle": "molodoy"
+    },
+    {
+      "team": "MOUZ",
+      "rank": 7,
+      "handle": "Brollan"
+    },
+    {
+      "team": "GamerLegion",
+      "rank": 11,
+      "handle": "Snax"
+    },
+    {
+      "team": "GamerLegion",
+      "rank": 11,
+      "handle": "REZ"
+    },
+    {
+      "team": "GamerLegion",
+      "rank": 11,
+      "handle": "Tauson"
+    },
+    {
+      "team": "GamerLegion",
+      "rank": 11,
+      "handle": "PR"
+    },
+    {
+      "team": "GamerLegion",
+      "rank": 11,
+      "handle": "hypex"
+    },
+    {
+      "team": "Astralis",
+      "rank": 12,
+      "handle": "HooXi"
+    },
+    {
+      "team": "Astralis",
+      "rank": 12,
+      "handle": "phzy"
+    },
+    {
+      "team": "Astralis",
+      "rank": 12,
+      "handle": "jabbi"
+    },
+    {
+      "team": "Astralis",
+      "rank": 12,
+      "handle": "Staehr"
+    },
+    {
+      "team": "Astralis",
+      "rank": 12,
+      "handle": "ryu"
+    },
+    {
+      "team": "FaZe",
+      "rank": 16,
+      "handle": "Neityu"
+    },
+    {
+      "team": "paiN",
+      "rank": 19,
+      "handle": "vsm"
+    },
+    {
+      "team": "paiN",
+      "rank": 19,
+      "handle": "biguzera"
+    },
+    {
+      "team": "paiN",
+      "rank": 19,
+      "handle": "piriajr"
+    },
+    {
+      "team": "paiN",
+      "rank": 19,
+      "handle": "saffee"
+    },
+    {
+      "team": "paiN",
+      "rank": 19,
+      "handle": "snow"
+    },
+    {
+      "team": "MIBR",
+      "rank": 20,
+      "handle": "LNZ"
+    },
+    {
+      "team": "MIBR",
+      "rank": 20,
+      "handle": "brnz4n"
+    },
+    {
+      "team": "MIBR",
+      "rank": 20,
+      "handle": "insani"
+    },
+    {
+      "team": "MIBR",
+      "rank": 20,
+      "handle": "venomzera"
+    },
+    {
+      "team": "MIBR",
+      "rank": 20,
+      "handle": "kl1m"
+    }
+  ],
+  "missingPlayerIdCount": 27,
+  "filters": [
+    "overall",
+    "top5",
+    "top10",
+    "top20",
+    "top50"
+  ],
+  "probePlayer": {
+    "handle": "ZywOo",
+    "playerId": 11893,
+    "url": "https://www.hltv.org/stats/players/11893/zywoo?startDate=2026-01-01&endDate=2026-06-08&rankingFilter=Top20"
+  },
+  "probeAttempts": [
+    {
+      "config": "native-chrome-mac",
+      "status": 403,
+      "title": "Just a moment...",
+      "blocked": true,
+      "cloudflareManagedChallenge": true,
+      "url": "https://www.hltv.org/stats/players/11893/zywoo?startDate=2026-01-01&endDate=2026-06-08&rankingFilter=Top20",
+      "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_12_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/64.0.3282.119 Safari/537.36",
+      "error": null
+    },
+    {
+      "config": "nodejs-chrome-mac",
+      "status": 403,
+      "title": "Just a moment...",
+      "blocked": true,
+      "cloudflareManagedChallenge": true,
+      "url": "https://www.hltv.org/stats/players/11893/zywoo?startDate=2026-01-01&endDate=2026-06-08&rankingFilter=Top20",
+      "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_2) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/73.0.3683.103 Safari/537.36",
+      "error": null
+    },
+    {
+      "config": "native-firefox-linux",
+      "status": 403,
+      "title": "Just a moment...",
+      "blocked": true,
+      "cloudflareManagedChallenge": true,
+      "url": "https://www.hltv.org/stats/players/11893/zywoo?startDate=2026-01-01&endDate=2026-06-08&rankingFilter=Top20",
+      "userAgent": "Mozilla/5.0 (X11; Linux i686; rv:60.9) Gecko/20100101 Goanna/4.1 Firefox/60.9 PaleMoon/28.3.0",
+      "error": null
+    },
+    {
+      "config": "native-chrome-mobile",
+      "status": 403,
+      "title": "Just a moment...",
+      "blocked": true,
+      "cloudflareManagedChallenge": true,
+      "url": "https://www.hltv.org/stats/players/11893/zywoo?startDate=2026-01-01&endDate=2026-06-08&rankingFilter=Top20",
+      "userAgent": "Mozilla/5.0 (Linux; Android 9; SM-G950U) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/73.0.3683.90 Mobile Safari/537.36",
+      "error": null
+    },
+    {
+      "config": "native-chrome-mac-no-brotli-delay",
+      "status": 403,
+      "title": "Just a moment...",
+      "blocked": true,
+      "cloudflareManagedChallenge": true,
+      "url": "https://www.hltv.org/stats/players/11893/zywoo?startDate=2026-01-01&endDate=2026-06-08&rankingFilter=Top20",
+      "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_12_3) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/66.0.3359.117 Safari/537.36",
+      "error": null
+    }
+  ],
+  "selectedConfig": null,
+  "blockedByCloudflare": true,
+  "notes": [
+    "Date window is 2026-01-01 through 2026-06-08 to match the existing June 8, 2026 top-20 ranking audit.",
+    "The script tries multiple cloudscraper browser/interpreter configurations before scraping the full player set.",
+    "All probe attempts returned HLTV's Cloudflare managed challenge, so no split ratings were written back into src/hltvTop20.ts."
+  ],
+  "players": []
+}

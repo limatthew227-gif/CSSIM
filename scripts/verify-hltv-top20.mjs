@@ -169,7 +169,7 @@ function parseTeamMarkdown(markdown, team) {
         trophies: parseNumber(coachRow[4]),
         winrate: parseNumber(coachRow[5]),
       }
-    : undefined;
+    : parseSimpleCoach(markdown);
 
   return {
     teamPagePlayers: starterRows,
@@ -194,6 +194,17 @@ function extractHltvLink(markdown, type) {
     handle: linkMatch[1].trim(),
     id: Number(linkMatch[2]),
     slug: linkMatch[3],
+  };
+}
+
+function parseSimpleCoach(markdown) {
+  const coachLine = markdown.match(/(?:^|\n)Coach\n\s*([^\n]+)/);
+  if (!coachLine) return undefined;
+
+  const handle = coachLine[1].match(/'([^']+)'/)?.[1] ?? coachLine[1].trim();
+  return {
+    handle: cleanHandle(handle),
+    source: "simplified rendered team page",
   };
 }
 
@@ -229,6 +240,13 @@ function buildReport({ local2026, historicalExtras, ranking, detailedTeams, pack
       pointsMatch: local ? local.points === remote.points : false,
       remoteRankingPlayers: remote.rankingPlayers ?? [],
       remoteTeamPagePlayers: (remote.teamPagePlayers ?? []).map((player) => player.handle),
+      remoteTeamPagePlayerDetails: (remote.teamPagePlayers ?? []).map((player) => ({
+        handle: player.handle,
+        id: player.id,
+        slug: player.slug,
+        mapsPlayed: player.mapsPlayed,
+        teamPeriodRating3: player.teamPeriodRating,
+      })),
       localPlayers: local?.players.map((player) => player.handle) ?? [],
       missingLocalPlayers: preferredRemotePlayers.filter((handle) => !localPlayers.includes(handle)),
       extraLocalPlayers: localPlayers.filter((handle) => !preferredRemotePlayers.includes(handle)),
