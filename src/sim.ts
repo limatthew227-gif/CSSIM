@@ -8,6 +8,8 @@ import {
   Roster,
   mapPool,
 } from "./gameData";
+import { hltvPlayerSplits2026 } from "./hltvPlayerSplits2026";
+import { hltvPlayerPlayoffs2026 } from "./hltvPlayerPlayoffs2026";
 
 export interface BonusLine {
   label: string;
@@ -34,6 +36,7 @@ export interface FieldTeam {
   logo?: string;
   players: Player[];
   coach?: Coach;
+  rank?: number;
 }
 
 export type MatchStageContext = "swiss" | "quarterfinal" | "semifinal" | "final";
@@ -160,6 +163,7 @@ export function toFieldTeam(roster: Roster): FieldTeam {
     accent: roster.accent,
     logo: roster.logo,
     players: roster.players,
+    rank: roster.rank,
   };
 }
 
@@ -1452,8 +1456,8 @@ export function playRound(
     }
   });
 
-  const yourRoundPatch = createRoundStatPatch(you.players, feed, "you", youWin, state.context, yourWeapons);
-  const opponentRoundPatch = createRoundStatPatch(opponent.players, feed, "opponent", !youWin, state.context, opponentWeapons);
+  const yourRoundPatch = createRoundStatPatch(you.players, feed, "you", youWin, state.context, opponent.rank, yourWeapons);
+  const opponentRoundPatch = createRoundStatPatch(opponent.players, feed, "opponent", !youWin, state.context, you.rank, opponentWeapons);
 
   if (youWin) {
     yourLossStreak = Math.max(0, yourLossStreak - 1);
@@ -1820,8 +1824,11 @@ function createRoundFeed(
     const equipped = sideKey === "you" ? yourWeapons : opponentWeapons;
     const victimEquipped = victimSide === "you" ? yourWeapons : opponentWeapons;
 
-    const killer = pickWeightedBy(killerPool, (player) => killWeight(player, context, equipped[player.id]));
-    const victim = pickWeightedBy(victimPool, (player) => deathWeight(player, context, victimEquipped[player.id]));
+    const killerOpponentRank = sideKey === "you" ? opponent.rank : you.rank;
+    const victimOpponentRank = victimSide === "you" ? opponent.rank : you.rank;
+
+    const killer = pickWeightedBy(killerPool, (player) => killWeight(player, context, killerOpponentRank, equipped[player.id]));
+    const victim = pickWeightedBy(victimPool, (player) => deathWeight(player, context, victimOpponentRank, victimEquipped[player.id]));
     alive[victimSide] = alive[victimSide].filter((player) => player.id !== victim.id);
     remainingKills[sideKey] -= 1;
 
@@ -1983,7 +1990,36 @@ function pickWeightedBy(players: Player[], weightFor: (player: Player) => number
   return players[0];
 }
 
-function killWeight(player: Player, context: MatchContext, weapon?: string) {
+export function getPlayoffDelta(player: Player, opponentRank?: number): number {
+  const teamKey = player.source.name.toLowerCase().replace(/&/g, "and").replace(/[^a-z0-9]+/g, "");
+  const handleKey = player.handle.toLowerCase().replace(/[^a-z0-9-]+/g, "");
+  const key = `${teamKey}|${handleKey}`;
+
+  let filter: "overall" | "top5" | "top10" | "top20" | "top50" = "overall";
+  if (opponentRank) {
+    if (opponentRank <= 5) filter = "top5";
+    else if (opponentRank <= 10) filter = "top10";
+    else if (opponentRank <= 20) filter = "top20";
+    else if (opponentRank <= 50) filter = "top50";
+  }
+
+  const overallSample = hltvPlayerSplits2026[key]?.[filter];
+  const playoffSample = hltvPlayerPlayoffs2026[key]?.[filter];
+
+  if (!overallSample || !playoffSample) return 0;
+
+  const rOverall = overallSample.rating;
+  const mOverall = overallSample.maps;
+  const rPlayoffs = playoffSample.rating;
+  const mPlayoffs = playoffSample.maps;
+
+  if (mOverall <= mPlayoffs || mPlayoffs <= 0) return 0;
+
+  const rGroup = (rOverall * mOverall - rPlayoffs * mPlayoffs) / (mOverall - mPlayoffs);
+  return rPlayoffs - rGroup;
+}
+
+function killWeight(player: Player, context: MatchContext, opponentRank?: number, weapon?: string) {
   const eliteEntryControl = player.role === "Entry" ? clamp((player.ovr - 86) / 12, 0, 1) : 0;
   const roleMod =
     player.role === "Entry" ? 1.10 + eliteEntryControl * 0.03 :
@@ -2003,10 +2039,10 @@ function killWeight(player: Player, context: MatchContext, weapon?: string) {
   // 60 OVR ≈ 0.92, 80 OVR ≈ 1.46, 95 OVR ≈ 1.87
   const baseWeight = 0.65 + skill * 1.35;
 
-  return baseWeight * roleMod * styleMod * playerPerformanceMultiplier(player, context, weapon);
+  return baseWeight * roleMod * styleMod * playerPerformanceMultiplier(player, context, opponentRank, weapon);
 }
 
-function deathWeight(player: Player, context: MatchContext, weapon?: string) {
+function deathWeight(player: Player, context: MatchContext, opponentRank?: number, weapon?: string) {
   const eliteEntryControl = player.role === "Entry" ? clamp((player.ovr - 86) / 12, 0, 1) : 0;
   const roleMod =
     player.role === "Entry" ? 1.12 - eliteEntryControl * 0.12 :
@@ -2026,10 +2062,10 @@ function deathWeight(player: Player, context: MatchContext, weapon?: string) {
   // 60 OVR ≈ 1.24, 80 OVR ≈ 1.02, 95 OVR ≈ 0.86
   const baseWeight = 1.35 - skill * 0.55;
 
-  return (baseWeight * roleMod * styleMod) / playerPerformanceMultiplier(player, context, weapon);
+  return (baseWeight * roleMod * styleMod) / playerPerformanceMultiplier(player, context, opponentRank, weapon);
 }
 
-function playerPerformanceMultiplier(player: Player, context: MatchContext, weapon?: string) {
+function playerPerformanceMultiplier(player: Player, context: MatchContext, opponentRank?: number, weapon?: string) {
   const handle = player.handle.toLowerCase();
   let multiplier = 1;
 
@@ -2042,17 +2078,17 @@ function playerPerformanceMultiplier(player: Player, context: MatchContext, weap
     multiplier *= 1.15;
   }
 
-  return multiplier;
-}
+  // Playoff performance buff / debuff
+  if (context.stage && context.stage !== "swiss") {
+    const delta = getPlayoffDelta(player, opponentRank);
+    if (delta >= 0.13) {
+      multiplier *= 1.10;
+    } else if (delta <= -0.13 && handle !== "donk") {
+      multiplier *= 0.90;
+    }
+  }
 
-function updateStats(
-  lines: Record<string, PlayerLine>,
-  players: Player[],
-  feed: FeedLine[],
-  team: "you" | "opponent",
-  roundWon: boolean,
-) {
-  return applyStatPatch(lines, createRoundStatPatch(players, feed, team, roundWon));
+  return multiplier;
 }
 
 function createRoundStatPatch(
@@ -2061,6 +2097,7 @@ function createRoundStatPatch(
   team: "you" | "opponent",
   roundWon: boolean,
   context?: MatchContext,
+  opponentRank?: number,
   weapons?: Record<string, string>,
 ) {
   const patch = makeLines(players);
@@ -2080,7 +2117,7 @@ function createRoundStatPatch(
       const killerId = event.killerId;
       if (killerId) {
         const killer = playersById.get(killerId);
-        const performance = killer && context ? playerPerformanceMultiplier(killer, context, event.weapon) : 1;
+        const performance = killer && context ? playerPerformanceMultiplier(killer, context, opponentRank, event.weapon) : 1;
         patch[killerId].kills += 1;
         patch[killerId].damage += (event.killerDamage ?? killDamage(event.weapon)) * performance;
         killsThisRound.set(killerId, (killsThisRound.get(killerId) ?? 0) + 1);
@@ -2110,7 +2147,7 @@ function createRoundStatPatch(
     if (roundKills > 1) line.multiKills += roundKills - 1;
     if (roundWon && survived && roundKills >= 2 && Math.random() < 0.12) line.clutchWins += 1;
     if (roundKills > 0 || assistedThisRound.has(player.id) || survived || traded) line.kastRounds += 1;
-    line.damage += chipDamage(player, roundKills, survived, context, weapons?.[player.id]);
+    line.damage += chipDamage(player, roundKills, survived, context, opponentRank, weapons?.[player.id]);
   });
   return patch;
 }
@@ -2143,11 +2180,11 @@ function killDamage(weapon: string) {
   return base + Math.random() * 24;
 }
 
-function chipDamage(player: Player, roundKills: number, survived: boolean, context?: MatchContext, weapon?: string) {
+function chipDamage(player: Player, roundKills: number, survived: boolean, context?: MatchContext, opponentRank?: number, weapon?: string) {
   const activity = player.style === "Aggressive" ? 8 : player.style === "Passive" ? 4 : 6;
   const survivalBonus = survived ? 2 : 0;
   const skillBonus = (player.ovr - 70) * 0.2;
-  const performance = context ? playerPerformanceMultiplier(player, context, weapon) : 1;
+  const performance = context ? playerPerformanceMultiplier(player, context, opponentRank, weapon) : 1;
   
   if (roundKills > 0) {
     return Math.max(4, (4 + activity * 0.4 + Math.random() * 8) * performance);

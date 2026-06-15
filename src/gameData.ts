@@ -49,6 +49,7 @@ export interface Roster extends SourceTeam {
   tagline: string;
   players: Player[];
   mapPool: Record<MapId, number>;
+  rank?: number;
 }
 
 export interface Coach {
