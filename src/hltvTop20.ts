@@ -972,6 +972,13 @@ const hltvTeams: HltvTeamSeed[] = [
         role: "Lurker",
         style: "Passive",
         hltvRating: 1.22,
+        statOverrides: {
+          aim: 88,
+          clutch: 93,
+          consistency: 88,
+          awp: 75,
+          igl: 75,
+        },
         samples: {
           overall: { rating: 1.22, maps: 54 },
           top50: { rating: 1.2, maps: 54 },
