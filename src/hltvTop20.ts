@@ -9,10 +9,11 @@ import {
   mapPool,
   rateStatsForRole,
 } from "./gameData";
+import { hltvPlayerSplits2026 } from "./hltvPlayerSplits2026";
 import { teamLogoUrls } from "./teamLogos";
 
 type CoachStyle = Coach["style"];
-type RatingFilter = "top10" | "top20" | "top50" | "overall";
+type RatingFilter = "top5" | "top10" | "top20" | "top50" | "overall";
 
 interface RatingSample {
   rating: number;
@@ -57,18 +58,20 @@ interface HltvTeamSeed {
 }
 
 const ids = mapPool.map((map) => map.id) as MapId[];
-const ratingFilters: RatingFilter[] = ["top10", "top20", "top50", "overall"];
+const ratingFilters: RatingFilter[] = ["top5", "top10", "top20", "top50", "overall"];
 const requiredMaps: Record<RatingFilter, number> = {
+  top5: 15,
   top10: 20,
   top20: 30,
   top50: 45,
   overall: 60,
 };
 const filterWeights: Record<RatingFilter, number> = {
-  top10: 0.4,
+  top5: 0.14,
+  top10: 0.31,
   top20: 0.35,
-  top50: 0.15,
-  overall: 0.1,
+  top50: 0.12,
+  overall: 0.08,
 };
 
 function slugify(value: string) {
@@ -97,21 +100,30 @@ function estimateMaps(team: HltvTeamSeed, filter: RatingFilter) {
       ? 0.68 - rankPressure * 0.23
       : filter === "top20"
         ? 0.46 - rankPressure * 0.22
-        : 0.29 - rankPressure * 0.17;
-  const rankLift = Math.max(0, 21 - team.rank) * (filter === "top50" ? 0.9 : filter === "top20" ? 0.45 : 0.18);
-  return Math.round(clampNumber(base * factor + rankLift, 3, filter === "top50" ? 88 : filter === "top20" ? 56 : 36));
+        : filter === "top10"
+          ? 0.29 - rankPressure * 0.17
+          : 0.18 - rankPressure * 0.12;
+  const rankLift = Math.max(0, 21 - team.rank) * (filter === "top50" ? 0.9 : filter === "top20" ? 0.45 : filter === "top10" ? 0.18 : 0.08);
+  return Math.round(clampNumber(base * factor + rankLift, 1, filter === "top50" ? 88 : filter === "top20" ? 56 : filter === "top10" ? 36 : 24));
 }
 
 function inferRating(player: HltvPlayerSeed, team: HltvTeamSeed, filter: RatingFilter) {
-  if (filter === "overall") return clampRating(player.hltvRating);
+  const baseRating = effectiveHltvRating(player, team);
+  if (filter === "overall") return clampRating(baseRating);
 
   const rankPressure = (team.rank - 1) / 19;
   const baseDrop =
-    filter === "top10" ? 0.015 + rankPressure * 0.09 : filter === "top20" ? 0.006 + rankPressure * 0.065 : 0.002 + rankPressure * 0.028;
-  const starResilience = Math.max(0, player.hltvRating - 1.12) * (filter === "top10" ? 0.08 : filter === "top20" ? 0.06 : 0.035);
+    filter === "top5"
+      ? 0.03 + rankPressure * 0.11
+      : filter === "top10"
+        ? 0.015 + rankPressure * 0.09
+        : filter === "top20"
+          ? 0.006 + rankPressure * 0.065
+          : 0.002 + rankPressure * 0.028;
+  const starResilience = Math.max(0, baseRating - 1.12) * (filter === "top5" ? 0.09 : filter === "top10" ? 0.08 : filter === "top20" ? 0.06 : 0.035);
   const roleResilience =
     player.role === "AWP"
-      ? filter === "top10"
+      ? filter === "top5" || filter === "top10"
         ? 0.006
         : 0.004
       : player.role === "IGL"
@@ -121,11 +133,11 @@ function inferRating(player: HltvPlayerSeed, team: HltvTeamSeed, filter: RatingF
           : player.role === "Lurker"
             ? 0.002
             : 0;
-  return clampRating(player.hltvRating - baseDrop + starResilience + roleResilience);
+  return clampRating(baseRating - baseDrop + starResilience + roleResilience);
 }
 
 function ratingSample(player: HltvPlayerSeed, team: HltvTeamSeed, filter: RatingFilter): RatingSample {
-  const explicit = player.samples?.[filter];
+  const explicit = scrapedRatingSample(player, team, filter) ?? player.samples?.[filter];
   if (explicit) {
     return {
       rating: clampRating(explicit.rating),
@@ -137,6 +149,26 @@ function ratingSample(player: HltvPlayerSeed, team: HltvTeamSeed, filter: Rating
     rating: inferRating(player, team, filter),
     maps: estimateMaps(team, filter),
   };
+}
+
+function sampleKey(team: HltvTeamSeed, player: HltvPlayerSeed) {
+  return `${normalizeSampleName(team.name)}|${normalizeSampleHandle(player.handle)}`;
+}
+
+function normalizeSampleName(value: string) {
+  return value.toLowerCase().replace(/&/g, "and").replace(/[^a-z0-9]+/g, "");
+}
+
+function normalizeSampleHandle(value: string) {
+  return value.toLowerCase().replace(/[^a-z0-9-]+/g, "");
+}
+
+function scrapedRatingSample(player: HltvPlayerSeed, team: HltvTeamSeed, filter: RatingFilter): RatingSample | undefined {
+  return hltvPlayerSplits2026[sampleKey(team, player)]?.[filter];
+}
+
+function effectiveHltvRating(player: HltvPlayerSeed, team: HltvTeamSeed) {
+  return scrapedRatingSample(player, team, "overall")?.rating ?? player.hltvRating;
 }
 
 function sampleConfidence(sample: RatingSample, filter: RatingFilter) {
@@ -217,7 +249,7 @@ function ratingToOverall(rating: number) {
 function playerOverall(player: HltvPlayerSeed, team: HltvTeamSeed) {
   const confidence = weightedSampleConfidence(player, team);
   const roleOvr = ratingToOverall(roleAdjustedRating(player, team));
-  const recentRating = player.recentRating ?? oppositionAdjustedRating(player, team) * 0.65 + player.hltvRating * 0.35;
+  const recentRating = player.recentRating ?? oppositionAdjustedRating(player, team) * 0.65 + effectiveHltvRating(player, team) * 0.35;
   const recentOvr = ratingToOverall(1 + (clampRating(recentRating) - 1) * Math.max(0.55, confidence));
   const confidenceOvr = 66 + confidence * 18;
   const contextOvr = ratingToOverall(teamContextRating(team));
@@ -257,14 +289,15 @@ function statsFromHltv(player: HltvPlayerSeed, team: HltvTeamSeed): PlayerStats 
   };
 }
 
-function traitsFor(player: HltvPlayerSeed, stats: PlayerStats) {
+function traitsFor(player: HltvPlayerSeed, stats: PlayerStats, team: HltvTeamSeed) {
   const traits = new Set<string>();
+  const hltvRating = effectiveHltvRating(player, team);
   traits.add(player.role === "AWP" ? "Sniper" : player.role === "IGL" ? "Brain" : player.role === "Lurker" ? "Late round" : player.role);
-  if (player.hltvRating >= 1.16) traits.add("Star");
+  if (hltvRating >= 1.16) traits.add("Star");
   if (stats.clutch >= 88) traits.add("Clutch");
   if (player.style === "Aggressive") traits.add("Entry");
   if (player.style === "Passive") traits.add("Anchor");
-  traits.add(`HLTV ${player.hltvRating.toFixed(2)}`);
+  traits.add(`HLTV ${hltvRating.toFixed(2)}`);
   return Array.from(traits).slice(0, 4);
 }
 
@@ -327,10 +360,10 @@ function makeRoster(team: HltvTeamSeed): Roster {
         country: player.country,
         role: player.role,
         style: player.style,
-        traits: traitsFor(player, stats),
+        traits: traitsFor(player, stats, team),
         stats,
         ovr: rateStatsForRole(stats, player.role),
-        hltvRating: player.hltvRating,
+        hltvRating: effectiveHltvRating(player, team),
         hltvMaps: ratingSample(player, team, "overall").maps,
         source,
         maps: playerMapPool(index, player, team, maps),
@@ -340,7 +373,7 @@ function makeRoster(team: HltvTeamSeed): Roster {
 }
 
 function coachRating(team: HltvTeamSeed) {
-  const averagePlayerRating = team.players.reduce((sum, player) => sum + player.hltvRating, 0) / team.players.length;
+  const averagePlayerRating = team.players.reduce((sum, player) => sum + effectiveHltvRating(player, team), 0) / team.players.length;
   return clampWhole(
     69 +
       Math.max(0, 21 - team.rank) * 0.58 +

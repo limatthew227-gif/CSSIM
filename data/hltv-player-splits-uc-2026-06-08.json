@@ -1,0 +1,4858 @@
+{
+  "generatedAt": "2026-06-15T06:09:48.670376+00:00",
+  "rankingDate": "2026-06-08",
+  "dateWindow": {
+    "startDate": "2026-01-01",
+    "endDate": "2026-06-08"
+  },
+  "method": "scrapy-selector + undetected-chromedriver",
+  "headless": false,
+  "filters": [
+    "overall",
+    "top5",
+    "top10",
+    "top20",
+    "top50"
+  ],
+  "expectedPlayers": 100,
+  "matchedPlayers": 100,
+  "unmatchedPlayers": 0,
+  "completePlayers": 43,
+  "scrapeErrors": [],
+  "notes": [
+    "Uses undetected-chromedriver to load HLTV's stats ranking pages and Scrapy selectors to parse player rows.",
+    "The scrape uses minMapCount=0 so low-sample opposition filters are preserved instead of disappearing from the table.",
+    "Values are Rating 3.0 from HLTV's player ranking table for the January 1, 2026 through June 8, 2026 window.",
+    "Placeholder fifths from the ranking/team-page audit are matched by handle and team when they appear in HLTV's stats ranking table."
+  ],
+  "players": [
+    {
+      "team": "Vitality",
+      "rank": 1,
+      "handle": "apEX",
+      "playerId": 7322,
+      "slug": "apex",
+      "splits": {
+        "overall": {
+          "rating": 0.99,
+          "maps": 85,
+          "rounds": 1857,
+          "kd": 0.91,
+          "kdDiff": -109.0
+        },
+        "top5": {
+          "rating": 0.95,
+          "maps": 35,
+          "rounds": 761,
+          "kd": 0.88,
+          "kdDiff": -64.0
+        },
+        "top10": {
+          "rating": 0.99,
+          "maps": 56,
+          "rounds": 1233,
+          "kd": 0.93,
+          "kdDiff": -60.0
+        },
+        "top20": {
+          "rating": 0.98,
+          "maps": 75,
+          "rounds": 1643,
+          "kd": 0.9,
+          "kdDiff": -105.0
+        },
+        "top50": {
+          "rating": 0.99,
+          "maps": 85,
+          "rounds": 1857,
+          "kd": 0.91,
+          "kdDiff": -109.0
+        }
+      }
+    },
+    {
+      "team": "Vitality",
+      "rank": 1,
+      "handle": "ropz",
+      "playerId": 11816,
+      "slug": "ropz",
+      "splits": {
+        "overall": {
+          "rating": 1.14,
+          "maps": 85,
+          "rounds": 1857,
+          "kd": 1.27,
+          "kdDiff": 278.0
+        },
+        "top5": {
+          "rating": 1.2,
+          "maps": 35,
+          "rounds": 761,
+          "kd": 1.32,
+          "kdDiff": 137.0
+        },
+        "top10": {
+          "rating": 1.15,
+          "maps": 56,
+          "rounds": 1233,
+          "kd": 1.28,
+          "kdDiff": 193.0
+        },
+        "top20": {
+          "rating": 1.14,
+          "maps": 75,
+          "rounds": 1643,
+          "kd": 1.26,
+          "kdDiff": 242.0
+        },
+        "top50": {
+          "rating": 1.14,
+          "maps": 85,
+          "rounds": 1857,
+          "kd": 1.27,
+          "kdDiff": 278.0
+        }
+      }
+    },
+    {
+      "team": "Vitality",
+      "rank": 1,
+      "handle": "ZywOo",
+      "playerId": 11893,
+      "slug": "zywoo",
+      "splits": {
+        "overall": {
+          "rating": 1.39,
+          "maps": 85,
+          "rounds": 1857,
+          "kd": 1.61,
+          "kdDiff": 616.0
+        },
+        "top5": {
+          "rating": 1.31,
+          "maps": 35,
+          "rounds": 761,
+          "kd": 1.51,
+          "kdDiff": 218.0
+        },
+        "top10": {
+          "rating": 1.37,
+          "maps": 56,
+          "rounds": 1233,
+          "kd": 1.6,
+          "kdDiff": 406.0
+        },
+        "top20": {
+          "rating": 1.37,
+          "maps": 75,
+          "rounds": 1643,
+          "kd": 1.57,
+          "kdDiff": 518.0
+        },
+        "top50": {
+          "rating": 1.39,
+          "maps": 85,
+          "rounds": 1857,
+          "kd": 1.61,
+          "kdDiff": 616.0
+        }
+      }
+    },
+    {
+      "team": "Vitality",
+      "rank": 1,
+      "handle": "flameZ",
+      "playerId": 16693,
+      "slug": "flamez",
+      "splits": {
+        "overall": {
+          "rating": 1.2,
+          "maps": 85,
+          "rounds": 1857,
+          "kd": 1.14,
+          "kdDiff": 175.0
+        },
+        "top5": {
+          "rating": 1.2,
+          "maps": 35,
+          "rounds": 761,
+          "kd": 1.09,
+          "kdDiff": 47.0
+        },
+        "top10": {
+          "rating": 1.22,
+          "maps": 56,
+          "rounds": 1233,
+          "kd": 1.14,
+          "kdDiff": 115.0
+        },
+        "top20": {
+          "rating": 1.19,
+          "maps": 75,
+          "rounds": 1643,
+          "kd": 1.13,
+          "kdDiff": 140.0
+        },
+        "top50": {
+          "rating": 1.2,
+          "maps": 85,
+          "rounds": 1857,
+          "kd": 1.14,
+          "kdDiff": 175.0
+        }
+      }
+    },
+    {
+      "team": "Vitality",
+      "rank": 1,
+      "handle": "mezii",
+      "playerId": 18462,
+      "slug": "mezii",
+      "splits": {
+        "overall": {
+          "rating": 1.05,
+          "maps": 85,
+          "rounds": 1857,
+          "kd": 1.02,
+          "kdDiff": 17.0
+        },
+        "top5": {
+          "rating": 1.01,
+          "maps": 35,
+          "rounds": 761,
+          "kd": 0.99,
+          "kdDiff": -5.0
+        },
+        "top10": {
+          "rating": 1.03,
+          "maps": 56,
+          "rounds": 1233,
+          "kd": 0.99,
+          "kdDiff": -9.0
+        },
+        "top20": {
+          "rating": 1.04,
+          "maps": 75,
+          "rounds": 1643,
+          "kd": 1.01,
+          "kdDiff": 8.0
+        },
+        "top50": {
+          "rating": 1.05,
+          "maps": 85,
+          "rounds": 1857,
+          "kd": 1.02,
+          "kdDiff": 17.0
+        }
+      }
+    },
+    {
+      "team": "Natus Vincere",
+      "rank": 2,
+      "handle": "Aleksib",
+      "playerId": 9816,
+      "slug": "aleksib",
+      "splits": {
+        "overall": {
+          "rating": 0.89,
+          "maps": 100,
+          "rounds": 2112,
+          "kd": 0.8,
+          "kdDiff": -267.0
+        },
+        "top5": {
+          "rating": 0.88,
+          "maps": 23,
+          "rounds": 485,
+          "kd": 0.78,
+          "kdDiff": -71.0
+        },
+        "top10": {
+          "rating": 0.85,
+          "maps": 64,
+          "rounds": 1360,
+          "kd": 0.73,
+          "kdDiff": -240.0
+        },
+        "top20": {
+          "rating": 0.89,
+          "maps": 90,
+          "rounds": 1900,
+          "kd": 0.8,
+          "kdDiff": -241.0
+        },
+        "top50": {
+          "rating": 0.89,
+          "maps": 100,
+          "rounds": 2112,
+          "kd": 0.8,
+          "kdDiff": -267.0
+        }
+      }
+    },
+    {
+      "team": "Natus Vincere",
+      "rank": 2,
+      "handle": "iM",
+      "playerId": 14759,
+      "slug": "im",
+      "splits": {
+        "overall": {
+          "rating": 1.07,
+          "maps": 100,
+          "rounds": 2112,
+          "kd": 1.04,
+          "kdDiff": 51.0
+        },
+        "top5": {
+          "rating": 0.99,
+          "maps": 23,
+          "rounds": 485,
+          "kd": 0.95,
+          "kdDiff": -18.0
+        },
+        "top10": {
+          "rating": 1.0,
+          "maps": 64,
+          "rounds": 1360,
+          "kd": 0.95,
+          "kdDiff": -51.0
+        },
+        "top20": {
+          "rating": 1.06,
+          "maps": 90,
+          "rounds": 1900,
+          "kd": 1.03,
+          "kdDiff": 34.0
+        },
+        "top50": {
+          "rating": 1.07,
+          "maps": 100,
+          "rounds": 2112,
+          "kd": 1.04,
+          "kdDiff": 51.0
+        }
+      }
+    },
+    {
+      "team": "Natus Vincere",
+      "rank": 2,
+      "handle": "b1t",
+      "playerId": 18987,
+      "slug": "b1t",
+      "splits": {
+        "overall": {
+          "rating": 1.12,
+          "maps": 100,
+          "rounds": 2112,
+          "kd": 1.11,
+          "kdDiff": 149.0
+        },
+        "top5": {
+          "rating": 1.1,
+          "maps": 23,
+          "rounds": 485,
+          "kd": 1.0,
+          "kdDiff": -1.0
+        },
+        "top10": {
+          "rating": 1.12,
+          "maps": 64,
+          "rounds": 1360,
+          "kd": 1.09,
+          "kdDiff": 78.0
+        },
+        "top20": {
+          "rating": 1.12,
+          "maps": 90,
+          "rounds": 1900,
+          "kd": 1.1,
+          "kdDiff": 123.0
+        },
+        "top50": {
+          "rating": 1.12,
+          "maps": 100,
+          "rounds": 2112,
+          "kd": 1.11,
+          "kdDiff": 149.0
+        }
+      }
+    },
+    {
+      "team": "Natus Vincere",
+      "rank": 2,
+      "handle": "w0nderful",
+      "playerId": 20127,
+      "slug": "w0nderful",
+      "splits": {
+        "overall": {
+          "rating": 1.12,
+          "maps": 100,
+          "rounds": 2112,
+          "kd": 1.27,
+          "kdDiff": 329.0
+        },
+        "top5": {
+          "rating": 1.1,
+          "maps": 23,
+          "rounds": 485,
+          "kd": 1.3,
+          "kdDiff": 86.0
+        },
+        "top10": {
+          "rating": 1.08,
+          "maps": 64,
+          "rounds": 1360,
+          "kd": 1.22,
+          "kdDiff": 178.0
+        },
+        "top20": {
+          "rating": 1.11,
+          "maps": 90,
+          "rounds": 1900,
+          "kd": 1.25,
+          "kdDiff": 280.0
+        },
+        "top50": {
+          "rating": 1.12,
+          "maps": 100,
+          "rounds": 2112,
+          "kd": 1.27,
+          "kdDiff": 329.0
+        }
+      }
+    },
+    {
+      "team": "Natus Vincere",
+      "rank": 2,
+      "handle": "makazze",
+      "playerId": 22673,
+      "slug": "makazze",
+      "splits": {
+        "overall": {
+          "rating": 1.16,
+          "maps": 100,
+          "rounds": 2112,
+          "kd": 1.07,
+          "kdDiff": 97.0
+        },
+        "top5": {
+          "rating": 1.09,
+          "maps": 23,
+          "rounds": 485,
+          "kd": 0.98,
+          "kdDiff": -8.0
+        },
+        "top10": {
+          "rating": 1.12,
+          "maps": 64,
+          "rounds": 1360,
+          "kd": 1.01,
+          "kdDiff": 10.0
+        },
+        "top20": {
+          "rating": 1.15,
+          "maps": 90,
+          "rounds": 1900,
+          "kd": 1.05,
+          "kdDiff": 68.0
+        },
+        "top50": {
+          "rating": 1.16,
+          "maps": 100,
+          "rounds": 2112,
+          "kd": 1.07,
+          "kdDiff": 97.0
+        }
+      }
+    },
+    {
+      "team": "Spirit",
+      "rank": 3,
+      "handle": "sh1ro",
+      "playerId": 16920,
+      "slug": "sh1ro",
+      "splits": {
+        "overall": {
+          "rating": 1.17,
+          "maps": 70,
+          "rounds": 1463,
+          "kd": 1.47,
+          "kdDiff": 361.0
+        },
+        "top5": {
+          "rating": 1.1,
+          "maps": 25,
+          "rounds": 530,
+          "kd": 1.29,
+          "kdDiff": 86.0
+        },
+        "top10": {
+          "rating": 1.15,
+          "maps": 40,
+          "rounds": 867,
+          "kd": 1.36,
+          "kdDiff": 173.0
+        },
+        "top20": {
+          "rating": 1.17,
+          "maps": 61,
+          "rounds": 1290,
+          "kd": 1.46,
+          "kdDiff": 315.0
+        },
+        "top50": {
+          "rating": 1.18,
+          "maps": 68,
+          "rounds": 1421,
+          "kd": 1.47,
+          "kdDiff": 355.0
+        }
+      }
+    },
+    {
+      "team": "Spirit",
+      "rank": 3,
+      "handle": "magixx",
+      "playerId": 18317,
+      "slug": "magixx",
+      "splits": {
+        "overall": {
+          "rating": 1.0,
+          "maps": 70,
+          "rounds": 1463,
+          "kd": 0.96,
+          "kdDiff": -32.0
+        },
+        "top5": {
+          "rating": 0.9,
+          "maps": 25,
+          "rounds": 530,
+          "kd": 0.84,
+          "kdDiff": -56.0
+        },
+        "top10": {
+          "rating": 0.9,
+          "maps": 40,
+          "rounds": 867,
+          "kd": 0.84,
+          "kdDiff": -92.0
+        },
+        "top20": {
+          "rating": 0.98,
+          "maps": 61,
+          "rounds": 1290,
+          "kd": 0.93,
+          "kdDiff": -54.0
+        },
+        "top50": {
+          "rating": 1.0,
+          "maps": 68,
+          "rounds": 1421,
+          "kd": 0.95,
+          "kdDiff": -40.0
+        }
+      }
+    },
+    {
+      "team": "Spirit",
+      "rank": 3,
+      "handle": "tN1R",
+      "playerId": 19808,
+      "slug": "tn1r",
+      "splits": {
+        "overall": {
+          "rating": 1.07,
+          "maps": 70,
+          "rounds": 1463,
+          "kd": 1.06,
+          "kdDiff": 56.0
+        },
+        "top5": {
+          "rating": 1.04,
+          "maps": 25,
+          "rounds": 530,
+          "kd": 1.03,
+          "kdDiff": 12.0
+        },
+        "top10": {
+          "rating": 1.0,
+          "maps": 40,
+          "rounds": 867,
+          "kd": 0.98,
+          "kdDiff": -14.0
+        },
+        "top20": {
+          "rating": 1.04,
+          "maps": 61,
+          "rounds": 1290,
+          "kd": 1.02,
+          "kdDiff": 17.0
+        },
+        "top50": {
+          "rating": 1.06,
+          "maps": 68,
+          "rounds": 1421,
+          "kd": 1.05,
+          "kdDiff": 46.0
+        }
+      }
+    },
+    {
+      "team": "Spirit",
+      "rank": 3,
+      "handle": "zont1x",
+      "playerId": 20423,
+      "slug": "zont1x",
+      "splits": {
+        "overall": {
+          "rating": 0.98,
+          "maps": 70,
+          "rounds": 1463,
+          "kd": 0.99,
+          "kdDiff": -12.0
+        },
+        "top5": {
+          "rating": 0.93,
+          "maps": 25,
+          "rounds": 530,
+          "kd": 0.91,
+          "kdDiff": -32.0
+        },
+        "top10": {
+          "rating": 0.97,
+          "maps": 40,
+          "rounds": 867,
+          "kd": 0.94,
+          "kdDiff": -31.0
+        },
+        "top20": {
+          "rating": 0.97,
+          "maps": 61,
+          "rounds": 1290,
+          "kd": 0.97,
+          "kdDiff": -26.0
+        },
+        "top50": {
+          "rating": 0.98,
+          "maps": 68,
+          "rounds": 1421,
+          "kd": 0.99,
+          "kdDiff": -12.0
+        }
+      }
+    },
+    {
+      "team": "Spirit",
+      "rank": 3,
+      "handle": "donk",
+      "playerId": 21167,
+      "slug": "donk",
+      "splits": {
+        "overall": {
+          "rating": 1.45,
+          "maps": 70,
+          "rounds": 1463,
+          "kd": 1.4,
+          "kdDiff": 393.0
+        },
+        "top5": {
+          "rating": 1.26,
+          "maps": 25,
+          "rounds": 530,
+          "kd": 1.15,
+          "kdDiff": 58.0
+        },
+        "top10": {
+          "rating": 1.32,
+          "maps": 40,
+          "rounds": 867,
+          "kd": 1.21,
+          "kdDiff": 130.0
+        },
+        "top20": {
+          "rating": 1.41,
+          "maps": 61,
+          "rounds": 1290,
+          "kd": 1.37,
+          "kdDiff": 319.0
+        },
+        "top50": {
+          "rating": 1.44,
+          "maps": 68,
+          "rounds": 1421,
+          "kd": 1.4,
+          "kdDiff": 376.0
+        }
+      }
+    },
+    {
+      "team": "Falcons",
+      "rank": 4,
+      "handle": "karrigan",
+      "playerId": 429,
+      "slug": "karrigan",
+      "splits": {
+        "overall": {
+          "rating": 0.83,
+          "maps": 86,
+          "rounds": 1865,
+          "kd": 0.73,
+          "kdDiff": -356.0
+        },
+        "top5": {
+          "rating": 0.73,
+          "maps": 14,
+          "rounds": 332,
+          "kd": 0.64,
+          "kdDiff": -94.0
+        },
+        "top10": {
+          "rating": 0.72,
+          "maps": 36,
+          "rounds": 805,
+          "kd": 0.62,
+          "kdDiff": -230.0
+        },
+        "top20": {
+          "rating": 0.78,
+          "maps": 57,
+          "rounds": 1273,
+          "kd": 0.68,
+          "kdDiff": -297.0
+        },
+        "top50": {
+          "rating": 0.81,
+          "maps": 78,
+          "rounds": 1710,
+          "kd": 0.71,
+          "kdDiff": -365.0
+        }
+      }
+    },
+    {
+      "team": "Falcons",
+      "rank": 4,
+      "handle": "NiKo",
+      "playerId": 3741,
+      "slug": "niko",
+      "splits": {
+        "overall": {
+          "rating": 1.1,
+          "maps": 87,
+          "rounds": 1959,
+          "kd": 1.08,
+          "kdDiff": 94.0
+        },
+        "top5": {
+          "rating": 1.02,
+          "maps": 40,
+          "rounds": 952,
+          "kd": 0.97,
+          "kdDiff": -19.0
+        },
+        "top10": {
+          "rating": 1.03,
+          "maps": 55,
+          "rounds": 1278,
+          "kd": 0.97,
+          "kdDiff": -27.0
+        },
+        "top20": {
+          "rating": 1.11,
+          "maps": 80,
+          "rounds": 1812,
+          "kd": 1.07,
+          "kdDiff": 80.0
+        },
+        "top50": {
+          "rating": 1.1,
+          "maps": 87,
+          "rounds": 1959,
+          "kd": 1.08,
+          "kdDiff": 94.0
+        }
+      }
+    },
+    {
+      "team": "Falcons",
+      "rank": 4,
+      "handle": "TeSeS",
+      "playerId": 12018,
+      "slug": "teses",
+      "splits": {
+        "overall": {
+          "rating": 1.03,
+          "maps": 87,
+          "rounds": 1959,
+          "kd": 0.96,
+          "kdDiff": -44.0
+        },
+        "top5": {
+          "rating": 1.01,
+          "maps": 40,
+          "rounds": 952,
+          "kd": 0.9,
+          "kdDiff": -61.0
+        },
+        "top10": {
+          "rating": 1.01,
+          "maps": 55,
+          "rounds": 1278,
+          "kd": 0.92,
+          "kdDiff": -67.0
+        },
+        "top20": {
+          "rating": 1.01,
+          "maps": 80,
+          "rounds": 1812,
+          "kd": 0.94,
+          "kdDiff": -70.0
+        },
+        "top50": {
+          "rating": 1.03,
+          "maps": 87,
+          "rounds": 1959,
+          "kd": 0.96,
+          "kdDiff": -44.0
+        }
+      }
+    },
+    {
+      "team": "Falcons",
+      "rank": 4,
+      "handle": "m0NESY",
+      "playerId": 19230,
+      "slug": "m0nesy",
+      "splits": {
+        "overall": {
+          "rating": 1.27,
+          "maps": 87,
+          "rounds": 1959,
+          "kd": 1.38,
+          "kdDiff": 436.0
+        },
+        "top5": {
+          "rating": 1.21,
+          "maps": 40,
+          "rounds": 952,
+          "kd": 1.3,
+          "kdDiff": 177.0
+        },
+        "top10": {
+          "rating": 1.2,
+          "maps": 55,
+          "rounds": 1278,
+          "kd": 1.28,
+          "kdDiff": 224.0
+        },
+        "top20": {
+          "rating": 1.25,
+          "maps": 80,
+          "rounds": 1812,
+          "kd": 1.36,
+          "kdDiff": 389.0
+        },
+        "top50": {
+          "rating": 1.27,
+          "maps": 87,
+          "rounds": 1959,
+          "kd": 1.38,
+          "kdDiff": 436.0
+        }
+      }
+    },
+    {
+      "team": "Falcons",
+      "rank": 4,
+      "handle": "kyousuke",
+      "playerId": 24177,
+      "slug": "kyousuke",
+      "splits": {
+        "overall": {
+          "rating": 1.17,
+          "maps": 77,
+          "rounds": 1739,
+          "kd": 1.12,
+          "kdDiff": 149.0
+        },
+        "top5": {
+          "rating": 1.11,
+          "maps": 34,
+          "rounds": 823,
+          "kd": 1.04,
+          "kdDiff": 26.0
+        },
+        "top10": {
+          "rating": 1.16,
+          "maps": 49,
+          "rounds": 1149,
+          "kd": 1.09,
+          "kdDiff": 75.0
+        },
+        "top20": {
+          "rating": 1.17,
+          "maps": 70,
+          "rounds": 1592,
+          "kd": 1.11,
+          "kdDiff": 123.0
+        },
+        "top50": {
+          "rating": 1.17,
+          "maps": 77,
+          "rounds": 1739,
+          "kd": 1.12,
+          "kdDiff": 149.0
+        }
+      }
+    },
+    {
+      "team": "FURIA",
+      "rank": 5,
+      "handle": "FalleN",
+      "playerId": 2023,
+      "slug": "fallen",
+      "splits": {
+        "overall": {
+          "rating": 0.91,
+          "maps": 97,
+          "rounds": 2125,
+          "kd": 0.85,
+          "kdDiff": -207.0
+        },
+        "top5": {
+          "rating": 0.93,
+          "maps": 33,
+          "rounds": 795,
+          "kd": 0.84,
+          "kdDiff": -85.0
+        },
+        "top10": {
+          "rating": 0.91,
+          "maps": 49,
+          "rounds": 1127,
+          "kd": 0.85,
+          "kdDiff": -113.0
+        },
+        "top20": {
+          "rating": 0.92,
+          "maps": 90,
+          "rounds": 1980,
+          "kd": 0.86,
+          "kdDiff": -190.0
+        },
+        "top50": {
+          "rating": 0.91,
+          "maps": 97,
+          "rounds": 2125,
+          "kd": 0.85,
+          "kdDiff": -207.0
+        }
+      }
+    },
+    {
+      "team": "FURIA",
+      "rank": 5,
+      "handle": "yuurih",
+      "playerId": 12553,
+      "slug": "yuurih",
+      "splits": {
+        "overall": {
+          "rating": 0.96,
+          "maps": 97,
+          "rounds": 2125,
+          "kd": 0.92,
+          "kdDiff": -107.0
+        },
+        "top5": {
+          "rating": 0.92,
+          "maps": 33,
+          "rounds": 795,
+          "kd": 0.85,
+          "kdDiff": -83.0
+        },
+        "top10": {
+          "rating": 0.95,
+          "maps": 49,
+          "rounds": 1127,
+          "kd": 0.87,
+          "kdDiff": -94.0
+        },
+        "top20": {
+          "rating": 0.95,
+          "maps": 90,
+          "rounds": 1980,
+          "kd": 0.9,
+          "kdDiff": -129.0
+        },
+        "top50": {
+          "rating": 0.96,
+          "maps": 97,
+          "rounds": 2125,
+          "kd": 0.92,
+          "kdDiff": -107.0
+        }
+      }
+    },
+    {
+      "team": "FURIA",
+      "rank": 5,
+      "handle": "YEKINDAR",
+      "playerId": 13915,
+      "slug": "yekindar",
+      "splits": {
+        "overall": {
+          "rating": 1.06,
+          "maps": 97,
+          "rounds": 2125,
+          "kd": 1.0,
+          "kdDiff": 1.0
+        },
+        "top5": {
+          "rating": 1.0,
+          "maps": 33,
+          "rounds": 795,
+          "kd": 0.91,
+          "kdDiff": -51.0
+        },
+        "top10": {
+          "rating": 1.03,
+          "maps": 49,
+          "rounds": 1127,
+          "kd": 0.94,
+          "kdDiff": -45.0
+        },
+        "top20": {
+          "rating": 1.04,
+          "maps": 90,
+          "rounds": 1980,
+          "kd": 0.99,
+          "kdDiff": -16.0
+        },
+        "top50": {
+          "rating": 1.06,
+          "maps": 97,
+          "rounds": 2125,
+          "kd": 1.0,
+          "kdDiff": 1.0
+        }
+      }
+    },
+    {
+      "team": "FURIA",
+      "rank": 5,
+      "handle": "KSCERATO",
+      "playerId": 15631,
+      "slug": "kscerato",
+      "splits": {
+        "overall": {
+          "rating": 1.16,
+          "maps": 97,
+          "rounds": 2125,
+          "kd": 1.18,
+          "kdDiff": 240.0
+        },
+        "top5": {
+          "rating": 1.12,
+          "maps": 33,
+          "rounds": 795,
+          "kd": 1.15,
+          "kdDiff": 74.0
+        },
+        "top10": {
+          "rating": 1.14,
+          "maps": 49,
+          "rounds": 1127,
+          "kd": 1.17,
+          "kdDiff": 124.0
+        },
+        "top20": {
+          "rating": 1.16,
+          "maps": 90,
+          "rounds": 1980,
+          "kd": 1.18,
+          "kdDiff": 219.0
+        },
+        "top50": {
+          "rating": 1.16,
+          "maps": 97,
+          "rounds": 2125,
+          "kd": 1.18,
+          "kdDiff": 240.0
+        }
+      }
+    },
+    {
+      "team": "FURIA",
+      "rank": 5,
+      "handle": "molodoy",
+      "playerId": 24144,
+      "slug": "molodoy",
+      "splits": {
+        "overall": {
+          "rating": 1.14,
+          "maps": 97,
+          "rounds": 2125,
+          "kd": 1.26,
+          "kdDiff": 331.0
+        },
+        "top5": {
+          "rating": 1.03,
+          "maps": 33,
+          "rounds": 795,
+          "kd": 1.1,
+          "kdDiff": 49.0
+        },
+        "top10": {
+          "rating": 1.02,
+          "maps": 49,
+          "rounds": 1127,
+          "kd": 1.09,
+          "kdDiff": 64.0
+        },
+        "top20": {
+          "rating": 1.13,
+          "maps": 90,
+          "rounds": 1980,
+          "kd": 1.23,
+          "kdDiff": 277.0
+        },
+        "top50": {
+          "rating": 1.14,
+          "maps": 97,
+          "rounds": 2125,
+          "kd": 1.26,
+          "kdDiff": 331.0
+        }
+      }
+    },
+    {
+      "team": "Aurora",
+      "rank": 6,
+      "handle": "MAJ3R",
+      "playerId": 150,
+      "slug": "maj3r",
+      "splits": {
+        "overall": {
+          "rating": 0.92,
+          "maps": 98,
+          "rounds": 2153,
+          "kd": 0.84,
+          "kdDiff": -220.0
+        },
+        "top5": {
+          "rating": 0.77,
+          "maps": 7,
+          "rounds": 146,
+          "kd": 0.72,
+          "kdDiff": -29.0
+        },
+        "top10": {
+          "rating": 0.89,
+          "maps": 54,
+          "rounds": 1199,
+          "kd": 0.8,
+          "kdDiff": -164.0
+        },
+        "top20": {
+          "rating": 0.91,
+          "maps": 84,
+          "rounds": 1866,
+          "kd": 0.82,
+          "kdDiff": -225.0
+        },
+        "top50": {
+          "rating": 0.92,
+          "maps": 96,
+          "rounds": 2112,
+          "kd": 0.84,
+          "kdDiff": -219.0
+        }
+      }
+    },
+    {
+      "team": "Aurora",
+      "rank": 6,
+      "handle": "XANTARES",
+      "playerId": 7938,
+      "slug": "xantares",
+      "splits": {
+        "overall": {
+          "rating": 1.11,
+          "maps": 98,
+          "rounds": 2153,
+          "kd": 1.1,
+          "kdDiff": 144.0
+        },
+        "top5": {
+          "rating": 1.03,
+          "maps": 7,
+          "rounds": 146,
+          "kd": 0.93,
+          "kdDiff": -8.0
+        },
+        "top10": {
+          "rating": 1.03,
+          "maps": 54,
+          "rounds": 1199,
+          "kd": 1.02,
+          "kdDiff": 17.0
+        },
+        "top20": {
+          "rating": 1.1,
+          "maps": 84,
+          "rounds": 1866,
+          "kd": 1.09,
+          "kdDiff": 113.0
+        },
+        "top50": {
+          "rating": 1.11,
+          "maps": 96,
+          "rounds": 2112,
+          "kd": 1.1,
+          "kdDiff": 142.0
+        }
+      }
+    },
+    {
+      "team": "Aurora",
+      "rank": 6,
+      "handle": "woxic",
+      "playerId": 8574,
+      "slug": "woxic",
+      "splits": {
+        "overall": {
+          "rating": 1.06,
+          "maps": 98,
+          "rounds": 2153,
+          "kd": 1.16,
+          "kdDiff": 206.0
+        },
+        "top5": {
+          "rating": 0.87,
+          "maps": 7,
+          "rounds": 146,
+          "kd": 0.97,
+          "kdDiff": -3.0
+        },
+        "top10": {
+          "rating": 0.98,
+          "maps": 54,
+          "rounds": 1199,
+          "kd": 1.05,
+          "kdDiff": 41.0
+        },
+        "top20": {
+          "rating": 1.03,
+          "maps": 84,
+          "rounds": 1866,
+          "kd": 1.1,
+          "kdDiff": 114.0
+        },
+        "top50": {
+          "rating": 1.06,
+          "maps": 96,
+          "rounds": 2112,
+          "kd": 1.16,
+          "kdDiff": 200.0
+        }
+      }
+    },
+    {
+      "team": "Aurora",
+      "rank": 6,
+      "handle": "soulfly",
+      "playerId": 20968,
+      "slug": "soulfly",
+      "splits": {
+        "overall": {
+          "rating": 1.01,
+          "maps": 98,
+          "rounds": 2153,
+          "kd": 0.94,
+          "kdDiff": -90.0
+        },
+        "top5": {
+          "rating": 1.01,
+          "maps": 7,
+          "rounds": 146,
+          "kd": 0.88,
+          "kdDiff": -13.0
+        },
+        "top10": {
+          "rating": 1.0,
+          "maps": 54,
+          "rounds": 1199,
+          "kd": 0.93,
+          "kdDiff": -56.0
+        },
+        "top20": {
+          "rating": 1.01,
+          "maps": 84,
+          "rounds": 1866,
+          "kd": 0.94,
+          "kdDiff": -79.0
+        },
+        "top50": {
+          "rating": 1.0,
+          "maps": 96,
+          "rounds": 2112,
+          "kd": 0.93,
+          "kdDiff": -98.0
+        }
+      }
+    },
+    {
+      "team": "Aurora",
+      "rank": 6,
+      "handle": "Wicadia",
+      "playerId": 21243,
+      "slug": "wicadia",
+      "splits": {
+        "overall": {
+          "rating": 1.12,
+          "maps": 98,
+          "rounds": 2153,
+          "kd": 1.11,
+          "kdDiff": 159.0
+        },
+        "top5": {
+          "rating": 1.01,
+          "maps": 7,
+          "rounds": 146,
+          "kd": 0.97,
+          "kdDiff": -3.0
+        },
+        "top10": {
+          "rating": 1.03,
+          "maps": 54,
+          "rounds": 1199,
+          "kd": 0.98,
+          "kdDiff": -13.0
+        },
+        "top20": {
+          "rating": 1.08,
+          "maps": 84,
+          "rounds": 1866,
+          "kd": 1.05,
+          "kdDiff": 61.0
+        },
+        "top50": {
+          "rating": 1.12,
+          "maps": 96,
+          "rounds": 2112,
+          "kd": 1.11,
+          "kdDiff": 152.0
+        }
+      }
+    },
+    {
+      "team": "MOUZ",
+      "rank": 7,
+      "handle": "torzsi",
+      "playerId": 18072,
+      "slug": "torzsi",
+      "splits": {
+        "overall": {
+          "rating": 1.02,
+          "maps": 88,
+          "rounds": 1862,
+          "kd": 1.19,
+          "kdDiff": 198.0
+        },
+        "top5": {
+          "rating": 0.95,
+          "maps": 21,
+          "rounds": 438,
+          "kd": 1.02,
+          "kdDiff": 5.0
+        },
+        "top10": {
+          "rating": 1.03,
+          "maps": 48,
+          "rounds": 1007,
+          "kd": 1.18,
+          "kdDiff": 106.0
+        },
+        "top20": {
+          "rating": 1.01,
+          "maps": 82,
+          "rounds": 1735,
+          "kd": 1.18,
+          "kdDiff": 176.0
+        },
+        "top50": {
+          "rating": 1.02,
+          "maps": 88,
+          "rounds": 1862,
+          "kd": 1.19,
+          "kdDiff": 198.0
+        }
+      }
+    },
+    {
+      "team": "MOUZ",
+      "rank": 7,
+      "handle": "Spinx",
+      "playerId": 18221,
+      "slug": "spinx",
+      "splits": {
+        "overall": {
+          "rating": 1.09,
+          "maps": 88,
+          "rounds": 1862,
+          "kd": 1.1,
+          "kdDiff": 117.0
+        },
+        "top5": {
+          "rating": 0.98,
+          "maps": 21,
+          "rounds": 438,
+          "kd": 0.98,
+          "kdDiff": -5.0
+        },
+        "top10": {
+          "rating": 1.06,
+          "maps": 48,
+          "rounds": 1007,
+          "kd": 1.05,
+          "kdDiff": 34.0
+        },
+        "top20": {
+          "rating": 1.09,
+          "maps": 82,
+          "rounds": 1735,
+          "kd": 1.1,
+          "kdDiff": 105.0
+        },
+        "top50": {
+          "rating": 1.09,
+          "maps": 88,
+          "rounds": 1862,
+          "kd": 1.1,
+          "kdDiff": 117.0
+        }
+      }
+    },
+    {
+      "team": "MOUZ",
+      "rank": 7,
+      "handle": "xertioN",
+      "playerId": 20312,
+      "slug": "xertion",
+      "splits": {
+        "overall": {
+          "rating": 1.14,
+          "maps": 88,
+          "rounds": 1862,
+          "kd": 1.1,
+          "kdDiff": 125.0
+        },
+        "top5": {
+          "rating": 1.0,
+          "maps": 21,
+          "rounds": 438,
+          "kd": 0.93,
+          "kdDiff": -20.0
+        },
+        "top10": {
+          "rating": 1.05,
+          "maps": 48,
+          "rounds": 1007,
+          "kd": 0.99,
+          "kdDiff": -8.0
+        },
+        "top20": {
+          "rating": 1.13,
+          "maps": 82,
+          "rounds": 1735,
+          "kd": 1.09,
+          "kdDiff": 105.0
+        },
+        "top50": {
+          "rating": 1.14,
+          "maps": 88,
+          "rounds": 1862,
+          "kd": 1.1,
+          "kdDiff": 125.0
+        }
+      }
+    },
+    {
+      "team": "MOUZ",
+      "rank": 7,
+      "handle": "xelex",
+      "playerId": 24457,
+      "slug": "xelex",
+      "splits": {
+        "overall": {
+          "rating": 1.18,
+          "maps": 195,
+          "rounds": 4326,
+          "kd": 1.16,
+          "kdDiff": 466.0
+        },
+        "top5": {
+          "rating": null,
+          "maps": null,
+          "rounds": null,
+          "kd": null,
+          "kdDiff": null
+        },
+        "top10": {
+          "rating": 0.99,
+          "maps": 9,
+          "rounds": 197,
+          "kd": 0.92,
+          "kdDiff": -11.0
+        },
+        "top20": {
+          "rating": 1.12,
+          "maps": 27,
+          "rounds": 571,
+          "kd": 1.1,
+          "kdDiff": 35.0
+        },
+        "top50": {
+          "rating": 1.09,
+          "maps": 33,
+          "rounds": 698,
+          "kd": 1.06,
+          "kdDiff": 28.0
+        }
+      }
+    },
+    {
+      "team": "MOUZ",
+      "rank": 7,
+      "handle": "Brollan",
+      "playerId": 13666,
+      "slug": "brollan",
+      "splits": {
+        "overall": {
+          "rating": 0.99,
+          "maps": 55,
+          "rounds": 1164,
+          "kd": 0.93,
+          "kdDiff": -53.0
+        },
+        "top5": {
+          "rating": 0.96,
+          "maps": 21,
+          "rounds": 438,
+          "kd": 0.82,
+          "kdDiff": -55.0
+        },
+        "top10": {
+          "rating": 1.02,
+          "maps": 39,
+          "rounds": 810,
+          "kd": 0.94,
+          "kdDiff": -31.0
+        },
+        "top20": {
+          "rating": 0.99,
+          "maps": 55,
+          "rounds": 1164,
+          "kd": 0.93,
+          "kdDiff": -53.0
+        },
+        "top50": {
+          "rating": 0.99,
+          "maps": 55,
+          "rounds": 1164,
+          "kd": 0.93,
+          "kdDiff": -53.0
+        }
+      }
+    },
+    {
+      "team": "Legacy",
+      "rank": 8,
+      "handle": "arT",
+      "playerId": 12521,
+      "slug": "art",
+      "splits": {
+        "overall": {
+          "rating": 0.98,
+          "maps": 95,
+          "rounds": 2032,
+          "kd": 0.91,
+          "kdDiff": -128.0
+        },
+        "top5": {
+          "rating": null,
+          "maps": null,
+          "rounds": null,
+          "kd": null,
+          "kdDiff": null
+        },
+        "top10": {
+          "rating": 0.93,
+          "maps": 17,
+          "rounds": 357,
+          "kd": 0.85,
+          "kdDiff": -38.0
+        },
+        "top20": {
+          "rating": 0.93,
+          "maps": 61,
+          "rounds": 1331,
+          "kd": 0.84,
+          "kdDiff": -146.0
+        },
+        "top50": {
+          "rating": 0.96,
+          "maps": 85,
+          "rounds": 1851,
+          "kd": 0.89,
+          "kdDiff": -134.0
+        }
+      }
+    },
+    {
+      "team": "Legacy",
+      "rank": 8,
+      "handle": "dumau",
+      "playerId": 15698,
+      "slug": "dumau",
+      "splits": {
+        "overall": {
+          "rating": 1.17,
+          "maps": 109,
+          "rounds": 2336,
+          "kd": 1.2,
+          "kdDiff": 302.0
+        },
+        "top5": {
+          "rating": null,
+          "maps": null,
+          "rounds": null,
+          "kd": null,
+          "kdDiff": null
+        },
+        "top10": {
+          "rating": 1.1,
+          "maps": 17,
+          "rounds": 357,
+          "kd": 1.13,
+          "kdDiff": 31.0
+        },
+        "top20": {
+          "rating": 1.11,
+          "maps": 65,
+          "rounds": 1417,
+          "kd": 1.12,
+          "kdDiff": 117.0
+        },
+        "top50": {
+          "rating": 1.13,
+          "maps": 97,
+          "rounds": 2111,
+          "kd": 1.14,
+          "kdDiff": 194.0
+        }
+      }
+    },
+    {
+      "team": "Legacy",
+      "rank": 8,
+      "handle": "latto",
+      "playerId": 19045,
+      "slug": "latto",
+      "splits": {
+        "overall": {
+          "rating": 1.15,
+          "maps": 109,
+          "rounds": 2336,
+          "kd": 1.19,
+          "kdDiff": 278.0
+        },
+        "top5": {
+          "rating": null,
+          "maps": null,
+          "rounds": null,
+          "kd": null,
+          "kdDiff": null
+        },
+        "top10": {
+          "rating": 1.27,
+          "maps": 17,
+          "rounds": 357,
+          "kd": 1.34,
+          "kdDiff": 74.0
+        },
+        "top20": {
+          "rating": 1.13,
+          "maps": 65,
+          "rounds": 1417,
+          "kd": 1.15,
+          "kdDiff": 139.0
+        },
+        "top50": {
+          "rating": 1.15,
+          "maps": 97,
+          "rounds": 2111,
+          "kd": 1.18,
+          "kdDiff": 238.0
+        }
+      }
+    },
+    {
+      "team": "Legacy",
+      "rank": 8,
+      "handle": "n1ssim",
+      "playerId": 19686,
+      "slug": "n1ssim",
+      "splits": {
+        "overall": {
+          "rating": 1.04,
+          "maps": 109,
+          "rounds": 2336,
+          "kd": 1.04,
+          "kdDiff": 53.0
+        },
+        "top5": {
+          "rating": null,
+          "maps": null,
+          "rounds": null,
+          "kd": null,
+          "kdDiff": null
+        },
+        "top10": {
+          "rating": 0.96,
+          "maps": 17,
+          "rounds": 357,
+          "kd": 0.91,
+          "kdDiff": -20.0
+        },
+        "top20": {
+          "rating": 1.02,
+          "maps": 65,
+          "rounds": 1417,
+          "kd": 1.01,
+          "kdDiff": 11.0
+        },
+        "top50": {
+          "rating": 1.03,
+          "maps": 97,
+          "rounds": 2111,
+          "kd": 1.02,
+          "kdDiff": 28.0
+        }
+      }
+    },
+    {
+      "team": "Legacy",
+      "rank": 8,
+      "handle": "saadzin",
+      "playerId": 22965,
+      "slug": "saadzin",
+      "splits": {
+        "overall": {
+          "rating": 1.07,
+          "maps": 109,
+          "rounds": 2336,
+          "kd": 1.22,
+          "kdDiff": 285.0
+        },
+        "top5": {
+          "rating": null,
+          "maps": null,
+          "rounds": null,
+          "kd": null,
+          "kdDiff": null
+        },
+        "top10": {
+          "rating": 1.02,
+          "maps": 17,
+          "rounds": 357,
+          "kd": 1.13,
+          "kdDiff": 27.0
+        },
+        "top20": {
+          "rating": 1.02,
+          "maps": 65,
+          "rounds": 1417,
+          "kd": 1.14,
+          "kdDiff": 114.0
+        },
+        "top50": {
+          "rating": 1.05,
+          "maps": 97,
+          "rounds": 2111,
+          "kd": 1.18,
+          "kdDiff": 210.0
+        }
+      }
+    },
+    {
+      "team": "The MongolZ",
+      "rank": 9,
+      "handle": "bLitz",
+      "playerId": 20194,
+      "slug": "blitz",
+      "splits": {
+        "overall": {
+          "rating": 0.94,
+          "maps": 83,
+          "rounds": 1839,
+          "kd": 0.87,
+          "kdDiff": -162.0
+        },
+        "top5": {
+          "rating": null,
+          "maps": null,
+          "rounds": null,
+          "kd": null,
+          "kdDiff": null
+        },
+        "top10": {
+          "rating": 0.89,
+          "maps": 51,
+          "rounds": 1114,
+          "kd": 0.81,
+          "kdDiff": -151.0
+        },
+        "top20": {
+          "rating": 0.93,
+          "maps": 73,
+          "rounds": 1632,
+          "kd": 0.86,
+          "kdDiff": -162.0
+        },
+        "top50": {
+          "rating": 0.94,
+          "maps": 83,
+          "rounds": 1839,
+          "kd": 0.87,
+          "kdDiff": -162.0
+        }
+      }
+    },
+    {
+      "team": "The MongolZ",
+      "rank": 9,
+      "handle": "Techno",
+      "playerId": 20275,
+      "slug": "techno",
+      "splits": {
+        "overall": {
+          "rating": 0.95,
+          "maps": 83,
+          "rounds": 1839,
+          "kd": 0.89,
+          "kdDiff": -136.0
+        },
+        "top5": {
+          "rating": null,
+          "maps": null,
+          "rounds": null,
+          "kd": null,
+          "kdDiff": null
+        },
+        "top10": {
+          "rating": 0.93,
+          "maps": 51,
+          "rounds": 1114,
+          "kd": 0.88,
+          "kdDiff": -95.0
+        },
+        "top20": {
+          "rating": 0.94,
+          "maps": 73,
+          "rounds": 1632,
+          "kd": 0.88,
+          "kdDiff": -131.0
+        },
+        "top50": {
+          "rating": 0.95,
+          "maps": 83,
+          "rounds": 1839,
+          "kd": 0.89,
+          "kdDiff": -136.0
+        }
+      }
+    },
+    {
+      "team": "The MongolZ",
+      "rank": 9,
+      "handle": "mzinho",
+      "playerId": 21001,
+      "slug": "mzinho",
+      "splits": {
+        "overall": {
+          "rating": 1.05,
+          "maps": 83,
+          "rounds": 1839,
+          "kd": 0.99,
+          "kdDiff": -16.0
+        },
+        "top5": {
+          "rating": null,
+          "maps": null,
+          "rounds": null,
+          "kd": null,
+          "kdDiff": null
+        },
+        "top10": {
+          "rating": 1.0,
+          "maps": 51,
+          "rounds": 1114,
+          "kd": 0.94,
+          "kdDiff": -47.0
+        },
+        "top20": {
+          "rating": 1.02,
+          "maps": 73,
+          "rounds": 1632,
+          "kd": 0.96,
+          "kdDiff": -45.0
+        },
+        "top50": {
+          "rating": 1.05,
+          "maps": 83,
+          "rounds": 1839,
+          "kd": 0.99,
+          "kdDiff": -16.0
+        }
+      }
+    },
+    {
+      "team": "The MongolZ",
+      "rank": 9,
+      "handle": "910",
+      "playerId": 21809,
+      "slug": "910",
+      "splits": {
+        "overall": {
+          "rating": 1.13,
+          "maps": 83,
+          "rounds": 1839,
+          "kd": 1.2,
+          "kdDiff": 226.0
+        },
+        "top5": {
+          "rating": null,
+          "maps": null,
+          "rounds": null,
+          "kd": null,
+          "kdDiff": null
+        },
+        "top10": {
+          "rating": 1.03,
+          "maps": 51,
+          "rounds": 1114,
+          "kd": 1.06,
+          "kdDiff": 40.0
+        },
+        "top20": {
+          "rating": 1.11,
+          "maps": 73,
+          "rounds": 1632,
+          "kd": 1.17,
+          "kdDiff": 171.0
+        },
+        "top50": {
+          "rating": 1.13,
+          "maps": 83,
+          "rounds": 1839,
+          "kd": 1.2,
+          "kdDiff": 226.0
+        }
+      }
+    },
+    {
+      "team": "The MongolZ",
+      "rank": 9,
+      "handle": "cobrazera",
+      "playerId": 23402,
+      "slug": "cobrazera",
+      "splits": {
+        "overall": {
+          "rating": 1.02,
+          "maps": 83,
+          "rounds": 1839,
+          "kd": 0.98,
+          "kdDiff": -30.0
+        },
+        "top5": {
+          "rating": null,
+          "maps": null,
+          "rounds": null,
+          "kd": null,
+          "kdDiff": null
+        },
+        "top10": {
+          "rating": 0.91,
+          "maps": 51,
+          "rounds": 1114,
+          "kd": 0.84,
+          "kdDiff": -131.0
+        },
+        "top20": {
+          "rating": 1.0,
+          "maps": 73,
+          "rounds": 1632,
+          "kd": 0.95,
+          "kdDiff": -56.0
+        },
+        "top50": {
+          "rating": 1.02,
+          "maps": 83,
+          "rounds": 1839,
+          "kd": 0.98,
+          "kdDiff": -30.0
+        }
+      }
+    },
+    {
+      "team": "PARIVISION",
+      "rank": 10,
+      "handle": "Jame",
+      "playerId": 13776,
+      "slug": "jame",
+      "splits": {
+        "overall": {
+          "rating": 1.08,
+          "maps": 100,
+          "rounds": 2262,
+          "kd": 1.2,
+          "kdDiff": 259.0
+        },
+        "top5": {
+          "rating": 1.03,
+          "maps": 36,
+          "rounds": 810,
+          "kd": 1.14,
+          "kdDiff": 67.0
+        },
+        "top10": {
+          "rating": 1.07,
+          "maps": 52,
+          "rounds": 1145,
+          "kd": 1.19,
+          "kdDiff": 125.0
+        },
+        "top20": {
+          "rating": 1.05,
+          "maps": 81,
+          "rounds": 1787,
+          "kd": 1.15,
+          "kdDiff": 154.0
+        },
+        "top50": {
+          "rating": 1.07,
+          "maps": 98,
+          "rounds": 2220,
+          "kd": 1.19,
+          "kdDiff": 234.0
+        }
+      }
+    },
+    {
+      "team": "PARIVISION",
+      "rank": 10,
+      "handle": "BELCHONOKK",
+      "playerId": 19235,
+      "slug": "belchonokk",
+      "splits": {
+        "overall": {
+          "rating": 0.95,
+          "maps": 100,
+          "rounds": 2262,
+          "kd": 0.89,
+          "kdDiff": -161.0
+        },
+        "top5": {
+          "rating": 0.96,
+          "maps": 36,
+          "rounds": 810,
+          "kd": 0.91,
+          "kdDiff": -49.0
+        },
+        "top10": {
+          "rating": 0.93,
+          "maps": 52,
+          "rounds": 1145,
+          "kd": 0.87,
+          "kdDiff": -105.0
+        },
+        "top20": {
+          "rating": 0.95,
+          "maps": 81,
+          "rounds": 1787,
+          "kd": 0.89,
+          "kdDiff": -137.0
+        },
+        "top50": {
+          "rating": 0.94,
+          "maps": 98,
+          "rounds": 2220,
+          "kd": 0.88,
+          "kdDiff": -174.0
+        }
+      }
+    },
+    {
+      "team": "PARIVISION",
+      "rank": 10,
+      "handle": "xiELO",
+      "playerId": 22471,
+      "slug": "xielo",
+      "splits": {
+        "overall": {
+          "rating": 0.99,
+          "maps": 100,
+          "rounds": 2262,
+          "kd": 0.9,
+          "kdDiff": -153.0
+        },
+        "top5": {
+          "rating": 0.98,
+          "maps": 36,
+          "rounds": 810,
+          "kd": 0.9,
+          "kdDiff": -57.0
+        },
+        "top10": {
+          "rating": 0.98,
+          "maps": 52,
+          "rounds": 1145,
+          "kd": 0.89,
+          "kdDiff": -88.0
+        },
+        "top20": {
+          "rating": 0.97,
+          "maps": 81,
+          "rounds": 1787,
+          "kd": 0.87,
+          "kdDiff": -163.0
+        },
+        "top50": {
+          "rating": 0.99,
+          "maps": 98,
+          "rounds": 2220,
+          "kd": 0.91,
+          "kdDiff": -145.0
+        }
+      }
+    },
+    {
+      "team": "PARIVISION",
+      "rank": 10,
+      "handle": "nota",
+      "playerId": 22929,
+      "slug": "nota",
+      "splits": {
+        "overall": {
+          "rating": 0.96,
+          "maps": 100,
+          "rounds": 2262,
+          "kd": 0.91,
+          "kdDiff": -134.0
+        },
+        "top5": {
+          "rating": 0.95,
+          "maps": 36,
+          "rounds": 810,
+          "kd": 0.86,
+          "kdDiff": -77.0
+        },
+        "top10": {
+          "rating": 0.91,
+          "maps": 52,
+          "rounds": 1145,
+          "kd": 0.84,
+          "kdDiff": -124.0
+        },
+        "top20": {
+          "rating": 0.93,
+          "maps": 81,
+          "rounds": 1787,
+          "kd": 0.86,
+          "kdDiff": -171.0
+        },
+        "top50": {
+          "rating": 0.96,
+          "maps": 98,
+          "rounds": 2220,
+          "kd": 0.91,
+          "kdDiff": -138.0
+        }
+      }
+    },
+    {
+      "team": "PARIVISION",
+      "rank": 10,
+      "handle": "zweih",
+      "playerId": 23685,
+      "slug": "zweih",
+      "splits": {
+        "overall": {
+          "rating": 1.09,
+          "maps": 100,
+          "rounds": 2262,
+          "kd": 1.02,
+          "kdDiff": 31.0
+        },
+        "top5": {
+          "rating": 1.03,
+          "maps": 36,
+          "rounds": 810,
+          "kd": 0.93,
+          "kdDiff": -41.0
+        },
+        "top10": {
+          "rating": 1.07,
+          "maps": 52,
+          "rounds": 1145,
+          "kd": 0.98,
+          "kdDiff": -14.0
+        },
+        "top20": {
+          "rating": 1.06,
+          "maps": 81,
+          "rounds": 1787,
+          "kd": 0.98,
+          "kdDiff": -24.0
+        },
+        "top50": {
+          "rating": 1.09,
+          "maps": 98,
+          "rounds": 2220,
+          "kd": 1.02,
+          "kdDiff": 29.0
+        }
+      }
+    },
+    {
+      "team": "GamerLegion",
+      "rank": 11,
+      "handle": "Snax",
+      "playerId": 2553,
+      "slug": "snax",
+      "splits": {
+        "overall": {
+          "rating": 0.89,
+          "maps": 100,
+          "rounds": 2172,
+          "kd": 0.81,
+          "kdDiff": -286.0
+        },
+        "top5": {
+          "rating": null,
+          "maps": null,
+          "rounds": null,
+          "kd": null,
+          "kdDiff": null
+        },
+        "top10": {
+          "rating": 0.78,
+          "maps": 14,
+          "rounds": 277,
+          "kd": 0.71,
+          "kdDiff": -59.0
+        },
+        "top20": {
+          "rating": 0.81,
+          "maps": 54,
+          "rounds": 1127,
+          "kd": 0.73,
+          "kdDiff": -224.0
+        },
+        "top50": {
+          "rating": 0.87,
+          "maps": 86,
+          "rounds": 1864,
+          "kd": 0.79,
+          "kdDiff": -276.0
+        }
+      }
+    },
+    {
+      "team": "GamerLegion",
+      "rank": 11,
+      "handle": "REZ",
+      "playerId": 9278,
+      "slug": "rez",
+      "splits": {
+        "overall": {
+          "rating": 1.15,
+          "maps": 100,
+          "rounds": 2172,
+          "kd": 1.1,
+          "kdDiff": 151.0
+        },
+        "top5": {
+          "rating": null,
+          "maps": null,
+          "rounds": null,
+          "kd": null,
+          "kdDiff": null
+        },
+        "top10": {
+          "rating": 1.04,
+          "maps": 14,
+          "rounds": 277,
+          "kd": 0.92,
+          "kdDiff": -15.0
+        },
+        "top20": {
+          "rating": 1.07,
+          "maps": 54,
+          "rounds": 1127,
+          "kd": 1.0,
+          "kdDiff": -3.0
+        },
+        "top50": {
+          "rating": 1.14,
+          "maps": 86,
+          "rounds": 1864,
+          "kd": 1.09,
+          "kdDiff": 114.0
+        }
+      }
+    },
+    {
+      "team": "GamerLegion",
+      "rank": 11,
+      "handle": "Tauson",
+      "playerId": 20301,
+      "slug": "tauson",
+      "splits": {
+        "overall": {
+          "rating": 1.05,
+          "maps": 100,
+          "rounds": 2172,
+          "kd": 1.04,
+          "kdDiff": 54.0
+        },
+        "top5": {
+          "rating": null,
+          "maps": null,
+          "rounds": null,
+          "kd": null,
+          "kdDiff": null
+        },
+        "top10": {
+          "rating": 0.95,
+          "maps": 14,
+          "rounds": 277,
+          "kd": 0.86,
+          "kdDiff": -26.0
+        },
+        "top20": {
+          "rating": 0.96,
+          "maps": 54,
+          "rounds": 1127,
+          "kd": 0.93,
+          "kdDiff": -53.0
+        },
+        "top50": {
+          "rating": 1.04,
+          "maps": 86,
+          "rounds": 1864,
+          "kd": 1.02,
+          "kdDiff": 22.0
+        }
+      }
+    },
+    {
+      "team": "GamerLegion",
+      "rank": 11,
+      "handle": "PR",
+      "playerId": 22279,
+      "slug": "pr",
+      "splits": {
+        "overall": {
+          "rating": 1.07,
+          "maps": 89,
+          "rounds": 1932,
+          "kd": 1.05,
+          "kdDiff": 59.0
+        },
+        "top5": {
+          "rating": null,
+          "maps": null,
+          "rounds": null,
+          "kd": null,
+          "kdDiff": null
+        },
+        "top10": {
+          "rating": 1.12,
+          "maps": 14,
+          "rounds": 277,
+          "kd": 1.08,
+          "kdDiff": 14.0
+        },
+        "top20": {
+          "rating": 1.01,
+          "maps": 50,
+          "rounds": 1040,
+          "kd": 0.98,
+          "kdDiff": -12.0
+        },
+        "top50": {
+          "rating": 1.06,
+          "maps": 77,
+          "rounds": 1660,
+          "kd": 1.04,
+          "kdDiff": 41.0
+        }
+      }
+    },
+    {
+      "team": "GamerLegion",
+      "rank": 11,
+      "handle": "hypex",
+      "playerId": 23766,
+      "slug": "hypex",
+      "splits": {
+        "overall": {
+          "rating": 1.07,
+          "maps": 100,
+          "rounds": 2172,
+          "kd": 1.16,
+          "kdDiff": 207.0
+        },
+        "top5": {
+          "rating": null,
+          "maps": null,
+          "rounds": null,
+          "kd": null,
+          "kdDiff": null
+        },
+        "top10": {
+          "rating": 1.0,
+          "maps": 14,
+          "rounds": 277,
+          "kd": 1.01,
+          "kdDiff": 2.0
+        },
+        "top20": {
+          "rating": 1.03,
+          "maps": 54,
+          "rounds": 1127,
+          "kd": 1.09,
+          "kdDiff": 62.0
+        },
+        "top50": {
+          "rating": 1.04,
+          "maps": 86,
+          "rounds": 1864,
+          "kd": 1.13,
+          "kdDiff": 145.0
+        }
+      }
+    },
+    {
+      "team": "Astralis",
+      "rank": 12,
+      "handle": "HooXi",
+      "playerId": 10096,
+      "slug": "hooxi",
+      "splits": {
+        "overall": {
+          "rating": 0.85,
+          "maps": 98,
+          "rounds": 2038,
+          "kd": 0.77,
+          "kdDiff": -331.0
+        },
+        "top5": {
+          "rating": null,
+          "maps": null,
+          "rounds": null,
+          "kd": null,
+          "kdDiff": null
+        },
+        "top10": {
+          "rating": 0.9,
+          "maps": 31,
+          "rounds": 623,
+          "kd": 0.82,
+          "kdDiff": -77.0
+        },
+        "top20": {
+          "rating": 0.85,
+          "maps": 82,
+          "rounds": 1706,
+          "kd": 0.76,
+          "kdDiff": -282.0
+        },
+        "top50": {
+          "rating": 0.85,
+          "maps": 98,
+          "rounds": 2038,
+          "kd": 0.77,
+          "kdDiff": -331.0
+        }
+      }
+    },
+    {
+      "team": "Astralis",
+      "rank": 12,
+      "handle": "phzy",
+      "playerId": 16726,
+      "slug": "phzy",
+      "splits": {
+        "overall": {
+          "rating": 1.07,
+          "maps": 98,
+          "rounds": 2038,
+          "kd": 1.11,
+          "kdDiff": 141.0
+        },
+        "top5": {
+          "rating": null,
+          "maps": null,
+          "rounds": null,
+          "kd": null,
+          "kdDiff": null
+        },
+        "top10": {
+          "rating": 0.94,
+          "maps": 31,
+          "rounds": 623,
+          "kd": 0.95,
+          "kdDiff": -20.0
+        },
+        "top20": {
+          "rating": 1.06,
+          "maps": 82,
+          "rounds": 1706,
+          "kd": 1.09,
+          "kdDiff": 100.0
+        },
+        "top50": {
+          "rating": 1.07,
+          "maps": 98,
+          "rounds": 2038,
+          "kd": 1.11,
+          "kdDiff": 141.0
+        }
+      }
+    },
+    {
+      "team": "Astralis",
+      "rank": 12,
+      "handle": "jabbi",
+      "playerId": 17956,
+      "slug": "jabbi",
+      "splits": {
+        "overall": {
+          "rating": 1.1,
+          "maps": 98,
+          "rounds": 2038,
+          "kd": 1.03,
+          "kdDiff": 43.0
+        },
+        "top5": {
+          "rating": null,
+          "maps": null,
+          "rounds": null,
+          "kd": null,
+          "kdDiff": null
+        },
+        "top10": {
+          "rating": 1.14,
+          "maps": 31,
+          "rounds": 623,
+          "kd": 1.03,
+          "kdDiff": 13.0
+        },
+        "top20": {
+          "rating": 1.08,
+          "maps": 82,
+          "rounds": 1706,
+          "kd": 1.01,
+          "kdDiff": 6.0
+        },
+        "top50": {
+          "rating": 1.1,
+          "maps": 98,
+          "rounds": 2038,
+          "kd": 1.03,
+          "kdDiff": 43.0
+        }
+      }
+    },
+    {
+      "team": "Astralis",
+      "rank": 12,
+      "handle": "Staehr",
+      "playerId": 20304,
+      "slug": "staehr",
+      "splits": {
+        "overall": {
+          "rating": 1.15,
+          "maps": 98,
+          "rounds": 2038,
+          "kd": 1.07,
+          "kdDiff": 94.0
+        },
+        "top5": {
+          "rating": null,
+          "maps": null,
+          "rounds": null,
+          "kd": null,
+          "kdDiff": null
+        },
+        "top10": {
+          "rating": 1.18,
+          "maps": 31,
+          "rounds": 623,
+          "kd": 1.1,
+          "kdDiff": 43.0
+        },
+        "top20": {
+          "rating": 1.15,
+          "maps": 82,
+          "rounds": 1706,
+          "kd": 1.05,
+          "kdDiff": 64.0
+        },
+        "top50": {
+          "rating": 1.15,
+          "maps": 98,
+          "rounds": 2038,
+          "kd": 1.07,
+          "kdDiff": 94.0
+        }
+      }
+    },
+    {
+      "team": "Astralis",
+      "rank": 12,
+      "handle": "ryu",
+      "playerId": 21217,
+      "slug": "ryu",
+      "splits": {
+        "overall": {
+          "rating": 1.01,
+          "maps": 98,
+          "rounds": 2038,
+          "kd": 0.97,
+          "kdDiff": -45.0
+        },
+        "top5": {
+          "rating": null,
+          "maps": null,
+          "rounds": null,
+          "kd": null,
+          "kdDiff": null
+        },
+        "top10": {
+          "rating": 0.91,
+          "maps": 31,
+          "rounds": 623,
+          "kd": 0.84,
+          "kdDiff": -66.0
+        },
+        "top20": {
+          "rating": 0.98,
+          "maps": 82,
+          "rounds": 1706,
+          "kd": 0.92,
+          "kdDiff": -97.0
+        },
+        "top50": {
+          "rating": 1.01,
+          "maps": 98,
+          "rounds": 2038,
+          "kd": 0.97,
+          "kdDiff": -45.0
+        }
+      }
+    },
+    {
+      "team": "G2",
+      "rank": 13,
+      "handle": "huNter-",
+      "playerId": 3972,
+      "slug": "hunter",
+      "splits": {
+        "overall": {
+          "rating": 1.02,
+          "maps": 105,
+          "rounds": 2283,
+          "kd": 1.0,
+          "kdDiff": 2.0
+        },
+        "top5": {
+          "rating": null,
+          "maps": null,
+          "rounds": null,
+          "kd": null,
+          "kdDiff": null
+        },
+        "top10": {
+          "rating": 0.87,
+          "maps": 24,
+          "rounds": 513,
+          "kd": 0.83,
+          "kdDiff": -60.0
+        },
+        "top20": {
+          "rating": 0.95,
+          "maps": 79,
+          "rounds": 1758,
+          "kd": 0.92,
+          "kdDiff": -87.0
+        },
+        "top50": {
+          "rating": 0.99,
+          "maps": 94,
+          "rounds": 2071,
+          "kd": 0.97,
+          "kdDiff": -40.0
+        }
+      }
+    },
+    {
+      "team": "G2",
+      "rank": 13,
+      "handle": "NertZ",
+      "playerId": 9436,
+      "slug": "nertz",
+      "splits": {
+        "overall": {
+          "rating": 1.11,
+          "maps": 92,
+          "rounds": 1996,
+          "kd": 1.08,
+          "kdDiff": 113.0
+        },
+        "top5": {
+          "rating": null,
+          "maps": null,
+          "rounds": null,
+          "kd": null,
+          "kdDiff": null
+        },
+        "top10": {
+          "rating": null,
+          "maps": null,
+          "rounds": null,
+          "kd": null,
+          "kdDiff": null
+        },
+        "top20": {
+          "rating": 1.01,
+          "maps": 53,
+          "rounds": 1197,
+          "kd": 0.98,
+          "kdDiff": -18.0
+        },
+        "top50": {
+          "rating": 1.09,
+          "maps": 77,
+          "rounds": 1695,
+          "kd": 1.06,
+          "kdDiff": 73.0
+        }
+      }
+    },
+    {
+      "team": "G2",
+      "rank": 13,
+      "handle": "SunPayus",
+      "playerId": 19164,
+      "slug": "sunpayus",
+      "splits": {
+        "overall": {
+          "rating": 1.06,
+          "maps": 115,
+          "rounds": 2489,
+          "kd": 1.22,
+          "kdDiff": 309.0
+        },
+        "top5": {
+          "rating": null,
+          "maps": null,
+          "rounds": null,
+          "kd": null,
+          "kdDiff": null
+        },
+        "top10": {
+          "rating": 1.08,
+          "maps": 24,
+          "rounds": 513,
+          "kd": 1.19,
+          "kdDiff": 59.0
+        },
+        "top20": {
+          "rating": 1.04,
+          "maps": 86,
+          "rounds": 1906,
+          "kd": 1.16,
+          "kdDiff": 177.0
+        },
+        "top50": {
+          "rating": 1.06,
+          "maps": 104,
+          "rounds": 2277,
+          "kd": 1.2,
+          "kdDiff": 267.0
+        }
+      }
+    },
+    {
+      "team": "G2",
+      "rank": 13,
+      "handle": "HeavyGod",
+      "playerId": 20447,
+      "slug": "heavygod",
+      "splits": {
+        "overall": {
+          "rating": 1.14,
+          "maps": 115,
+          "rounds": 2489,
+          "kd": 1.11,
+          "kdDiff": 176.0
+        },
+        "top5": {
+          "rating": null,
+          "maps": null,
+          "rounds": null,
+          "kd": null,
+          "kdDiff": null
+        },
+        "top10": {
+          "rating": 1.06,
+          "maps": 24,
+          "rounds": 513,
+          "kd": 1.05,
+          "kdDiff": 15.0
+        },
+        "top20": {
+          "rating": 1.14,
+          "maps": 86,
+          "rounds": 1906,
+          "kd": 1.1,
+          "kdDiff": 120.0
+        },
+        "top50": {
+          "rating": 1.12,
+          "maps": 104,
+          "rounds": 2277,
+          "kd": 1.09,
+          "kdDiff": 124.0
+        }
+      }
+    },
+    {
+      "team": "G2",
+      "rank": 13,
+      "handle": "MATYS",
+      "playerId": 21062,
+      "slug": "matys",
+      "splits": {
+        "overall": {
+          "rating": 1.1,
+          "maps": 115,
+          "rounds": 2489,
+          "kd": 1.06,
+          "kdDiff": 91.0
+        },
+        "top5": {
+          "rating": null,
+          "maps": null,
+          "rounds": null,
+          "kd": null,
+          "kdDiff": null
+        },
+        "top10": {
+          "rating": 1.08,
+          "maps": 24,
+          "rounds": 513,
+          "kd": 1.0,
+          "kdDiff": -1.0
+        },
+        "top20": {
+          "rating": 1.06,
+          "maps": 86,
+          "rounds": 1906,
+          "kd": 1.02,
+          "kdDiff": 24.0
+        },
+        "top50": {
+          "rating": 1.09,
+          "maps": 104,
+          "rounds": 2277,
+          "kd": 1.05,
+          "kdDiff": 73.0
+        }
+      }
+    },
+    {
+      "team": "FUT",
+      "rank": 14,
+      "handle": "dem0n",
+      "playerId": 20584,
+      "slug": "dem0n",
+      "splits": {
+        "overall": {
+          "rating": 1.06,
+          "maps": 101,
+          "rounds": 2198,
+          "kd": 1.02,
+          "kdDiff": 30.0
+        },
+        "top5": {
+          "rating": null,
+          "maps": null,
+          "rounds": null,
+          "kd": null,
+          "kdDiff": null
+        },
+        "top10": {
+          "rating": 1.24,
+          "maps": 13,
+          "rounds": 286,
+          "kd": 1.2,
+          "kdDiff": 35.0
+        },
+        "top20": {
+          "rating": 1.05,
+          "maps": 81,
+          "rounds": 1783,
+          "kd": 0.99,
+          "kdDiff": -6.0
+        },
+        "top50": {
+          "rating": 1.07,
+          "maps": 98,
+          "rounds": 2127,
+          "kd": 1.03,
+          "kdDiff": 38.0
+        }
+      }
+    },
+    {
+      "team": "FUT",
+      "rank": 14,
+      "handle": "lauNX",
+      "playerId": 20761,
+      "slug": "launx",
+      "splits": {
+        "overall": {
+          "rating": 1.1,
+          "maps": 96,
+          "rounds": 2090,
+          "kd": 1.04,
+          "kdDiff": 54.0
+        },
+        "top5": {
+          "rating": null,
+          "maps": null,
+          "rounds": null,
+          "kd": null,
+          "kdDiff": null
+        },
+        "top10": {
+          "rating": 1.23,
+          "maps": 8,
+          "rounds": 178,
+          "kd": 1.25,
+          "kdDiff": 28.0
+        },
+        "top20": {
+          "rating": 1.09,
+          "maps": 76,
+          "rounds": 1675,
+          "kd": 1.02,
+          "kdDiff": 24.0
+        },
+        "top50": {
+          "rating": 1.1,
+          "maps": 93,
+          "rounds": 2019,
+          "kd": 1.05,
+          "kdDiff": 65.0
+        }
+      }
+    },
+    {
+      "team": "FUT",
+      "rank": 14,
+      "handle": "Krabeni",
+      "playerId": 22203,
+      "slug": "krabeni",
+      "splits": {
+        "overall": {
+          "rating": 1.06,
+          "maps": 101,
+          "rounds": 2198,
+          "kd": 1.04,
+          "kdDiff": 57.0
+        },
+        "top5": {
+          "rating": null,
+          "maps": null,
+          "rounds": null,
+          "kd": null,
+          "kdDiff": null
+        },
+        "top10": {
+          "rating": 1.03,
+          "maps": 13,
+          "rounds": 286,
+          "kd": 1.02,
+          "kdDiff": 3.0
+        },
+        "top20": {
+          "rating": 1.05,
+          "maps": 81,
+          "rounds": 1783,
+          "kd": 1.03,
+          "kdDiff": 33.0
+        },
+        "top50": {
+          "rating": 1.07,
+          "maps": 98,
+          "rounds": 2127,
+          "kd": 1.04,
+          "kdDiff": 62.0
+        }
+      }
+    },
+    {
+      "team": "FUT",
+      "rank": 14,
+      "handle": "cmtry",
+      "playerId": 22674,
+      "slug": "cmtry",
+      "splits": {
+        "overall": {
+          "rating": 1.0,
+          "maps": 101,
+          "rounds": 2198,
+          "kd": 1.01,
+          "kdDiff": 19.0
+        },
+        "top5": {
+          "rating": null,
+          "maps": null,
+          "rounds": null,
+          "kd": null,
+          "kdDiff": null
+        },
+        "top10": {
+          "rating": 0.99,
+          "maps": 13,
+          "rounds": 286,
+          "kd": 0.99,
+          "kdDiff": -1.0
+        },
+        "top20": {
+          "rating": 0.99,
+          "maps": 81,
+          "rounds": 1783,
+          "kd": 1.0,
+          "kdDiff": -2.0
+        },
+        "top50": {
+          "rating": 1.0,
+          "maps": 98,
+          "rounds": 2127,
+          "kd": 1.02,
+          "kdDiff": 21.0
+        }
+      }
+    },
+    {
+      "team": "FUT",
+      "rank": 14,
+      "handle": "dziugss",
+      "playerId": 23553,
+      "slug": "dziugss",
+      "splits": {
+        "overall": {
+          "rating": 1.1,
+          "maps": 101,
+          "rounds": 2198,
+          "kd": 1.07,
+          "kdDiff": 99.0
+        },
+        "top5": {
+          "rating": null,
+          "maps": null,
+          "rounds": null,
+          "kd": null,
+          "kdDiff": null
+        },
+        "top10": {
+          "rating": 1.13,
+          "maps": 13,
+          "rounds": 286,
+          "kd": 1.08,
+          "kdDiff": 15.0
+        },
+        "top20": {
+          "rating": 1.06,
+          "maps": 81,
+          "rounds": 1783,
+          "kd": 1.02,
+          "kdDiff": 21.0
+        },
+        "top50": {
+          "rating": 1.1,
+          "maps": 98,
+          "rounds": 2127,
+          "kd": 1.08,
+          "kdDiff": 104.0
+        }
+      }
+    },
+    {
+      "team": "B8",
+      "rank": 15,
+      "handle": "alex666",
+      "playerId": 20112,
+      "slug": "alex666",
+      "splits": {
+        "overall": {
+          "rating": 1.01,
+          "maps": 102,
+          "rounds": 2216,
+          "kd": 0.93,
+          "kdDiff": -98.0
+        },
+        "top5": {
+          "rating": null,
+          "maps": null,
+          "rounds": null,
+          "kd": null,
+          "kdDiff": null
+        },
+        "top10": {
+          "rating": null,
+          "maps": null,
+          "rounds": null,
+          "kd": null,
+          "kdDiff": null
+        },
+        "top20": {
+          "rating": 0.94,
+          "maps": 72,
+          "rounds": 1565,
+          "kd": 0.86,
+          "kdDiff": -149.0
+        },
+        "top50": {
+          "rating": 0.98,
+          "maps": 89,
+          "rounds": 1961,
+          "kd": 0.9,
+          "kdDiff": -135.0
+        }
+      }
+    },
+    {
+      "team": "B8",
+      "rank": 15,
+      "handle": "npl",
+      "playerId": 21708,
+      "slug": "npl",
+      "splits": {
+        "overall": {
+          "rating": 1.11,
+          "maps": 102,
+          "rounds": 2216,
+          "kd": 1.08,
+          "kdDiff": 115.0
+        },
+        "top5": {
+          "rating": null,
+          "maps": null,
+          "rounds": null,
+          "kd": null,
+          "kdDiff": null
+        },
+        "top10": {
+          "rating": null,
+          "maps": null,
+          "rounds": null,
+          "kd": null,
+          "kdDiff": null
+        },
+        "top20": {
+          "rating": 1.08,
+          "maps": 72,
+          "rounds": 1565,
+          "kd": 1.04,
+          "kdDiff": 48.0
+        },
+        "top50": {
+          "rating": 1.09,
+          "maps": 89,
+          "rounds": 1961,
+          "kd": 1.05,
+          "kdDiff": 73.0
+        }
+      }
+    },
+    {
+      "team": "B8",
+      "rank": 15,
+      "handle": "kensizor",
+      "playerId": 22842,
+      "slug": "kensizor",
+      "splits": {
+        "overall": {
+          "rating": 1.03,
+          "maps": 102,
+          "rounds": 2216,
+          "kd": 0.95,
+          "kdDiff": -75.0
+        },
+        "top5": {
+          "rating": null,
+          "maps": null,
+          "rounds": null,
+          "kd": null,
+          "kdDiff": null
+        },
+        "top10": {
+          "rating": null,
+          "maps": null,
+          "rounds": null,
+          "kd": null,
+          "kdDiff": null
+        },
+        "top20": {
+          "rating": 0.96,
+          "maps": 72,
+          "rounds": 1565,
+          "kd": 0.88,
+          "kdDiff": -141.0
+        },
+        "top50": {
+          "rating": 1.0,
+          "maps": 89,
+          "rounds": 1961,
+          "kd": 0.91,
+          "kdDiff": -128.0
+        }
+      }
+    },
+    {
+      "team": "B8",
+      "rank": 15,
+      "handle": "esenthial",
+      "playerId": 23643,
+      "slug": "esenthial",
+      "splits": {
+        "overall": {
+          "rating": 1.02,
+          "maps": 102,
+          "rounds": 2216,
+          "kd": 1.0,
+          "kdDiff": -4.0
+        },
+        "top5": {
+          "rating": null,
+          "maps": null,
+          "rounds": null,
+          "kd": null,
+          "kdDiff": null
+        },
+        "top10": {
+          "rating": null,
+          "maps": null,
+          "rounds": null,
+          "kd": null,
+          "kdDiff": null
+        },
+        "top20": {
+          "rating": 0.96,
+          "maps": 72,
+          "rounds": 1565,
+          "kd": 0.92,
+          "kdDiff": -88.0
+        },
+        "top50": {
+          "rating": 0.99,
+          "maps": 89,
+          "rounds": 1961,
+          "kd": 0.96,
+          "kdDiff": -51.0
+        }
+      }
+    },
+    {
+      "team": "B8",
+      "rank": 15,
+      "handle": "s1zzi",
+      "playerId": 25619,
+      "slug": "s1zzi",
+      "splits": {
+        "overall": {
+          "rating": 0.98,
+          "maps": 97,
+          "rounds": 2109,
+          "kd": 1.02,
+          "kdDiff": 25.0
+        },
+        "top5": {
+          "rating": null,
+          "maps": null,
+          "rounds": null,
+          "kd": null,
+          "kdDiff": null
+        },
+        "top10": {
+          "rating": null,
+          "maps": null,
+          "rounds": null,
+          "kd": null,
+          "kdDiff": null
+        },
+        "top20": {
+          "rating": 0.93,
+          "maps": 67,
+          "rounds": 1458,
+          "kd": 0.92,
+          "kdDiff": -85.0
+        },
+        "top50": {
+          "rating": 0.96,
+          "maps": 84,
+          "rounds": 1854,
+          "kd": 0.97,
+          "kdDiff": -37.0
+        }
+      }
+    },
+    {
+      "team": "FaZe",
+      "rank": 16,
+      "handle": "frozen",
+      "playerId": 9960,
+      "slug": "frozen",
+      "splits": {
+        "overall": {
+          "rating": 1.18,
+          "maps": 84,
+          "rounds": 1793,
+          "kd": 1.13,
+          "kdDiff": 154.0
+        },
+        "top5": {
+          "rating": 1.09,
+          "maps": 8,
+          "rounds": 161,
+          "kd": 1.01,
+          "kdDiff": 1.0
+        },
+        "top10": {
+          "rating": 0.99,
+          "maps": 18,
+          "rounds": 372,
+          "kd": 0.93,
+          "kdDiff": -18.0
+        },
+        "top20": {
+          "rating": 1.11,
+          "maps": 50,
+          "rounds": 1097,
+          "kd": 1.07,
+          "kdDiff": 50.0
+        },
+        "top50": {
+          "rating": 1.15,
+          "maps": 76,
+          "rounds": 1638,
+          "kd": 1.09,
+          "kdDiff": 102.0
+        }
+      }
+    },
+    {
+      "team": "FaZe",
+      "rank": 16,
+      "handle": "Twistzz",
+      "playerId": 10394,
+      "slug": "twistzz",
+      "splits": {
+        "overall": {
+          "rating": 1.1,
+          "maps": 84,
+          "rounds": 1793,
+          "kd": 1.02,
+          "kdDiff": 29.0
+        },
+        "top5": {
+          "rating": 1.06,
+          "maps": 8,
+          "rounds": 161,
+          "kd": 0.96,
+          "kdDiff": -5.0
+        },
+        "top10": {
+          "rating": 1.04,
+          "maps": 18,
+          "rounds": 372,
+          "kd": 0.94,
+          "kdDiff": -15.0
+        },
+        "top20": {
+          "rating": 1.01,
+          "maps": 50,
+          "rounds": 1097,
+          "kd": 0.92,
+          "kdDiff": -60.0
+        },
+        "top50": {
+          "rating": 1.07,
+          "maps": 76,
+          "rounds": 1638,
+          "kd": 0.99,
+          "kdDiff": -10.0
+        }
+      }
+    },
+    {
+      "team": "FaZe",
+      "rank": 16,
+      "handle": "broky",
+      "playerId": 18053,
+      "slug": "broky",
+      "splits": {
+        "overall": {
+          "rating": 0.98,
+          "maps": 84,
+          "rounds": 1793,
+          "kd": 1.05,
+          "kdDiff": 56.0
+        },
+        "top5": {
+          "rating": 0.78,
+          "maps": 8,
+          "rounds": 161,
+          "kd": 0.81,
+          "kdDiff": -22.0
+        },
+        "top10": {
+          "rating": 0.84,
+          "maps": 18,
+          "rounds": 372,
+          "kd": 0.87,
+          "kdDiff": -34.0
+        },
+        "top20": {
+          "rating": 0.91,
+          "maps": 50,
+          "rounds": 1097,
+          "kd": 0.97,
+          "kdDiff": -21.0
+        },
+        "top50": {
+          "rating": 0.95,
+          "maps": 76,
+          "rounds": 1638,
+          "kd": 1.02,
+          "kdDiff": 21.0
+        }
+      }
+    },
+    {
+      "team": "FaZe",
+      "rank": 16,
+      "handle": "jcobbb",
+      "playerId": 22383,
+      "slug": "jcobbb",
+      "splits": {
+        "overall": {
+          "rating": 0.96,
+          "maps": 84,
+          "rounds": 1793,
+          "kd": 0.9,
+          "kdDiff": -127.0
+        },
+        "top5": {
+          "rating": 0.98,
+          "maps": 8,
+          "rounds": 161,
+          "kd": 0.88,
+          "kdDiff": -14.0
+        },
+        "top10": {
+          "rating": 0.93,
+          "maps": 18,
+          "rounds": 372,
+          "kd": 0.83,
+          "kdDiff": -44.0
+        },
+        "top20": {
+          "rating": 0.93,
+          "maps": 50,
+          "rounds": 1097,
+          "kd": 0.85,
+          "kdDiff": -115.0
+        },
+        "top50": {
+          "rating": 0.94,
+          "maps": 76,
+          "rounds": 1638,
+          "kd": 0.87,
+          "kdDiff": -153.0
+        }
+      }
+    },
+    {
+      "team": "FaZe",
+      "rank": 16,
+      "handle": "Neityu",
+      "playerId": 21972,
+      "slug": "neityu",
+      "splits": {
+        "overall": {
+          "rating": 1.02,
+          "maps": 70,
+          "rounds": 1534,
+          "kd": 0.94,
+          "kdDiff": -63.0
+        },
+        "top5": {
+          "rating": null,
+          "maps": null,
+          "rounds": null,
+          "kd": null,
+          "kdDiff": null
+        },
+        "top10": {
+          "rating": null,
+          "maps": null,
+          "rounds": null,
+          "kd": null,
+          "kdDiff": null
+        },
+        "top20": {
+          "rating": 0.94,
+          "maps": 20,
+          "rounds": 457,
+          "kd": 0.86,
+          "kdDiff": -44.0
+        },
+        "top50": {
+          "rating": 0.98,
+          "maps": 50,
+          "rounds": 1112,
+          "kd": 0.9,
+          "kdDiff": -78.0
+        }
+      }
+    },
+    {
+      "team": "BetBoom",
+      "rank": 17,
+      "handle": "Boombl4",
+      "playerId": 11840,
+      "slug": "boombl4",
+      "splits": {
+        "overall": {
+          "rating": 0.95,
+          "maps": 129,
+          "rounds": 2734,
+          "kd": 0.88,
+          "kdDiff": -217.0
+        },
+        "top5": {
+          "rating": null,
+          "maps": null,
+          "rounds": null,
+          "kd": null,
+          "kdDiff": null
+        },
+        "top10": {
+          "rating": null,
+          "maps": null,
+          "rounds": null,
+          "kd": null,
+          "kdDiff": null
+        },
+        "top20": {
+          "rating": 0.92,
+          "maps": 39,
+          "rounds": 805,
+          "kd": 0.84,
+          "kdDiff": -89.0
+        },
+        "top50": {
+          "rating": 0.96,
+          "maps": 102,
+          "rounds": 2146,
+          "kd": 0.89,
+          "kdDiff": -168.0
+        }
+      }
+    },
+    {
+      "team": "BetBoom",
+      "rank": 17,
+      "handle": "zorte",
+      "playerId": 15662,
+      "slug": "zorte",
+      "splits": {
+        "overall": {
+          "rating": 1.11,
+          "maps": 142,
+          "rounds": 2952,
+          "kd": 1.29,
+          "kdDiff": 483.0
+        },
+        "top5": {
+          "rating": null,
+          "maps": null,
+          "rounds": null,
+          "kd": null,
+          "kdDiff": null
+        },
+        "top10": {
+          "rating": null,
+          "maps": null,
+          "rounds": null,
+          "kd": null,
+          "kdDiff": null
+        },
+        "top20": {
+          "rating": 0.99,
+          "maps": 39,
+          "rounds": 805,
+          "kd": 1.12,
+          "kdDiff": 55.0
+        },
+        "top50": {
+          "rating": 1.01,
+          "maps": 54,
+          "rounds": 1112,
+          "kd": 1.15,
+          "kdDiff": 99.0
+        }
+      }
+    },
+    {
+      "team": "BetBoom",
+      "rank": 17,
+      "handle": "S1ren",
+      "playerId": 18506,
+      "slug": "s1ren",
+      "splits": {
+        "overall": {
+          "rating": 1.06,
+          "maps": 128,
+          "rounds": 2759,
+          "kd": 1.03,
+          "kdDiff": 48.0
+        },
+        "top5": {
+          "rating": null,
+          "maps": null,
+          "rounds": null,
+          "kd": null,
+          "kdDiff": null
+        },
+        "top10": {
+          "rating": null,
+          "maps": null,
+          "rounds": null,
+          "kd": null,
+          "kdDiff": null
+        },
+        "top20": {
+          "rating": 1.02,
+          "maps": 32,
+          "rounds": 669,
+          "kd": 0.96,
+          "kdDiff": -17.0
+        },
+        "top50": {
+          "rating": 1.04,
+          "maps": 97,
+          "rounds": 2074,
+          "kd": 1.01,
+          "kdDiff": 7.0
+        }
+      }
+    },
+    {
+      "team": "BetBoom",
+      "rank": 17,
+      "handle": "d1Ledez",
+      "playerId": 20357,
+      "slug": "d1ledez",
+      "splits": {
+        "overall": {
+          "rating": 1.11,
+          "maps": 103,
+          "rounds": 2254,
+          "kd": 1.09,
+          "kdDiff": 133.0
+        },
+        "top5": {
+          "rating": null,
+          "maps": null,
+          "rounds": null,
+          "kd": null,
+          "kdDiff": null
+        },
+        "top10": {
+          "rating": null,
+          "maps": null,
+          "rounds": null,
+          "kd": null,
+          "kdDiff": null
+        },
+        "top20": {
+          "rating": 1.1,
+          "maps": 7,
+          "rounds": 136,
+          "kd": 1.02,
+          "kdDiff": 2.0
+        },
+        "top50": {
+          "rating": 1.08,
+          "maps": 63,
+          "rounds": 1342,
+          "kd": 1.07,
+          "kdDiff": 64.0
+        }
+      }
+    },
+    {
+      "team": "BetBoom",
+      "rank": 17,
+      "handle": "Magnojez",
+      "playerId": 21667,
+      "slug": "magnojez",
+      "splits": {
+        "overall": {
+          "rating": 1.22,
+          "maps": 138,
+          "rounds": 2949,
+          "kd": 1.14,
+          "kdDiff": 273.0
+        },
+        "top5": {
+          "rating": null,
+          "maps": null,
+          "rounds": null,
+          "kd": null,
+          "kdDiff": null
+        },
+        "top10": {
+          "rating": null,
+          "maps": null,
+          "rounds": null,
+          "kd": null,
+          "kdDiff": null
+        },
+        "top20": {
+          "rating": 1.23,
+          "maps": 39,
+          "rounds": 805,
+          "kd": 1.18,
+          "kdDiff": 97.0
+        },
+        "top50": {
+          "rating": 1.22,
+          "maps": 107,
+          "rounds": 2264,
+          "kd": 1.14,
+          "kdDiff": 210.0
+        }
+      }
+    },
+    {
+      "team": "magic",
+      "rank": 18,
+      "handle": "MaSvAl",
+      "playerId": 19874,
+      "slug": "masval",
+      "splits": {
+        "overall": {
+          "rating": 1.17,
+          "maps": 117,
+          "rounds": 2588,
+          "kd": 1.11,
+          "kdDiff": 177.0
+        },
+        "top5": {
+          "rating": null,
+          "maps": null,
+          "rounds": null,
+          "kd": null,
+          "kdDiff": null
+        },
+        "top10": {
+          "rating": null,
+          "maps": null,
+          "rounds": null,
+          "kd": null,
+          "kdDiff": null
+        },
+        "top20": {
+          "rating": 1.06,
+          "maps": 19,
+          "rounds": 420,
+          "kd": 0.95,
+          "kdDiff": -14.0
+        },
+        "top50": {
+          "rating": 1.09,
+          "maps": 62,
+          "rounds": 1419,
+          "kd": 0.99,
+          "kdDiff": -13.0
+        }
+      }
+    },
+    {
+      "team": "magic",
+      "rank": 18,
+      "handle": "sFade8",
+      "playerId": 22075,
+      "slug": "sfade8",
+      "splits": {
+        "overall": {
+          "rating": 0.97,
+          "maps": 117,
+          "rounds": 2588,
+          "kd": 0.9,
+          "kdDiff": -179.0
+        },
+        "top5": {
+          "rating": null,
+          "maps": null,
+          "rounds": null,
+          "kd": null,
+          "kdDiff": null
+        },
+        "top10": {
+          "rating": null,
+          "maps": null,
+          "rounds": null,
+          "kd": null,
+          "kdDiff": null
+        },
+        "top20": {
+          "rating": 0.93,
+          "maps": 19,
+          "rounds": 420,
+          "kd": 0.83,
+          "kdDiff": -52.0
+        },
+        "top50": {
+          "rating": 0.93,
+          "maps": 62,
+          "rounds": 1419,
+          "kd": 0.85,
+          "kdDiff": -152.0
+        }
+      }
+    },
+    {
+      "team": "magic",
+      "rank": 18,
+      "handle": "AW",
+      "playerId": 22076,
+      "slug": "aw",
+      "splits": {
+        "overall": {
+          "rating": 1.05,
+          "maps": 117,
+          "rounds": 2588,
+          "kd": 1.02,
+          "kdDiff": 39.0
+        },
+        "top5": {
+          "rating": null,
+          "maps": null,
+          "rounds": null,
+          "kd": null,
+          "kdDiff": null
+        },
+        "top10": {
+          "rating": null,
+          "maps": null,
+          "rounds": null,
+          "kd": null,
+          "kdDiff": null
+        },
+        "top20": {
+          "rating": 0.93,
+          "maps": 19,
+          "rounds": 420,
+          "kd": 0.88,
+          "kdDiff": -34.0
+        },
+        "top50": {
+          "rating": 1.05,
+          "maps": 62,
+          "rounds": 1419,
+          "kd": 1.0,
+          "kdDiff": 2.0
+        }
+      }
+    },
+    {
+      "team": "magic",
+      "rank": 18,
+      "handle": "mo0N",
+      "playerId": 23858,
+      "slug": "mo0n",
+      "splits": {
+        "overall": {
+          "rating": 1.1,
+          "maps": 102,
+          "rounds": 2218,
+          "kd": 1.19,
+          "kdDiff": 262.0
+        },
+        "top5": {
+          "rating": null,
+          "maps": null,
+          "rounds": null,
+          "kd": null,
+          "kdDiff": null
+        },
+        "top10": {
+          "rating": null,
+          "maps": null,
+          "rounds": null,
+          "kd": null,
+          "kdDiff": null
+        },
+        "top20": {
+          "rating": 0.88,
+          "maps": 19,
+          "rounds": 420,
+          "kd": 0.91,
+          "kdDiff": -26.0
+        },
+        "top50": {
+          "rating": 0.96,
+          "maps": 42,
+          "rounds": 977,
+          "kd": 1.03,
+          "kdDiff": 20.0
+        }
+      }
+    },
+    {
+      "team": "magic",
+      "rank": 18,
+      "handle": "tenzy",
+      "playerId": 24173,
+      "slug": "tenzy",
+      "splits": {
+        "overall": {
+          "rating": 1.17,
+          "maps": 117,
+          "rounds": 2588,
+          "kd": 1.13,
+          "kdDiff": 218.0
+        },
+        "top5": {
+          "rating": null,
+          "maps": null,
+          "rounds": null,
+          "kd": null,
+          "kdDiff": null
+        },
+        "top10": {
+          "rating": null,
+          "maps": null,
+          "rounds": null,
+          "kd": null,
+          "kdDiff": null
+        },
+        "top20": {
+          "rating": 0.97,
+          "maps": 19,
+          "rounds": 420,
+          "kd": 0.88,
+          "kdDiff": -38.0
+        },
+        "top50": {
+          "rating": 1.13,
+          "maps": 62,
+          "rounds": 1419,
+          "kd": 1.06,
+          "kdDiff": 63.0
+        }
+      }
+    },
+    {
+      "team": "paiN",
+      "rank": 19,
+      "handle": "vsm",
+      "playerId": 16816,
+      "slug": "vsm",
+      "splits": {
+        "overall": {
+          "rating": 1.01,
+          "maps": 89,
+          "rounds": 1898,
+          "kd": 0.98,
+          "kdDiff": -23.0
+        },
+        "top5": {
+          "rating": null,
+          "maps": null,
+          "rounds": null,
+          "kd": null,
+          "kdDiff": null
+        },
+        "top10": {
+          "rating": null,
+          "maps": null,
+          "rounds": null,
+          "kd": null,
+          "kdDiff": null
+        },
+        "top20": {
+          "rating": 0.94,
+          "maps": 57,
+          "rounds": 1249,
+          "kd": 0.9,
+          "kdDiff": -82.0
+        },
+        "top50": {
+          "rating": 0.99,
+          "maps": 77,
+          "rounds": 1650,
+          "kd": 0.96,
+          "kdDiff": -49.0
+        }
+      }
+    },
+    {
+      "team": "paiN",
+      "rank": 19,
+      "handle": "biguzera",
+      "playerId": 18141,
+      "slug": "biguzera",
+      "splits": {
+        "overall": {
+          "rating": 0.94,
+          "maps": 89,
+          "rounds": 1898,
+          "kd": 0.88,
+          "kdDiff": -147.0
+        },
+        "top5": {
+          "rating": null,
+          "maps": null,
+          "rounds": null,
+          "kd": null,
+          "kdDiff": null
+        },
+        "top10": {
+          "rating": null,
+          "maps": null,
+          "rounds": null,
+          "kd": null,
+          "kdDiff": null
+        },
+        "top20": {
+          "rating": 0.86,
+          "maps": 57,
+          "rounds": 1249,
+          "kd": 0.8,
+          "kdDiff": -175.0
+        },
+        "top50": {
+          "rating": 0.92,
+          "maps": 77,
+          "rounds": 1650,
+          "kd": 0.86,
+          "kdDiff": -156.0
+        }
+      }
+    },
+    {
+      "team": "paiN",
+      "rank": 19,
+      "handle": "piriajr",
+      "playerId": 18714,
+      "slug": "piriajr",
+      "splits": {
+        "overall": {
+          "rating": 1.06,
+          "maps": 89,
+          "rounds": 1898,
+          "kd": 1.06,
+          "kdDiff": 76.0
+        },
+        "top5": {
+          "rating": null,
+          "maps": null,
+          "rounds": null,
+          "kd": null,
+          "kdDiff": null
+        },
+        "top10": {
+          "rating": null,
+          "maps": null,
+          "rounds": null,
+          "kd": null,
+          "kdDiff": null
+        },
+        "top20": {
+          "rating": 1.02,
+          "maps": 57,
+          "rounds": 1249,
+          "kd": 0.98,
+          "kdDiff": -16.0
+        },
+        "top50": {
+          "rating": 1.06,
+          "maps": 77,
+          "rounds": 1650,
+          "kd": 1.05,
+          "kdDiff": 52.0
+        }
+      }
+    },
+    {
+      "team": "paiN",
+      "rank": 19,
+      "handle": "saffee",
+      "playerId": 18835,
+      "slug": "saffee",
+      "splits": {
+        "overall": {
+          "rating": 1.01,
+          "maps": 25,
+          "rounds": 510,
+          "kd": 1.06,
+          "kdDiff": 20.0
+        },
+        "top5": {
+          "rating": null,
+          "maps": null,
+          "rounds": null,
+          "kd": null,
+          "kdDiff": null
+        },
+        "top10": {
+          "rating": null,
+          "maps": null,
+          "rounds": null,
+          "kd": null,
+          "kdDiff": null
+        },
+        "top20": {
+          "rating": 0.97,
+          "maps": 19,
+          "rounds": 385,
+          "kd": 1.02,
+          "kdDiff": 4.0
+        },
+        "top50": {
+          "rating": 1.01,
+          "maps": 25,
+          "rounds": 510,
+          "kd": 1.06,
+          "kdDiff": 20.0
+        }
+      }
+    },
+    {
+      "team": "paiN",
+      "rank": 19,
+      "handle": "snow",
+      "playerId": 20171,
+      "slug": "snow",
+      "splits": {
+        "overall": {
+          "rating": 1.04,
+          "maps": 89,
+          "rounds": 1898,
+          "kd": 1.01,
+          "kdDiff": 10.0
+        },
+        "top5": {
+          "rating": null,
+          "maps": null,
+          "rounds": null,
+          "kd": null,
+          "kdDiff": null
+        },
+        "top10": {
+          "rating": null,
+          "maps": null,
+          "rounds": null,
+          "kd": null,
+          "kdDiff": null
+        },
+        "top20": {
+          "rating": 0.99,
+          "maps": 57,
+          "rounds": 1249,
+          "kd": 0.94,
+          "kdDiff": -50.0
+        },
+        "top50": {
+          "rating": 1.02,
+          "maps": 77,
+          "rounds": 1650,
+          "kd": 0.97,
+          "kdDiff": -34.0
+        }
+      }
+    },
+    {
+      "team": "MIBR",
+      "rank": 20,
+      "handle": "LNZ",
+      "playerId": 19310,
+      "slug": "lnz",
+      "splits": {
+        "overall": {
+          "rating": 1.02,
+          "maps": 111,
+          "rounds": 2367,
+          "kd": 0.97,
+          "kdDiff": -50.0
+        },
+        "top5": {
+          "rating": null,
+          "maps": null,
+          "rounds": null,
+          "kd": null,
+          "kdDiff": null
+        },
+        "top10": {
+          "rating": null,
+          "maps": null,
+          "rounds": null,
+          "kd": null,
+          "kdDiff": null
+        },
+        "top20": {
+          "rating": 0.98,
+          "maps": 15,
+          "rounds": 285,
+          "kd": 0.87,
+          "kdDiff": -26.0
+        },
+        "top50": {
+          "rating": 0.98,
+          "maps": 78,
+          "rounds": 1724,
+          "kd": 0.91,
+          "kdDiff": -102.0
+        }
+      }
+    },
+    {
+      "team": "MIBR",
+      "rank": 20,
+      "handle": "brnz4n",
+      "playerId": 20987,
+      "slug": "brnz4n",
+      "splits": {
+        "overall": {
+          "rating": 1.0,
+          "maps": 111,
+          "rounds": 2367,
+          "kd": 0.96,
+          "kdDiff": -63.0
+        },
+        "top5": {
+          "rating": null,
+          "maps": null,
+          "rounds": null,
+          "kd": null,
+          "kdDiff": null
+        },
+        "top10": {
+          "rating": null,
+          "maps": null,
+          "rounds": null,
+          "kd": null,
+          "kdDiff": null
+        },
+        "top20": {
+          "rating": 0.89,
+          "maps": 15,
+          "rounds": 285,
+          "kd": 0.8,
+          "kdDiff": -41.0
+        },
+        "top50": {
+          "rating": 0.96,
+          "maps": 78,
+          "rounds": 1724,
+          "kd": 0.89,
+          "kdDiff": -125.0
+        }
+      }
+    },
+    {
+      "team": "MIBR",
+      "rank": 20,
+      "handle": "insani",
+      "playerId": 21037,
+      "slug": "insani",
+      "splits": {
+        "overall": {
+          "rating": 1.25,
+          "maps": 111,
+          "rounds": 2367,
+          "kd": 1.19,
+          "kdDiff": 290.0
+        },
+        "top5": {
+          "rating": null,
+          "maps": null,
+          "rounds": null,
+          "kd": null,
+          "kdDiff": null
+        },
+        "top10": {
+          "rating": null,
+          "maps": null,
+          "rounds": null,
+          "kd": null,
+          "kdDiff": null
+        },
+        "top20": {
+          "rating": 1.32,
+          "maps": 15,
+          "rounds": 285,
+          "kd": 1.12,
+          "kdDiff": 26.0
+        },
+        "top50": {
+          "rating": 1.21,
+          "maps": 78,
+          "rounds": 1724,
+          "kd": 1.1,
+          "kdDiff": 123.0
+        }
+      }
+    },
+    {
+      "team": "MIBR",
+      "rank": 20,
+      "handle": "venomzera",
+      "playerId": 21288,
+      "slug": "venomzera",
+      "splits": {
+        "overall": {
+          "rating": 1.06,
+          "maps": 111,
+          "rounds": 2367,
+          "kd": 0.99,
+          "kdDiff": -18.0
+        },
+        "top5": {
+          "rating": null,
+          "maps": null,
+          "rounds": null,
+          "kd": null,
+          "kdDiff": null
+        },
+        "top10": {
+          "rating": null,
+          "maps": null,
+          "rounds": null,
+          "kd": null,
+          "kdDiff": null
+        },
+        "top20": {
+          "rating": 1.02,
+          "maps": 15,
+          "rounds": 285,
+          "kd": 0.9,
+          "kdDiff": -21.0
+        },
+        "top50": {
+          "rating": 1.01,
+          "maps": 78,
+          "rounds": 1724,
+          "kd": 0.92,
+          "kdDiff": -95.0
+        }
+      }
+    },
+    {
+      "team": "MIBR",
+      "rank": 20,
+      "handle": "kl1m",
+      "playerId": 23192,
+      "slug": "kl1m",
+      "splits": {
+        "overall": {
+          "rating": 1.22,
+          "maps": 111,
+          "rounds": 2367,
+          "kd": 1.36,
+          "kdDiff": 516.0
+        },
+        "top5": {
+          "rating": null,
+          "maps": null,
+          "rounds": null,
+          "kd": null,
+          "kdDiff": null
+        },
+        "top10": {
+          "rating": null,
+          "maps": null,
+          "rounds": null,
+          "kd": null,
+          "kdDiff": null
+        },
+        "top20": {
+          "rating": 1.03,
+          "maps": 15,
+          "rounds": 285,
+          "kd": 1.12,
+          "kdDiff": 22.0
+        },
+        "top50": {
+          "rating": 1.15,
+          "maps": 78,
+          "rounds": 1724,
+          "kd": 1.27,
+          "kdDiff": 291.0
+        }
+      }
+    }
+  ],
+  "missingFilters": [
+    {
+      "team": "MOUZ",
+      "handle": "xelex",
+      "missing": [
+        "top5"
+      ]
+    },
+    {
+      "team": "Legacy",
+      "handle": "arT",
+      "missing": [
+        "top5"
+      ]
+    },
+    {
+      "team": "Legacy",
+      "handle": "dumau",
+      "missing": [
+        "top5"
+      ]
+    },
+    {
+      "team": "Legacy",
+      "handle": "latto",
+      "missing": [
+        "top5"
+      ]
+    },
+    {
+      "team": "Legacy",
+      "handle": "n1ssim",
+      "missing": [
+        "top5"
+      ]
+    },
+    {
+      "team": "Legacy",
+      "handle": "saadzin",
+      "missing": [
+        "top5"
+      ]
+    },
+    {
+      "team": "The MongolZ",
+      "handle": "bLitz",
+      "missing": [
+        "top5"
+      ]
+    },
+    {
+      "team": "The MongolZ",
+      "handle": "Techno",
+      "missing": [
+        "top5"
+      ]
+    },
+    {
+      "team": "The MongolZ",
+      "handle": "mzinho",
+      "missing": [
+        "top5"
+      ]
+    },
+    {
+      "team": "The MongolZ",
+      "handle": "910",
+      "missing": [
+        "top5"
+      ]
+    },
+    {
+      "team": "The MongolZ",
+      "handle": "cobrazera",
+      "missing": [
+        "top5"
+      ]
+    },
+    {
+      "team": "GamerLegion",
+      "handle": "Snax",
+      "missing": [
+        "top5"
+      ]
+    },
+    {
+      "team": "GamerLegion",
+      "handle": "REZ",
+      "missing": [
+        "top5"
+      ]
+    },
+    {
+      "team": "GamerLegion",
+      "handle": "Tauson",
+      "missing": [
+        "top5"
+      ]
+    },
+    {
+      "team": "GamerLegion",
+      "handle": "PR",
+      "missing": [
+        "top5"
+      ]
+    },
+    {
+      "team": "GamerLegion",
+      "handle": "hypex",
+      "missing": [
+        "top5"
+      ]
+    },
+    {
+      "team": "Astralis",
+      "handle": "HooXi",
+      "missing": [
+        "top5"
+      ]
+    },
+    {
+      "team": "Astralis",
+      "handle": "phzy",
+      "missing": [
+        "top5"
+      ]
+    },
+    {
+      "team": "Astralis",
+      "handle": "jabbi",
+      "missing": [
+        "top5"
+      ]
+    },
+    {
+      "team": "Astralis",
+      "handle": "Staehr",
+      "missing": [
+        "top5"
+      ]
+    },
+    {
+      "team": "Astralis",
+      "handle": "ryu",
+      "missing": [
+        "top5"
+      ]
+    },
+    {
+      "team": "G2",
+      "handle": "huNter-",
+      "missing": [
+        "top5"
+      ]
+    },
+    {
+      "team": "G2",
+      "handle": "NertZ",
+      "missing": [
+        "top5",
+        "top10"
+      ]
+    },
+    {
+      "team": "G2",
+      "handle": "SunPayus",
+      "missing": [
+        "top5"
+      ]
+    },
+    {
+      "team": "G2",
+      "handle": "HeavyGod",
+      "missing": [
+        "top5"
+      ]
+    },
+    {
+      "team": "G2",
+      "handle": "MATYS",
+      "missing": [
+        "top5"
+      ]
+    },
+    {
+      "team": "FUT",
+      "handle": "dem0n",
+      "missing": [
+        "top5"
+      ]
+    },
+    {
+      "team": "FUT",
+      "handle": "lauNX",
+      "missing": [
+        "top5"
+      ]
+    },
+    {
+      "team": "FUT",
+      "handle": "Krabeni",
+      "missing": [
+        "top5"
+      ]
+    },
+    {
+      "team": "FUT",
+      "handle": "cmtry",
+      "missing": [
+        "top5"
+      ]
+    },
+    {
+      "team": "FUT",
+      "handle": "dziugss",
+      "missing": [
+        "top5"
+      ]
+    },
+    {
+      "team": "B8",
+      "handle": "alex666",
+      "missing": [
+        "top5",
+        "top10"
+      ]
+    },
+    {
+      "team": "B8",
+      "handle": "npl",
+      "missing": [
+        "top5",
+        "top10"
+      ]
+    },
+    {
+      "team": "B8",
+      "handle": "kensizor",
+      "missing": [
+        "top5",
+        "top10"
+      ]
+    },
+    {
+      "team": "B8",
+      "handle": "esenthial",
+      "missing": [
+        "top5",
+        "top10"
+      ]
+    },
+    {
+      "team": "B8",
+      "handle": "s1zzi",
+      "missing": [
+        "top5",
+        "top10"
+      ]
+    },
+    {
+      "team": "FaZe",
+      "handle": "Neityu",
+      "missing": [
+        "top5",
+        "top10"
+      ]
+    },
+    {
+      "team": "BetBoom",
+      "handle": "Boombl4",
+      "missing": [
+        "top5",
+        "top10"
+      ]
+    },
+    {
+      "team": "BetBoom",
+      "handle": "zorte",
+      "missing": [
+        "top5",
+        "top10"
+      ]
+    },
+    {
+      "team": "BetBoom",
+      "handle": "S1ren",
+      "missing": [
+        "top5",
+        "top10"
+      ]
+    },
+    {
+      "team": "BetBoom",
+      "handle": "d1Ledez",
+      "missing": [
+        "top5",
+        "top10"
+      ]
+    },
+    {
+      "team": "BetBoom",
+      "handle": "Magnojez",
+      "missing": [
+        "top5",
+        "top10"
+      ]
+    },
+    {
+      "team": "magic",
+      "handle": "MaSvAl",
+      "missing": [
+        "top5",
+        "top10"
+      ]
+    },
+    {
+      "team": "magic",
+      "handle": "sFade8",
+      "missing": [
+        "top5",
+        "top10"
+      ]
+    },
+    {
+      "team": "magic",
+      "handle": "AW",
+      "missing": [
+        "top5",
+        "top10"
+      ]
+    },
+    {
+      "team": "magic",
+      "handle": "mo0N",
+      "missing": [
+        "top5",
+        "top10"
+      ]
+    },
+    {
+      "team": "magic",
+      "handle": "tenzy",
+      "missing": [
+        "top5",
+        "top10"
+      ]
+    },
+    {
+      "team": "paiN",
+      "handle": "vsm",
+      "missing": [
+        "top5",
+        "top10"
+      ]
+    },
+    {
+      "team": "paiN",
+      "handle": "biguzera",
+      "missing": [
+        "top5",
+        "top10"
+      ]
+    },
+    {
+      "team": "paiN",
+      "handle": "piriajr",
+      "missing": [
+        "top5",
+        "top10"
+      ]
+    },
+    {
+      "team": "paiN",
+      "handle": "saffee",
+      "missing": [
+        "top5",
+        "top10"
+      ]
+    },
+    {
+      "team": "paiN",
+      "handle": "snow",
+      "missing": [
+        "top5",
+        "top10"
+      ]
+    },
+    {
+      "team": "MIBR",
+      "handle": "LNZ",
+      "missing": [
+        "top5",
+        "top10"
+      ]
+    },
+    {
+      "team": "MIBR",
+      "handle": "brnz4n",
+      "missing": [
+        "top5",
+        "top10"
+      ]
+    },
+    {
+      "team": "MIBR",
+      "handle": "insani",
+      "missing": [
+        "top5",
+        "top10"
+      ]
+    },
+    {
+      "team": "MIBR",
+      "handle": "venomzera",
+      "missing": [
+        "top5",
+        "top10"
+      ]
+    },
+    {
+      "team": "MIBR",
+      "handle": "kl1m",
+      "missing": [
+        "top5",
+        "top10"
+      ]
+    }
+  ]
+}
