@@ -1516,48 +1516,19 @@ export function playRound(
   const luck = (Math.random() - 0.5) * (settings.luck + difficulty.luck) * 0.34;
   const baseProbability = clamp(0.5 + (yourStrength - opponentStrength) / 58 + economyMod + sideMod + tacticMod + timeoutBoost + luck, 0.16, 0.84);
   const probability = applyEcoUpsetCaps(baseProbability, yourLoadout, opponentLoadout, yourStrength, opponentStrength);
-  const youWin = Math.random() < probability;
 
-  const winningTeamId: "you" | "opponent" = youWin ? "you" : "opponent";
-  const losingTeamId: "you" | "opponent" = youWin ? "opponent" : "you";
-
-  const youScore = state.you + (youWin ? 1 : 0);
-  const opponentScore = state.opponent + (youWin ? 0 : 1);
-
-  let tPlantedBomb = false;
-  let bombOutcome: "none" | "defused" | "exploded" = "none";
-  const tSideTeam = state.side === "T" ? "you" : "opponent";
-  if (losingTeamId === tSideTeam) {
-    const tBuyState = tSideTeam === "you" ? currentEconomy : currentOpponentEconomy;
-    const plantChance = tBuyState === "ECO" ? 0.15 : 0.45;
-    tPlantedBomb = Math.random() < plantChance;
-    if (tPlantedBomb) {
-      bombOutcome = "defused";
-    }
-  } else {
-    const tBuyState = tSideTeam === "you" ? currentEconomy : currentOpponentEconomy;
-    const plantChance = tBuyState === "ECO" ? 0.40 : 0.70;
-    tPlantedBomb = Math.random() < plantChance;
-    if (tPlantedBomb) {
-      bombOutcome = "exploded";
-    }
-  }
-
-  const feed = createRoundFeed(
+  const dynamicResult = generateDynamicRound(
     state.round,
     you,
     opponent,
-    youWin,
     yourWeapons,
     opponentWeapons,
     tactic,
     currentEconomy,
     currentOpponentEconomy,
-    tPlantedBomb,
-    bombOutcome,
     state.side,
-    youScore,
-    opponentScore,
+    state.you,
+    state.opponent,
     state.context,
     yourLossStreak,
     opponentLossStreak,
@@ -1565,7 +1536,21 @@ export function playRound(
     opponentMoney,
     yourArmor,
     opponentArmor,
+    probability,
+    killWeight,
+    deathWeight
   );
+
+  const youWin = dynamicResult.youWin;
+  const tPlantedBomb = dynamicResult.tPlantedBomb;
+  const bombOutcome = dynamicResult.bombOutcome;
+  const feed = dynamicResult.feed;
+
+  const winningTeamId: "you" | "opponent" = youWin ? "you" : "opponent";
+  const losingTeamId: "you" | "opponent" = youWin ? "opponent" : "you";
+
+  const youScore = state.you + (youWin ? 1 : 0);
+  const opponentScore = state.opponent + (youWin ? 0 : 1);
 
   // Add kill rewards to player money
   feed.forEach((event) => {
@@ -1828,18 +1813,15 @@ function getWeaponCost(w: string): number {
   return 300;
 }
 
-function createRoundFeed(
+export function generateDynamicRound(
   round: number,
   you: FieldTeam,
   opponent: FieldTeam,
-  youWin: boolean,
   yourWeapons: Record<string, string>,
   opponentWeapons: Record<string, string>,
   tactic: Tactic,
   yourBuyState: "ECO" | "FORCE" | "FULL",
   opponentBuyState: "ECO" | "FORCE" | "FULL",
-  tPlantedBomb: boolean,
-  bombOutcome: "none" | "defused" | "exploded",
   side: MatchSide,
   youScore: number,
   opponentScore: number,
@@ -1850,387 +1832,298 @@ function createRoundFeed(
   opponentMoney: Record<string, number>,
   yourArmor: Record<string, "none" | "kevlar" | "helmet">,
   opponentArmor: Record<string, "none" | "kevlar" | "helmet">,
+  initialProbability: number,
+  killWeightFn: (p: Player, ctx: MatchContext, oppRank?: number, weapon?: string) => number,
+  deathWeightFn: (p: Player, ctx: MatchContext, oppRank?: number, weapon?: string) => number
 ) {
-  const teams = { you: you.players, opponent: opponent.players };
-  const alive = {
-    you: [...you.players],
-    opponent: [...opponent.players],
-  };
-  const winnerTeamSide: MatchSide = youWin ? side : (side === "CT" ? "T" : "CT");
-  const isTWinner = winnerTeamSide === "T";
+  let p = clamp(initialProbability, 0.01, 0.99);
+  let logit = Math.log(p / (1 - p));
 
-  const losingTeamId = youWin ? "opponent" : "you";
-  const losingBuyState = losingTeamId === "you" ? yourBuyState : opponentBuyState;
-  const losingTactic = losingTeamId === "you" ? tactic : "standard";
-  const losingSide = losingTeamId === "you" ? side : otherMatchSide(side);
-  const losingPlayers = losingTeamId === "you" ? you.players : opponent.players;
-  const losingWeapons = losingTeamId === "you" ? yourWeapons : opponentWeapons;
-  const losingArmor = losingTeamId === "you" ? yourArmor : opponentArmor;
-  const losingMoney = losingTeamId === "you" ? yourMoney : opponentMoney;
-  const losingLossStreak = losingTeamId === "you" ? yourLossStreak : opponentLossStreak;
-
-  let isSaving = false;
-
-  const isLastRoundOfHalf = round === 12 || round === 24 || (round > 24 && (round - 24) % 6 === 0);
-  const isEnded = isMatchOver(youScore, opponentScore, round);
-
-  if (!isLastRoundOfHalf && !isEnded) {
-    let losingAlive = 2;
-    let winningAlive = 4;
-    if (bombOutcome === "none" && !isTWinner) {
-      losingAlive = Math.random() < 0.5 ? 1 : 2;
-      winningAlive = Math.random() < 0.5 ? 3 : 4;
-    } else if (bombOutcome === "defused") {
-      losingAlive = Math.random() < 0.4 ? 2 : (Math.random() < 0.4 ? 1 : 3);
-      winningAlive = losingAlive === 3 ? 4 : (Math.random() < 0.5 ? 3 : 4);
-    } else if (bombOutcome === "exploded") {
-      losingAlive = Math.random() < 0.4 ? 2 : (Math.random() < 0.4 ? 1 : 3);
-      winningAlive = losingAlive === 3 ? 4 : (Math.random() < 0.5 ? 3 : 4);
-    } else {
-      losingAlive = Math.random() < 0.5 ? 1 : 2;
-      winningAlive = Math.random() < 0.5 ? 3 : 4;
-    }
-
-    let attemptScore = 0;
-
-    attemptScore += (losingAlive - winningAlive) * 12;
-
-    let totalEquipmentValue = 0;
-    losingPlayers.forEach((p) => {
-      const w = losingWeapons[p.id] || "";
-      const arm = losingArmor[p.id] || "none";
-      const wVal = getWeaponCost(w);
-      const aVal = arm === "helmet" ? 1000 : (arm === "kevlar" ? 650 : 0);
-      totalEquipmentValue += wVal + aVal;
-    });
-    const avgEquipmentValue = totalEquipmentValue / losingPlayers.length;
-
-    if (avgEquipmentValue >= 3500) {
-      attemptScore -= 25;
-    } else if (avgEquipmentValue >= 2200) {
-      attemptScore -= 12;
-    } else {
-      attemptScore += 15;
-    }
-
-    const losingLossBonus = 1400 + Math.min(4, losingLossStreak + 1) * 500;
-    let avgNextRoundMoneyIfDie = 0;
-    losingPlayers.forEach((p) => {
-      let income = losingLossBonus;
-      if (losingSide === "T" && tPlantedBomb) {
-        income += 800;
-      }
-      avgNextRoundMoneyIfDie += (losingMoney[p.id] ?? 0) + income;
-    });
-    avgNextRoundMoneyIfDie /= losingPlayers.length;
-
-    if (avgNextRoundMoneyIfDie >= 4500) {
-      attemptScore += 20;
-    } else if (avgNextRoundMoneyIfDie < 2500) {
-      attemptScore -= 20;
-    }
-
-    const winningBuyState = losingTeamId === "you" ? opponentBuyState : yourBuyState;
-    if (winningBuyState === "ECO") {
-      attemptScore += 18;
-    } else if (winningBuyState === "FORCE") {
-      attemptScore += 8;
-    }
-
-    if (losingSide === "CT" && tPlantedBomb) {
-      const kitPresent = winningBuyState === "FULL" || Math.random() < 0.5;
-      if (kitPresent) {
-        attemptScore += 12;
-      } else {
-        attemptScore -= 18;
-      }
-    }
-
-    const maxOvr = Math.max(...losingPlayers.map((p) => p.ovr));
-    if (maxOvr >= 90) {
-      attemptScore += 10;
-    } else if (maxOvr >= 86) {
-      attemptScore += 5;
-    }
-
-    const losingScoreVal = losingTeamId === "you" ? youScore - (youWin ? 1 : 0) : opponentScore - (youWin ? 0 : 1);
-    const winningScoreVal = losingTeamId === "you" ? opponentScore : youScore;
-
-    if (winningScoreVal >= 12) {
-      attemptScore += 35;
-    } else if (winningScoreVal >= 10) {
-      attemptScore += 15;
-    }
-
-    if (losingSide === "CT") {
-      attemptScore -= 8;
-    } else {
-      attemptScore += 4;
-    }
-
-    const goForItProbability = 1 / (1 + Math.exp(-attemptScore / 20));
-    isSaving = Math.random() >= goForItProbability;
-  }
-
-  let ctDeaths = 0;
-  let tDeaths = 0;
+  let timeRemaining = 115;
+  let bombTimer = 0;
+  let tPlantedBomb = false;
+  let bombOutcome: "none" | "defused" | "exploded" = "none";
+  let roundEnded = false;
+  let winningTeamId: "you" | "opponent" | null = null;
   let finalReason = "";
 
-  if (isTWinner) {
-    if (bombOutcome === "exploded") {
-      finalReason = "Target bombed";
-      ctDeaths = isSaving ? weightedCount([3, 4, 4, 5]) : weightedCount([4, 4, 5, 5]);
-      tDeaths = weightedCount([0, 1, 1, 2, 2, 3, 4]);
-    } else {
-      finalReason = "Squad eliminated";
-      ctDeaths = 5;
-      tDeaths = weightedCount([0, 1, 1, 2, 2, 3, 4]);
-    }
-  } else {
-    if (bombOutcome === "defused") {
-      finalReason = "Bomb defused";
-      tDeaths = isSaving ? weightedCount([2, 3, 4, 4, 5]) : weightedCount([3, 4, 4, 5, 5]);
-      ctDeaths = weightedCount([0, 1, 1, 2, 2, 3, 4]);
-    } else {
-      const timeRanOut = Math.random() < 0.45;
-      if (timeRanOut) {
-        finalReason = "Time ran out";
-        tDeaths = weightedCount([1, 2, 3, 4]);
-        ctDeaths = weightedCount([0, 1, 1, 2, 2, 3, 4]);
-      } else {
-        finalReason = "Squad eliminated";
-        tDeaths = 5;
-        ctDeaths = weightedCount([0, 1, 1, 2, 2, 3, 4]);
-      }
-    }
-  }
-
-  const remainingKills = {
-    you: side === "CT" ? tDeaths : ctDeaths,
-    opponent: side === "CT" ? ctDeaths : tDeaths,
+  const alive = {
+    you: [...you.players],
+    opponent: [...opponent.players]
   };
-  const winnerSide = youWin ? "you" : "opponent";
-  const loserSide = youWin ? "opponent" : "you";
-  const openingSide: "you" | "opponent" = Math.random() < 0.58 ? winnerSide : loserSide;
-  const feed: FeedLine[] = [];
 
+  const feed: FeedLine[] = [];
+  
+  // Start reason
   let startReason: string | undefined = undefined;
   if (round === 1) {
     const peakingNames: string[] = [];
     const coldNames: string[] = [];
-
     if (context.peakingPlayers && context.peakingPlayers.length > 0) {
       const peakingSet = new Set(context.peakingPlayers);
-      you.players.forEach((p) => {
-        if (peakingSet.has(p.id)) peakingNames.push(p.handle);
-      });
-      opponent.players.forEach((p) => {
-        if (peakingSet.has(p.id)) peakingNames.push(p.handle);
-      });
+      you.players.forEach((p) => { if (peakingSet.has(p.id)) peakingNames.push(p.handle); });
+      opponent.players.forEach((p) => { if (peakingSet.has(p.id)) peakingNames.push(p.handle); });
     }
-
     if (context.coldPlayers && context.coldPlayers.length > 0) {
       const coldSet = new Set(context.coldPlayers);
-      you.players.forEach((p) => {
-        if (coldSet.has(p.id)) coldNames.push(p.handle);
-      });
-      opponent.players.forEach((p) => {
-        if (coldSet.has(p.id)) coldNames.push(p.handle);
-      });
+      you.players.forEach((p) => { if (coldSet.has(p.id)) coldNames.push(p.handle); });
+      opponent.players.forEach((p) => { if (coldSet.has(p.id)) coldNames.push(p.handle); });
     }
-
     const parts: string[] = [];
-    if (peakingNames.length > 0) {
-      parts.push(`🔥 Superstar form active: ${peakingNames.join(", ")} in the zone!`);
-    }
-    if (coldNames.length > 0) {
-      parts.push(`❄️ Cold form active: ${coldNames.join(", ")} struggling to find impact.`);
-    }
-    if (parts.length > 0) {
-      startReason = parts.join("  ");
-    }
+    if (peakingNames.length > 0) parts.push(`🔥 Superstar form active: ${peakingNames.join(", ")} in the zone!`);
+    if (coldNames.length > 0) parts.push(`❄️ Cold form active: ${coldNames.join(", ")} struggling to find impact.`);
+    if (parts.length > 0) startReason = parts.join("  ");
   }
 
   feed.push({
-    round,
-    killer: "",
-    killerId: "",
-    victim: "",
-    victimId: "",
-    weapon: "",
-    team: "neutral",
-    first: false,
-    type: "round_start",
-    reason: startReason,
+    round, killer: "", killerId: "", victim: "", victimId: "", weapon: "", team: "neutral", first: false, type: "round_start", reason: startReason
   });
 
+  let isFirstKill = true;
+  let lastKillTime = 0;
+  let lastKillerSide: "you" | "opponent" | null = null;
+  
   const tTeamKey = side === "T" ? "you" : "opponent";
   const ctTeamKey = side === "CT" ? "you" : "opponent";
 
-  while (remainingKills.you + remainingKills.opponent > 0) {
-    const preferred = feed.length === 1 ? openingSide : pickKillSide(remainingKills);
-    let sideKey: "you" | "opponent" = remainingKills[preferred] > 0 ? preferred : otherSide(preferred);
-    if (remainingKills[sideKey] <= 0) break;
-
-    let victimSide: "you" | "opponent" = otherSide(sideKey);
-    // Prevent a team from being completely wiped out if they still have kills to get,
-    // which would otherwise result in dead players getting kills later in the round.
-    if (alive[victimSide].length === 1 && remainingKills[victimSide] > 0) {
-      sideKey = victimSide;
-      victimSide = otherSide(sideKey);
-    }
-
-    const killerPool = alive[sideKey].length ? alive[sideKey] : teams[sideKey];
-    const victimPool = alive[victimSide];
-    if (!victimPool.length) {
-      remainingKills[sideKey] = 0;
-      continue;
-    }
-
-    const equipped = sideKey === "you" ? yourWeapons : opponentWeapons;
-    const victimEquipped = victimSide === "you" ? yourWeapons : opponentWeapons;
-
-    const killerOpponentRank = sideKey === "you" ? opponent.rank : you.rank;
-    const victimOpponentRank = victimSide === "you" ? opponent.rank : you.rank;
-
-    const killer = pickWeightedBy(killerPool, (player) => killWeight(player, context, killerOpponentRank, equipped[player.id]));
-    const victim = pickWeightedBy(victimPool, (player) => deathWeight(player, context, victimOpponentRank, victimEquipped[player.id]));
-    alive[victimSide] = alive[victimSide].filter((player) => player.id !== victim.id);
-    remainingKills[sideKey] -= 1;
-
-    const killerWeapon = equipped[killer.id] ?? "Pistol";
-
-    let assistant: Player | undefined;
-    let assistantDmg = 0;
-    let killerDmg = 0;
-
-    if (Math.random() < 0.36) {
-      const teammates = sideKey === "you" ? you.players : opponent.players;
-      const pool = teammates.filter((player) => player.id !== killer.id);
-      if (pool.length > 0) {
-        assistant = pool[Math.floor(Math.random() * pool.length)];
-        assistantDmg = Math.floor(25 + Math.random() * 30);
-        killerDmg = Math.max(30, 100 - assistantDmg);
-      }
-    }
-
-    if (assistantDmg === 0) {
-      killerDmg = Math.floor(65 + Math.random() * 35);
-    }
-
-    feed.push({
-      round,
-      killer: killer.handle,
-      killerId: killer.id,
-      victim: victim.handle,
-      victimId: victim.id,
-      weapon: killerWeapon,
-      team: sideKey,
-      first: feed.length === 1,
-      assistant: assistant?.handle,
-      assistantId: assistant?.id,
-      killerDamage: killerDmg,
-      assistantDamage: assistantDmg,
-      isHeadshot: Math.random() < 0.38,
-    });
-  }
-
-  const getAliveCounts = () => {
-    return {
-      ct: side === "CT" ? alive.you.length : alive.opponent.length,
-      t: side === "T" ? alive.you.length : alive.opponent.length,
-    };
-  };
-
-  if (tPlantedBomb) {
-    const tPlayers = side === "T" ? you.players : opponent.players;
-    let plantIndex = Math.min(3, feed.length);
-    let aliveTs: Player[] = [];
-    while (plantIndex >= 1) {
-      const deadTsBeforePlant = new Set(feed.slice(1, plantIndex).map((event) => event.victimId));
-      aliveTs = tPlayers.filter((p) => !deadTsBeforePlant.has(p.id));
-      if (aliveTs.length > 0) {
-        break;
-      }
-      plantIndex--;
-    }
-    const planterPool = aliveTs.length ? aliveTs : tPlayers;
-    const planter = planterPool[Math.floor(Math.random() * planterPool.length)];
-
-    const deadBeforePlant = new Set(feed.slice(1, plantIndex).map((event) => event.victimId));
-    const ctAliveAtPlant = (side === "CT" ? you.players : opponent.players).filter((p) => !deadBeforePlant.has(p.id)).length;
-    const tAliveAtPlant = (side === "T" ? you.players : opponent.players).filter((p) => !deadBeforePlant.has(p.id)).length;
-
-    feed.splice(plantIndex, 0, {
-      round,
-      killer: planter.handle,
-      killerId: planter.id,
-      victim: "Bomb Site",
-      victimId: "",
-      weapon: "bomb",
-      team: tTeamKey,
-      first: false,
-      type: "plant",
-      ctAlive: ctAliveAtPlant,
-      tAlive: tAliveAtPlant,
-    });
-  }
-
-  if (bombOutcome === "defused") {
-    const ctPlayers = side === "CT" ? you.players : opponent.players;
-    const deadCTs = new Set(feed.filter(e => e.type !== "plant" && e.type !== "round_start").map((event) => event.victimId));
-    const aliveCTs = ctPlayers.filter((p) => !deadCTs.has(p.id));
-    const defuserPool = aliveCTs.length ? aliveCTs : ctPlayers;
-    const defuser = defuserPool[Math.floor(Math.random() * defuserPool.length)];
-
-    const counts = getAliveCounts();
-
-    feed.push({
-      round,
-      killer: defuser.handle,
-      killerId: defuser.id,
-      victim: "Bomb",
-      victimId: "",
-      weapon: "defuse_kit",
-      team: ctTeamKey,
-      first: false,
-      type: "defuse",
-      ctAlive: counts.ct,
-      tAlive: counts.t,
-    });
-  } else if (bombOutcome === "exploded") {
-    feed.push({
-      round,
-      killer: "Bomb",
-      killerId: "",
-      victim: "",
-      victimId: "",
-      weapon: "bomb",
-      team: "neutral",
-      first: false,
-      type: "explode",
-    });
-  }
-
-  const tScoreVal = side === "T" ? youScore : opponentScore;
-  const ctScoreVal = side === "CT" ? youScore : opponentScore;
-
-  feed.push({
-    round,
-    killer: "",
-    killerId: "",
-    victim: "",
-    victimId: "",
-    weapon: "",
-    team: youWin ? "you" : "opponent",
-    first: false,
-    type: "round_over",
-    tScore: tScoreVal,
-    ctScore: ctScoreVal,
-    reason: finalReason,
+  const getAliveCounts = () => ({
+    ct: alive[ctTeamKey].length,
+    t: alive[tTeamKey].length,
   });
 
-  return feed;
+  const getP = () => 1 / (1 + Math.exp(-logit));
+
+  function otherSide(s: "you" | "opponent"): "you" | "opponent" {
+    return s === "you" ? "opponent" : "you";
+  }
+
+  function getWeaponCost(w: string): number {
+    if (!w) return 200;
+    const upper = w.toUpperCase();
+    if (upper.includes("AWP")) return 4750;
+    if (upper.includes("AK")) return 2700;
+    if (upper.includes("M4A4")) return 3100;
+    if (upper.includes("M4A1")) return 2900;
+    if (upper.includes("FAMAS")) return 2050;
+    if (upper.includes("GALIL")) return 1800;
+    if (upper.includes("MP9")) return 1250;
+    if (upper.includes("MAC")) return 1050;
+    if (upper.includes("DEAGLE")) return 700;
+    if (upper.includes("P90")) return 2350;
+    if (upper.includes("SSG")) return 1700;
+    if (upper.includes("UMP") || upper.includes("MP7") || upper.includes("MP5")) return 1200;
+    if (upper.includes("NOVA") || upper.includes("XM1014") || upper.includes("MAG-7")) return 1500;
+    return 300;
+  }
+
+  const isLastRoundOfHalf = round === 12 || round === 24 || (round > 24 && (round - 24) % 6 === 0);
+  const matchWinThreshold = (r: number) => r < 25 ? 13 : 13 + (Math.floor((r - 25) / 6) + 1) * 3;
+  const isMatchPoint = (youScore >= matchWinThreshold(round) - 1) || (opponentScore >= matchWinThreshold(round) - 1);
+
+  while (!roundEnded && timeRemaining > 0) {
+    let timeStep = Math.floor(Math.random() * 15) + 5; 
+    
+    if (tPlantedBomb) {
+      timeStep = Math.floor(Math.random() * 8) + 3; 
+      bombTimer -= timeStep;
+      if (bombTimer <= 0) {
+        bombOutcome = "exploded";
+        winningTeamId = tTeamKey;
+        finalReason = "Target bombed";
+        roundEnded = true;
+        feed.push({ round, killer: "Bomb", killerId: "", victim: "", victimId: "", weapon: "bomb", team: "neutral", first: false, type: "explode" });
+        break;
+      }
+    }
+
+    timeRemaining -= timeStep;
+    if (timeRemaining <= 0 && !tPlantedBomb) {
+      winningTeamId = ctTeamKey;
+      finalReason = "Time ran out";
+      roundEnded = true;
+      break;
+    }
+
+    const counts = getAliveCounts();
+    let eventType: "kill" | "plant" | "defuse" | "save" = "kill";
+
+    if (tPlantedBomb) {
+       if (counts.ct > 0 && counts.t === 0) {
+         eventType = "defuse";
+       } else if (counts.ct > 0) {
+         if (Math.random() < 0.04) eventType = "defuse"; 
+       }
+    } else {
+       if (counts.t > 0 && timeRemaining < 40) {
+         if (Math.random() < 0.45) eventType = "plant";
+       } else if (counts.t > 0 && Math.random() < 0.12) {
+         eventType = "plant";
+       }
+    }
+
+    // Saving logic
+    if (!isLastRoundOfHalf && !isMatchPoint) {
+      // Check if disadvantaged side should save
+      const checkSave = (sideKey: "you" | "opponent") => {
+        const sideAlive = alive[sideKey].length;
+        const oppAlive = alive[otherSide(sideKey)].length;
+        if (sideAlive === 0 || oppAlive === 0) return false;
+        
+        if (sideAlive >= oppAlive && !tPlantedBomb) return false;
+        if (tPlantedBomb && sideKey === ctTeamKey && sideAlive >= oppAlive) return false;
+        
+        if (sideAlive <= oppAlive - 2 || (tPlantedBomb && sideKey === ctTeamKey && sideAlive < oppAlive)) {
+           let equipVal = 0;
+           const sideWeapons = sideKey === "you" ? yourWeapons : opponentWeapons;
+           alive[sideKey].forEach(p => { equipVal += getWeaponCost(sideWeapons[p.id] ?? ""); });
+           const avgEquip = equipVal / sideAlive;
+           
+           if (avgEquip >= 2500) {
+             return Math.random() < 0.85; // highly likely to save
+           }
+           return Math.random() < 0.35;
+        }
+        return false;
+      };
+
+      if (!tPlantedBomb && timeRemaining < 30) {
+        if (checkSave(tTeamKey)) {
+           // Ts save
+           winningTeamId = ctTeamKey;
+           finalReason = "Time ran out";
+           roundEnded = true;
+           break;
+        }
+      }
+
+      if (tPlantedBomb && bombTimer < 25) {
+        if (checkSave(ctTeamKey)) {
+           // CTs save
+           bombTimer = 0;
+           bombOutcome = "exploded";
+           winningTeamId = tTeamKey;
+           finalReason = "Target bombed";
+           roundEnded = true;
+           feed.push({ round, killer: "Bomb", killerId: "", victim: "", victimId: "", weapon: "bomb", team: "neutral", first: false, type: "explode" });
+           break;
+        }
+      }
+    }
+
+    if (eventType === "plant") {
+       tPlantedBomb = true;
+       bombTimer = 40;
+       const tBoost = counts.ct > counts.t ? 0.85 : 0.45;
+       logit += tTeamKey === "you" ? tBoost : -tBoost;
+       
+       const planter = alive[tTeamKey][Math.floor(Math.random() * counts.t)];
+       feed.push({ round, killer: planter.handle, killerId: planter.id, victim: "Bomb Site", victimId: "", weapon: "bomb", team: tTeamKey, first: false, type: "plant", ctAlive: counts.ct, tAlive: counts.t });
+       continue;
+    }
+
+    if (eventType === "defuse") {
+       bombOutcome = "defused";
+       winningTeamId = ctTeamKey;
+       finalReason = "Bomb defused";
+       roundEnded = true;
+       const defuser = alive[ctTeamKey][Math.floor(Math.random() * counts.ct)];
+       feed.push({ round, killer: defuser.handle, killerId: defuser.id, victim: "Bomb", victimId: "", weapon: "defuse_kit", team: ctTeamKey, first: false, type: "defuse", ctAlive: counts.ct, tAlive: counts.t });
+       break;
+    }
+
+    if (eventType === "kill") {
+       let youGetKillProb = getP();
+       const playerAdvantage = alive.you.length - alive.opponent.length;
+       youGetKillProb = clamp(youGetKillProb + playerAdvantage * 0.12, 0.05, 0.95);
+
+       const killerSide = Math.random() < youGetKillProb ? "you" : "opponent";
+       const victimSide = otherSide(killerSide);
+
+       if (alive[victimSide].length === 0) continue;
+
+       const killerEquipped = killerSide === "you" ? yourWeapons : opponentWeapons;
+       const victimEquipped = victimSide === "you" ? yourWeapons : opponentWeapons;
+       const killerOppRank = killerSide === "you" ? opponent.rank : you.rank;
+       const victimOppRank = victimSide === "you" ? opponent.rank : you.rank;
+
+       const killer = pickWeightedBy(alive[killerSide], p => killWeightFn(p, context, killerOppRank, killerEquipped[p.id]));
+       const victim = pickWeightedBy(alive[victimSide], p => deathWeightFn(p, context, victimOppRank, victimEquipped[p.id]));
+
+       alive[victimSide] = alive[victimSide].filter(p => p.id !== victim.id);
+
+       if (isFirstKill) {
+          isFirstKill = false;
+          const delta = 0.9;
+          logit += killerSide === "you" ? delta : -delta;
+       } else {
+          if (timeRemaining > lastKillTime - 12 && killerSide !== lastKillerSide) {
+            const tradeDelta = 0.65;
+            logit += killerSide === "you" ? tradeDelta : -tradeDelta;
+          } else {
+            const normalDelta = 0.45;
+            logit += killerSide === "you" ? normalDelta : -normalDelta;
+          }
+       }
+
+       if (victim.ovr >= 85) {
+          const starDelta = 0.2 + (victim.ovr - 85) * 0.05;
+          logit += victimSide === "you" ? -starDelta : starDelta;
+       }
+
+       lastKillTime = timeRemaining;
+       lastKillerSide = killerSide;
+       
+       let assistant: Player | undefined;
+       let assistantDmg = 0;
+       let killerDmg = 0;
+       if (Math.random() < 0.36) {
+          const teammates = alive[killerSide].filter(p => p.id !== killer.id);
+          if (teammates.length > 0) {
+            assistant = teammates[Math.floor(Math.random() * teammates.length)];
+            assistantDmg = Math.floor(25 + Math.random() * 30);
+            killerDmg = Math.max(30, 100 - assistantDmg);
+          }
+       }
+       if (assistantDmg === 0) killerDmg = Math.floor(65 + Math.random() * 35);
+
+       feed.push({
+         round, killer: killer.handle, killerId: killer.id, victim: victim.handle, victimId: victim.id,
+         weapon: killerEquipped[killer.id] ?? "Pistol", team: killerSide, first: feed.filter(f => !f.type || f.type === "kill").length === 0,
+         assistant: assistant?.handle, assistantId: assistant?.id, killerDamage: killerDmg, assistantDamage: assistantDmg,
+         isHeadshot: Math.random() < 0.38
+       });
+
+       if (alive[victimSide].length === 0) {
+          if (tPlantedBomb && victimSide === ctTeamKey) {
+             bombOutcome = "exploded";
+             winningTeamId = tTeamKey;
+             finalReason = "Target bombed"; // Changed from Squad eliminated if bomb planted
+             roundEnded = true;
+          } else if (tPlantedBomb && victimSide === tTeamKey) {
+             bombOutcome = "defused";
+             winningTeamId = ctTeamKey;
+             finalReason = "Bomb defused";
+             roundEnded = true;
+             const defuser = alive[ctTeamKey][Math.floor(Math.random() * alive[ctTeamKey].length)];
+             feed.push({ round, killer: defuser.handle, killerId: defuser.id, victim: "Bomb", victimId: "", weapon: "defuse_kit", team: ctTeamKey, first: false, type: "defuse", ctAlive: alive[ctTeamKey].length, tAlive: 0 });
+          } else {
+             winningTeamId = killerSide;
+             finalReason = "Squad eliminated";
+             roundEnded = true;
+          }
+       }
+    }
+  }
+
+  const youWin = winningTeamId === "you";
+  feed.push({
+    round, killer: "", killerId: "", victim: "", victimId: "", weapon: "", team: youWin ? "you" : "opponent", first: false, type: "round_over",
+    tScore: side === "T" ? youScore + (youWin ? 1 : 0) : opponentScore + (youWin ? 0 : 1),
+    ctScore: side === "CT" ? youScore + (youWin ? 1 : 0) : opponentScore + (youWin ? 0 : 1),
+    reason: finalReason
+  });
+
+  return { feed, youWin, tPlantedBomb, bombOutcome, roundReason: finalReason };
 }
 
 function weightedCount(values: number[]) {
