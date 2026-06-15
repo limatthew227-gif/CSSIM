@@ -2326,7 +2326,10 @@ meter::-webkit-meter-optimum-value {
 }
 
 .result-layout .stats-player .flat-flag {
-  width: 14px;
+  width: 18px;
+  height: auto;
+  max-height: 13px;
+  object-fit: contain;
 }
 
 .result-layout .country-code {
