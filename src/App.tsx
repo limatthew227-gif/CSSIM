@@ -16,6 +16,7 @@ import {
   Play,
   RefreshCcw,
   Save,
+  Search,
   Settings2,
   Shield,
   SkipForward,
@@ -130,6 +131,8 @@ type StatsSideFilter = "both" | "T" | "CT";
 type StatsMapFilter = "all" | number;
 type StatsScope = "all" | "mine";
 type LiveFeedView = "feed" | "map";
+type TeamLabView = "builder" | "scout";
+type ScoutSortKey = "ovr" | "hltv" | "aim" | "clutch" | "consistency" | "awp" | "igl" | "team";
 
 interface TeamFormPlayer {
   handle: string;
@@ -219,6 +222,16 @@ interface PlayerDatabaseRow {
   team: FieldTeam;
   matches: number;
   line: MatchState["yourStats"][string];
+}
+
+interface ScoutRow {
+  player: Player;
+  roster: Roster;
+  bestMap: { name: string; value: number };
+  worstMap: { name: string; value: number };
+  hltvLabel: string;
+  hltvTone: string;
+  sampleLabel: string;
 }
 
 const speedDelays: Record<number, number> = {
@@ -2154,6 +2167,18 @@ function TeamLab({
   onDelete: (id: string) => void;
   onBack: () => void;
 }) {
+  const [labView, setLabView] = useState<TeamLabView>("builder");
+  const [scoutQuery, setScoutQuery] = useState("");
+  const [scoutRole, setScoutRole] = useState<Role | "all">("all");
+  const [scoutSort, setScoutSort] = useState<ScoutSortKey>("ovr");
+  const [scoutDescending, setScoutDescending] = useState(true);
+  const scoutRows = useMemo(() => buildScoutRows(rosterPool), [rosterPool]);
+  const filteredScoutRows = useMemo(
+    () => filterScoutRows(scoutRows, scoutQuery, scoutRole, scoutSort, scoutDescending),
+    [scoutDescending, scoutQuery, scoutRole, scoutRows, scoutSort],
+  );
+  const scoutSummary = useMemo(() => summarizeScoutRows(scoutRows), [scoutRows]);
+
   const update = <K extends keyof TeamForm>(key: K, value: TeamForm[K]) => {
     setTeamForm((current) => ({ ...current, [key]: value }));
   };
@@ -2192,155 +2217,280 @@ function TeamLab({
             <b>{customRosters.length}</b>
             custom teams
           </span>
+          <div className="team-lab-tabs segmented compact">
+            <button className={labView === "builder" ? "selected" : ""} onClick={() => setLabView("builder")}>
+              <Users size={15} />
+              Builder
+            </button>
+            <button className={labView === "scout" ? "selected" : ""} onClick={() => setLabView("scout")}>
+              <Search size={15} />
+              Players
+            </button>
+          </div>
           <button className="secondary" onClick={onBack}>
             Back to setup
           </button>
         </div>
       </section>
 
-      <section className="team-editor-panel">
-        <div className="team-editor-toolbar">
-          <div className="section-title">
-            <Users size={18} />
-            <span>New team</span>
+      {labView === "builder" ? (
+        <section className="team-editor-panel">
+          <div className="team-editor-toolbar">
+            <div className="section-title">
+              <Users size={18} />
+              <span>New team</span>
+            </div>
+            <div>
+              <button className="secondary" onClick={onReset}>
+                <RefreshCcw size={16} />
+                Sample
+              </button>
+              <button className="primary" onClick={onSave}>
+                <Save size={16} />
+                Save team
+              </button>
+            </div>
           </div>
-          <div>
-            <button className="secondary" onClick={onReset}>
-              <RefreshCcw size={16} />
-              Sample
-            </button>
-            <button className="primary" onClick={onSave}>
-              <Save size={16} />
-              Save team
-            </button>
+
+          {message && <div className="team-lab-message">{message}</div>}
+
+          <div className="team-form-grid">
+            <label>
+              Team tag
+              <input value={teamForm.tag} maxLength={5} onChange={(event) => update("tag", event.target.value)} />
+            </label>
+            <label>
+              Team name
+              <input value={teamForm.name} onChange={(event) => update("name", event.target.value)} />
+            </label>
+            <label>
+              Country
+              <input value={teamForm.country} maxLength={3} onChange={(event) => update("country", event.target.value)} />
+            </label>
+            <label>
+              Era
+              <select value={teamForm.era} onChange={(event) => update("era", event.target.value as Era)}>
+                {eraOptions.map((era) => (
+                  <option key={era} value={era}>
+                    {era}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Year
+              <input value={teamForm.year} onChange={(event) => update("year", event.target.value)} />
+            </label>
+            <label>
+              Accent
+              <input type="color" value={teamForm.accent} onChange={(event) => update("accent", event.target.value)} />
+            </label>
+            <label className="wide-field">
+              Team note
+              <textarea value={teamForm.tagline} onChange={(event) => update("tagline", event.target.value)} />
+            </label>
           </div>
-        </div>
 
-        {message && <div className="team-lab-message">{message}</div>}
-
-        <div className="team-form-grid">
-          <label>
-            Team tag
-            <input value={teamForm.tag} maxLength={5} onChange={(event) => update("tag", event.target.value)} />
-          </label>
-          <label>
-            Team name
-            <input value={teamForm.name} onChange={(event) => update("name", event.target.value)} />
-          </label>
-          <label>
-            Country
-            <input value={teamForm.country} maxLength={3} onChange={(event) => update("country", event.target.value)} />
-          </label>
-          <label>
-            Era
-            <select value={teamForm.era} onChange={(event) => update("era", event.target.value as Era)}>
-              {eraOptions.map((era) => (
-                <option key={era} value={era}>
-                  {era}
-                </option>
+          <div className="map-editor">
+            <div className="section-title">
+              <Target size={18} />
+              <span>Map strengths</span>
+            </div>
+            <div className="map-editor-grid">
+              {mapPool.map((map) => (
+                <Range
+                  key={map.id}
+                  label={map.name}
+                  value={teamForm.mapBase[map.id]}
+                  min={55}
+                  max={99}
+                  step={1}
+                  onChange={(value) => updateMap(map.id, value)}
+                />
               ))}
-            </select>
-          </label>
-          <label>
-            Year
-            <input value={teamForm.year} onChange={(event) => update("year", event.target.value)} />
-          </label>
-          <label>
-            Accent
-            <input type="color" value={teamForm.accent} onChange={(event) => update("accent", event.target.value)} />
-          </label>
-          <label className="wide-field">
-            Team note
-            <textarea value={teamForm.tagline} onChange={(event) => update("tagline", event.target.value)} />
-          </label>
-        </div>
-
-        <div className="map-editor">
-          <div className="section-title">
-            <Target size={18} />
-            <span>Map strengths</span>
+            </div>
           </div>
-          <div className="map-editor-grid">
-            {mapPool.map((map) => (
-              <Range
-                key={map.id}
-                label={map.name}
-                value={teamForm.mapBase[map.id]}
-                min={55}
-                max={99}
-                step={1}
-                onChange={(value) => updateMap(map.id, value)}
-              />
+
+          <div className="player-editor-list">
+            {teamForm.players.map((player, index) => {
+              const stats = normalizeStats({
+                aim: player.aim,
+                clutch: player.clutch,
+                consistency: player.consistency,
+                awp: player.awp,
+                igl: player.igl,
+              });
+              return (
+                <article className="player-editor-card" key={index}>
+                  <div className="player-editor-head">
+                    <strong>Player {index + 1}</strong>
+                    <span>{ratePlayer(stats, player.role)} OVR</span>
+                  </div>
+                  <div className="player-editor-grid">
+                    <label>
+                      Handle
+                      <input value={player.handle} onChange={(event) => updatePlayer(index, "handle", event.target.value)} />
+                    </label>
+                    <label>
+                      Real name
+                      <input value={player.realName} onChange={(event) => updatePlayer(index, "realName", event.target.value)} />
+                    </label>
+                    <label>
+                      Country
+                      <input value={player.country} maxLength={3} onChange={(event) => updatePlayer(index, "country", event.target.value)} />
+                    </label>
+                    <label>
+                      Role
+                      <select value={player.role} onChange={(event) => updatePlayer(index, "role", event.target.value as Role)}>
+                        {roleOptions.map((role) => (
+                          <option key={role} value={role}>
+                            {role}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label>
+                      Style
+                      <select value={player.style} onChange={(event) => updatePlayer(index, "style", event.target.value as Style)}>
+                        {styleOptions.map((style) => (
+                          <option key={style} value={style}>
+                            {style}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    {(["aim", "clutch", "consistency", "awp", "igl"] as const).map((stat) => (
+                      <label key={stat}>
+                        {stat}
+                        <input
+                          type="number"
+                          min={stat === "awp" || stat === "igl" ? 45 : 50}
+                          max={99}
+                          value={player[stat]}
+                          onChange={(event) => updatePlayer(index, stat, Number(event.target.value))}
+                        />
+                      </label>
+                    ))}
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        </section>
+      ) : (
+        <section className="team-scout-panel">
+          <div className="team-editor-toolbar">
+            <div className="section-title">
+              <Search size={18} />
+              <span>Player scouting</span>
+            </div>
+            <span className="scout-count">{filteredScoutRows.length} shown</span>
+          </div>
+
+          <div className="scout-summary-grid">
+            <div>
+              <span>Players</span>
+              <b>{scoutSummary.players}</b>
+            </div>
+            <div>
+              <span>Avg OVR</span>
+              <b>{scoutSummary.avgOvr.toFixed(1)}</b>
+            </div>
+            <div>
+              <span>88+ cards</span>
+              <b>{scoutSummary.stars}</b>
+            </div>
+            <div>
+              <span>Low sample</span>
+              <b>{scoutSummary.lowSample}</b>
+            </div>
+          </div>
+
+          <div className="scout-controls">
+            <label className="scout-search">
+              Search
+              <div>
+                <Search size={16} />
+                <input value={scoutQuery} onChange={(event) => setScoutQuery(event.target.value)} placeholder="Player, team, country, role..." />
+              </div>
+            </label>
+            <label>
+              Role
+              <select value={scoutRole} onChange={(event) => setScoutRole(event.target.value as Role | "all")}>
+                <option value="all">All roles</option>
+                {roleOptions.map((role) => (
+                  <option key={role} value={role}>
+                    {role}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Sort
+              <select value={scoutSort} onChange={(event) => setScoutSort(event.target.value as ScoutSortKey)}>
+                <option value="ovr">OVR</option>
+                <option value="hltv">HLTV rating</option>
+                <option value="aim">Aim</option>
+                <option value="clutch">Clutch</option>
+                <option value="consistency">Consistency</option>
+                <option value="awp">AWP</option>
+                <option value="igl">IGL</option>
+                <option value="team">Team</option>
+              </select>
+            </label>
+            <button className="secondary" onClick={() => setScoutDescending((current) => !current)}>
+              {scoutDescending ? "High to low" : "Low to high"}
+            </button>
+          </div>
+
+          <div className="scout-table-card">
+            <div className="scout-table-head scout-grid">
+              <span>Player</span>
+              <span>Team</span>
+              <span>OVR</span>
+              <span>HLTV</span>
+              <span>Aim</span>
+              <span>Clutch</span>
+              <span>Const.</span>
+              <span>AWP</span>
+              <span>IGL</span>
+              <span>Maps</span>
+            </div>
+            {filteredScoutRows.map((row) => (
+              <article className="scout-table-row scout-grid" key={`${row.roster.id}-${row.player.id}`}>
+                <div className="scout-player-cell">
+                  <Flag country={row.player.country} />
+                  <div>
+                    <strong>{row.player.handle}</strong>
+                    <small>{row.player.country} / {row.player.realName} / {row.player.role} / {row.player.style}</small>
+                  </div>
+                </div>
+                <div className="scout-team-cell">
+                  <TeamLogo team={row.roster} small />
+                  <div>
+                    <b>{row.roster.tag}</b>
+                    <small>{row.roster.year}</small>
+                  </div>
+                </div>
+                <span className={`scout-ovr ${overallTone(row.player.ovr)}`}>{row.player.ovr}</span>
+                <span className={`scout-hltv ${row.hltvTone}`}>
+                  {row.hltvLabel}
+                  <small>{row.sampleLabel}</small>
+                </span>
+                <StatCell value={row.player.stats.aim} />
+                <StatCell value={row.player.stats.clutch} />
+                <StatCell value={row.player.stats.consistency} />
+                <StatCell value={row.player.stats.awp} />
+                <StatCell value={row.player.stats.igl} />
+                <span className="scout-map-cell">
+                  <b>{row.bestMap.name} {row.bestMap.value}</b>
+                  <small>{row.worstMap.name} {row.worstMap.value}</small>
+                </span>
+              </article>
             ))}
           </div>
-        </div>
-
-        <div className="player-editor-list">
-          {teamForm.players.map((player, index) => {
-            const stats = normalizeStats({
-              aim: player.aim,
-              clutch: player.clutch,
-              consistency: player.consistency,
-              awp: player.awp,
-              igl: player.igl,
-            });
-            return (
-              <article className="player-editor-card" key={index}>
-                <div className="player-editor-head">
-                  <strong>Player {index + 1}</strong>
-                  <span>{ratePlayer(stats, player.role)} OVR</span>
-                </div>
-                <div className="player-editor-grid">
-                  <label>
-                    Handle
-                    <input value={player.handle} onChange={(event) => updatePlayer(index, "handle", event.target.value)} />
-                  </label>
-                  <label>
-                    Real name
-                    <input value={player.realName} onChange={(event) => updatePlayer(index, "realName", event.target.value)} />
-                  </label>
-                  <label>
-                    Country
-                    <input value={player.country} maxLength={3} onChange={(event) => updatePlayer(index, "country", event.target.value)} />
-                  </label>
-                  <label>
-                    Role
-                    <select value={player.role} onChange={(event) => updatePlayer(index, "role", event.target.value as Role)}>
-                      {roleOptions.map((role) => (
-                        <option key={role} value={role}>
-                          {role}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label>
-                    Style
-                    <select value={player.style} onChange={(event) => updatePlayer(index, "style", event.target.value as Style)}>
-                      {styleOptions.map((style) => (
-                        <option key={style} value={style}>
-                          {style}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  {(["aim", "clutch", "consistency", "awp", "igl"] as const).map((stat) => (
-                    <label key={stat}>
-                      {stat}
-                      <input
-                        type="number"
-                        min={stat === "awp" || stat === "igl" ? 45 : 50}
-                        max={99}
-                        value={player[stat]}
-                        onChange={(event) => updatePlayer(index, stat, Number(event.target.value))}
-                      />
-                    </label>
-                  ))}
-                </div>
-              </article>
-            );
-          })}
-        </div>
-      </section>
+        </section>
+      )}
 
       <aside className="team-database-panel">
         <div className="section-title">
@@ -2391,6 +2541,98 @@ function TeamLab({
         </div>
       </aside>
     </main>
+  );
+}
+
+function buildScoutRows(rosterPool: Roster[]): ScoutRow[] {
+  return rosterPool.flatMap((roster) =>
+    roster.players.map((player) => {
+      const maps = mapPool
+        .map((map) => ({ name: map.name, value: player.maps[map.id] ?? roster.mapPool[map.id] ?? 0 }))
+        .sort((a, b) => b.value - a.value);
+      const hasHltvRating = typeof player.hltvRating === "number" && (player.hltvMaps ?? 0) > 0;
+
+      return {
+        player,
+        roster,
+        bestMap: maps[0] ?? { name: "-", value: 0 },
+        worstMap: maps[maps.length - 1] ?? { name: "-", value: 0 },
+        hltvLabel: hasHltvRating ? player.hltvRating!.toFixed(2) : "-",
+        hltvTone: hasHltvRating ? ratingTone(player.hltvRating!) : "muted",
+        sampleLabel: hasHltvRating ? `${player.hltvMaps} maps` : "no data",
+      };
+    }),
+  );
+}
+
+function filterScoutRows(
+  rows: ScoutRow[],
+  query: string,
+  role: Role | "all",
+  sortKey: ScoutSortKey,
+  descending: boolean,
+) {
+  const normalizedQuery = query.trim().toLowerCase();
+  const visible = rows.filter((row) => {
+    if (role !== "all" && row.player.role !== role) return false;
+    if (!normalizedQuery) return true;
+    return [
+      row.player.handle,
+      row.player.realName,
+      row.player.country,
+      row.player.role,
+      row.player.style,
+      row.roster.name,
+      row.roster.tag,
+      row.roster.country,
+      row.roster.year,
+    ]
+      .join(" ")
+      .toLowerCase()
+      .includes(normalizedQuery);
+  });
+
+  return [...visible].sort((a, b) => {
+    if (sortKey === "team") {
+      const teamCompare = a.roster.name.localeCompare(b.roster.name);
+      if (teamCompare !== 0) return descending ? -teamCompare : teamCompare;
+      return b.player.ovr - a.player.ovr;
+    }
+
+    const aValue = scoutSortValue(a.player, sortKey);
+    const bValue = scoutSortValue(b.player, sortKey);
+    if (aValue === bValue) return a.player.handle.localeCompare(b.player.handle);
+    return descending ? bValue - aValue : aValue - bValue;
+  });
+}
+
+function scoutSortValue(player: Player, sortKey: ScoutSortKey) {
+  if (sortKey === "ovr") return player.ovr;
+  if (sortKey === "hltv") return typeof player.hltvRating === "number" ? player.hltvRating : -1;
+  if (sortKey === "team") return 0;
+  return player.stats[sortKey];
+}
+
+function summarizeScoutRows(rows: ScoutRow[]) {
+  const players = rows.length;
+  const avgOvr = players ? rows.reduce((sum, row) => sum + row.player.ovr, 0) / players : 0;
+  const stars = rows.filter((row) => row.player.ovr >= 88).length;
+  const lowSample = rows.filter((row) => typeof row.player.hltvMaps === "number" && row.player.hltvMaps > 0 && row.player.hltvMaps < 30).length;
+  return { players, avgOvr, stars, lowSample };
+}
+
+function overallTone(ovr: number) {
+  if (ovr >= 86) return "good";
+  if (ovr >= 76) return "neutral";
+  return "bad";
+}
+
+function StatCell({ value }: { value: number }) {
+  return (
+    <span className="scout-stat-cell">
+      <b>{value}</b>
+      <i style={{ "--stat-fill": `${Math.max(0, Math.min(100, value))}%` } as React.CSSProperties} />
+    </span>
   );
 }
 
