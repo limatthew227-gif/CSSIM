@@ -2341,9 +2341,15 @@ function playerPerformanceMultiplier(player: Player, context: MatchContext, oppo
   if (handle === "m0nesy" && context.stage && context.stage !== "swiss") multiplier *= 1.05;
   if (handle === "niko" && player.source.year === "2026" && context.stage === "final") multiplier *= 0.9;
 
-  // AWP performance boost
-  if (player.role === "AWP" && weapon === "AWP") {
-    multiplier *= 1.05;
+  // AWP / Scout performance boost scaled by AWP skill stat
+  const isAwpOrScout = weapon === "AWP" || (weapon && weapon.toUpperCase().includes("SSG"));
+  if (isAwpOrScout) {
+    const isAwper = player.role === "AWP";
+    const baseline = isAwper ? 84 : 85; 
+    const diff = player.stats.awp - baseline;
+    const factor = diff >= 0 ? diff * 0.008 : diff * 0.015;
+    const multiplierChange = diff >= 0 ? Math.min(0.08, factor) : factor;
+    multiplier *= Math.max(0.5, 1.0 + multiplierChange);
   }
 
   // Playoff performance buff / debuff
