@@ -555,7 +555,7 @@ textarea {
 
 .scout-summary-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(118px, 1fr));
   gap: 10px;
 }
 
@@ -584,7 +584,7 @@ textarea {
 
 .scout-controls {
   display: grid;
-  grid-template-columns: minmax(260px, 1fr) 150px 160px auto;
+  grid-template-columns: minmax(260px, 1fr) 150px 160px auto auto;
   gap: 10px;
   align-items: end;
 }
@@ -617,10 +617,10 @@ textarea {
 
 .scout-grid {
   display: grid;
-  grid-template-columns: minmax(230px, 1.4fr) minmax(132px, 0.8fr) 62px 74px repeat(5, 58px) minmax(130px, 0.8fr);
+  grid-template-columns: minmax(230px, 1.4fr) minmax(132px, 0.8fr) 62px 74px repeat(5, 58px) minmax(130px, 0.8fr) minmax(150px, 0.9fr);
   align-items: center;
   gap: 8px;
-  min-width: 1080px;
+  min-width: 1240px;
 }
 
 .scout-table-head {
@@ -650,6 +650,10 @@ textarea {
 
 .scout-table-row:last-child {
   border-bottom: 0;
+}
+
+.scout-table-row.has-audit {
+  box-shadow: inset 3px 0 0 rgba(229, 180, 74, 0.72);
 }
 
 .scout-player-cell,
@@ -698,7 +702,8 @@ textarea {
 .scout-ovr,
 .scout-hltv,
 .scout-stat-cell,
-.scout-map-cell {
+.scout-map-cell,
+.scout-audit-cell {
   display: grid;
   place-items: center;
   text-align: center;
@@ -762,6 +767,52 @@ textarea {
 .scout-map-cell b {
   color: var(--text);
   font-size: 12px;
+}
+
+.scout-audit-cell {
+  gap: 4px;
+  justify-items: start;
+  text-align: left;
+}
+
+.scout-audit-cell b,
+.scout-audit-cell small {
+  width: max-content;
+  max-width: 100%;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 4px 7px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 950;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.scout-audit-cell b.danger {
+  border-color: color-mix(in srgb, var(--red), white 10%);
+  background: color-mix(in srgb, var(--red), transparent 87%);
+  color: #ffb0b0;
+}
+
+.scout-audit-cell b.warn {
+  border-color: color-mix(in srgb, var(--gold), white 8%);
+  background: color-mix(in srgb, var(--gold), transparent 88%);
+  color: #f0c96b;
+}
+
+.scout-audit-cell b.info {
+  border-color: color-mix(in srgb, var(--accent), white 8%);
+  background: color-mix(in srgb, var(--accent), transparent 88%);
+  color: #9fc6ff;
+}
+
+.scout-audit-cell.clean small {
+  border-color: transparent;
+  background: transparent;
+  color: #647181;
 }
 
 .team-form-grid,

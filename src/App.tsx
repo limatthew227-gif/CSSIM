@@ -132,7 +132,8 @@ type StatsMapFilter = "all" | number;
 type StatsScope = "all" | "mine";
 type LiveFeedView = "feed" | "map";
 type TeamLabView = "builder" | "scout";
-type ScoutSortKey = "ovr" | "hltv" | "aim" | "clutch" | "consistency" | "awp" | "igl" | "team";
+type ScoutSortKey = "ovr" | "hltv" | "audit" | "aim" | "clutch" | "consistency" | "awp" | "igl" | "team";
+type ScoutAuditSeverity = "danger" | "warn" | "info";
 
 interface TeamFormPlayer {
   handle: string;
@@ -229,9 +230,16 @@ interface ScoutRow {
   roster: Roster;
   bestMap: { name: string; value: number; delta: number };
   worstMap: { name: string; value: number; delta: number };
+  auditFlags: ScoutAuditFlag[];
   hltvLabel: string;
   hltvTone: string;
   sampleLabel: string;
+}
+
+interface ScoutAuditFlag {
+  label: string;
+  reason: string;
+  severity: ScoutAuditSeverity;
 }
 
 const speedDelays: Record<number, number> = {
@@ -2172,10 +2180,11 @@ function TeamLab({
   const [scoutRole, setScoutRole] = useState<Role | "all">("all");
   const [scoutSort, setScoutSort] = useState<ScoutSortKey>("ovr");
   const [scoutDescending, setScoutDescending] = useState(true);
+  const [scoutAuditOnly, setScoutAuditOnly] = useState(false);
   const scoutRows = useMemo(() => buildScoutRows(rosterPool), [rosterPool]);
   const filteredScoutRows = useMemo(
-    () => filterScoutRows(scoutRows, scoutQuery, scoutRole, scoutSort, scoutDescending),
-    [scoutDescending, scoutQuery, scoutRole, scoutRows, scoutSort],
+    () => filterScoutRows(scoutRows, scoutQuery, scoutRole, scoutSort, scoutDescending, scoutAuditOnly),
+    [scoutAuditOnly, scoutDescending, scoutQuery, scoutRole, scoutRows, scoutSort],
   );
   const scoutSummary = useMemo(() => summarizeScoutRows(scoutRows), [scoutRows]);
 
@@ -2404,6 +2413,10 @@ function TeamLab({
               <span>Low sample</span>
               <b>{scoutSummary.lowSample}</b>
             </div>
+            <div>
+              <span>Audit flags</span>
+              <b>{scoutSummary.auditRows}</b>
+            </div>
           </div>
 
           <div className="scout-controls">
@@ -2430,6 +2443,7 @@ function TeamLab({
               <select value={scoutSort} onChange={(event) => setScoutSort(event.target.value as ScoutSortKey)}>
                 <option value="ovr">OVR</option>
                 <option value="hltv">HLTV rating</option>
+                <option value="audit">Audit flags</option>
                 <option value="aim">Aim</option>
                 <option value="clutch">Clutch</option>
                 <option value="consistency">Consistency</option>
@@ -2440,6 +2454,9 @@ function TeamLab({
             </label>
             <button className="secondary" onClick={() => setScoutDescending((current) => !current)}>
               {scoutDescending ? "High to low" : "Low to high"}
+            </button>
+            <button className={scoutAuditOnly ? "secondary selected" : "secondary"} onClick={() => setScoutAuditOnly((current) => !current)}>
+              Audit only
             </button>
           </div>
 
@@ -2455,9 +2472,10 @@ function TeamLab({
               <span>AWP</span>
               <span>IGL</span>
               <span>Map fit</span>
+              <span>Audit</span>
             </div>
             {filteredScoutRows.map((row) => (
-              <article className="scout-table-row scout-grid" key={`${row.roster.id}-${row.player.id}`}>
+              <article className={`scout-table-row scout-grid ${row.auditFlags.length ? "has-audit" : ""}`} key={`${row.roster.id}-${row.player.id}`}>
                 <div className="scout-player-cell">
                   <Flag country={row.player.country} />
                   <div>
@@ -2489,6 +2507,20 @@ function TeamLab({
                   <small title={`${row.worstMap.name} raw map value ${row.worstMap.value}`}>
                     {row.worstMap.name} {formatSignedWhole(row.worstMap.delta)}
                   </small>
+                </span>
+                <span className={`scout-audit-cell ${primaryAuditSeverity(row.auditFlags)}`}>
+                  {row.auditFlags.length ? (
+                    <>
+                      {row.auditFlags.slice(0, 2).map((flag) => (
+                        <b className={flag.severity} key={flag.label} title={flag.reason}>
+                          {flag.label}
+                        </b>
+                      ))}
+                      {row.auditFlags.length > 2 && <small>+{row.auditFlags.length - 2} more</small>}
+                    </>
+                  ) : (
+                    <small>Clean</small>
+                  )}
                 </span>
               </article>
             ))}
@@ -2557,12 +2589,14 @@ function buildScoutRows(rosterPool: Roster[]): ScoutRow[] {
         .map((map) => ({ ...map, delta: Math.round(map.value - averageMap) }))
         .sort((a, b) => b.value - a.value);
       const hasHltvRating = typeof player.hltvRating === "number" && (player.hltvMaps ?? 0) > 0;
+      const auditFlags = auditScoutPlayer(player, maps, hasHltvRating);
 
       return {
         player,
         roster,
         bestMap: maps[0] ?? { name: "-", value: 0, delta: 0 },
         worstMap: maps[maps.length - 1] ?? { name: "-", value: 0, delta: 0 },
+        auditFlags,
         hltvLabel: hasHltvRating ? player.hltvRating!.toFixed(2) : "-",
         hltvTone: hasHltvRating ? ratingTone(player.hltvRating!) : "muted",
         sampleLabel: hasHltvRating ? `${player.hltvMaps} maps` : "no data",
@@ -2577,10 +2611,12 @@ function filterScoutRows(
   role: Role | "all",
   sortKey: ScoutSortKey,
   descending: boolean,
+  auditOnly: boolean,
 ) {
   const normalizedQuery = query.trim().toLowerCase();
   const visible = rows.filter((row) => {
     if (role !== "all" && row.player.role !== role) return false;
+    if (auditOnly && row.auditFlags.length === 0) return false;
     if (!normalizedQuery) return true;
     return [
       row.player.handle,
@@ -2588,6 +2624,7 @@ function filterScoutRows(
       row.player.country,
       row.player.role,
       row.player.style,
+      ...row.auditFlags.map((flag) => flag.label),
       row.roster.name,
       row.roster.tag,
       row.roster.country,
@@ -2604,6 +2641,11 @@ function filterScoutRows(
       if (teamCompare !== 0) return descending ? -teamCompare : teamCompare;
       return b.player.ovr - a.player.ovr;
     }
+    if (sortKey === "audit") {
+      const scoreCompare = scoutAuditScore(a) - scoutAuditScore(b);
+      if (scoreCompare !== 0) return descending ? -scoreCompare : scoreCompare;
+      return b.player.ovr - a.player.ovr;
+    }
 
     const aValue = scoutSortValue(a.player, sortKey);
     const bValue = scoutSortValue(b.player, sortKey);
@@ -2616,7 +2658,15 @@ function scoutSortValue(player: Player, sortKey: ScoutSortKey) {
   if (sortKey === "ovr") return player.ovr;
   if (sortKey === "hltv") return typeof player.hltvRating === "number" ? player.hltvRating : -1;
   if (sortKey === "team") return 0;
+  if (sortKey === "audit") return 0;
   return player.stats[sortKey];
+}
+
+function scoutAuditScore(row: ScoutRow) {
+  return row.auditFlags.reduce(
+    (sum, flag) => sum + (flag.severity === "danger" ? 3 : flag.severity === "warn" ? 2 : 1),
+    0,
+  );
 }
 
 function summarizeScoutRows(rows: ScoutRow[]) {
@@ -2624,13 +2674,70 @@ function summarizeScoutRows(rows: ScoutRow[]) {
   const avgOvr = players ? rows.reduce((sum, row) => sum + row.player.ovr, 0) / players : 0;
   const stars = rows.filter((row) => row.player.ovr >= 88).length;
   const lowSample = rows.filter((row) => typeof row.player.hltvMaps === "number" && row.player.hltvMaps > 0 && row.player.hltvMaps < 30).length;
-  return { players, avgOvr, stars, lowSample };
+  const auditRows = rows.filter((row) => row.auditFlags.length > 0).length;
+  return { players, avgOvr, stars, lowSample, auditRows };
+}
+
+function auditScoutPlayer(
+  player: Player,
+  maps: Array<{ name: string; value: number; delta: number }>,
+  hasHltvRating: boolean,
+): ScoutAuditFlag[] {
+  const flags: ScoutAuditFlag[] = [];
+  const hltvRating = player.hltvRating ?? 0;
+  const hltvMaps = player.hltvMaps ?? 0;
+  const mapSpread = maps.length ? maps[0].value - maps[maps.length - 1].value : 0;
+
+  if (hasHltvRating) {
+    if (hltvRating >= 1.18 && player.ovr < 84) {
+      flags.push({ label: "Star low OVR", reason: `HLTV ${hltvRating.toFixed(2)} but only ${player.ovr} OVR.`, severity: "danger" });
+    } else if (hltvRating >= 1.1 && player.ovr < 77) {
+      flags.push({ label: "Maybe low", reason: `HLTV ${hltvRating.toFixed(2)} is strong for a ${player.ovr} OVR card.`, severity: "warn" });
+    }
+
+    if (hltvRating <= 0.92 && player.ovr >= 78) {
+      flags.push({ label: "Maybe high", reason: `HLTV ${hltvRating.toFixed(2)} may not support ${player.ovr} OVR.`, severity: "warn" });
+    }
+
+    if (hltvMaps > 0 && hltvMaps < 30) {
+      flags.push({ label: "Low sample", reason: `${hltvMaps} maps in the current HLTV sample.`, severity: "info" });
+    }
+  }
+
+  if (player.role === "AWP" && player.stats.awp < 78) {
+    flags.push({ label: "AWP stat", reason: `AWPer with ${player.stats.awp} AWP stat.`, severity: "warn" });
+  }
+  if (player.role === "IGL" && player.stats.igl < 78) {
+    flags.push({ label: "IGL stat", reason: `IGL with ${player.stats.igl} IGL stat.`, severity: "warn" });
+  }
+  if (player.role === "Entry" && player.stats.aim < 78) {
+    flags.push({ label: "Entry aim", reason: `Entry with ${player.stats.aim} aim.`, severity: "warn" });
+  }
+  if (player.role === "Lurker" && player.stats.clutch < 78) {
+    flags.push({ label: "Lurk clutch", reason: `Lurker with ${player.stats.clutch} clutch.`, severity: "warn" });
+  }
+  if (player.role === "Support" && player.stats.consistency < 75) {
+    flags.push({ label: "Support floor", reason: `Support with ${player.stats.consistency} consistency.`, severity: "warn" });
+  }
+
+  if (mapSpread >= 12) {
+    flags.push({ label: "Map swing", reason: `${mapSpread} point gap between best and worst map fit.`, severity: "info" });
+  }
+
+  return flags;
 }
 
 function overallTone(ovr: number) {
   if (ovr >= 86) return "good";
   if (ovr >= 76) return "neutral";
   return "bad";
+}
+
+function primaryAuditSeverity(flags: ScoutAuditFlag[]) {
+  if (flags.some((flag) => flag.severity === "danger")) return "danger";
+  if (flags.some((flag) => flag.severity === "warn")) return "warn";
+  if (flags.length) return "info";
+  return "clean";
 }
 
 function StatCell({ value }: { value: number }) {
