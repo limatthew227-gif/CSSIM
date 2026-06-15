@@ -2341,7 +2341,7 @@ function playerPerformanceMultiplier(player: Player, context: MatchContext, oppo
 
   // AWP performance boost
   if (player.role === "AWP" && weapon === "AWP") {
-    multiplier *= 1.15;
+    multiplier *= 1.05;
   }
 
   // Playoff performance buff / debuff
