@@ -1975,7 +1975,7 @@ function App() {
                       return (
                         <div className="feed-line start-line" key={`${feed.round}-${index}`}>
                           <span className="feed-round-badge">R{feed.round}</span>
-                          <span className="feed-message">Round started</span>
+                          <span className="feed-message">{feed.reason || "Round started"}</span>
                         </div>
                       );
                     }

@@ -44,6 +44,7 @@ export type MatchStageContext = "swiss" | "quarterfinal" | "semifinal" | "final"
 export interface MatchContext {
   map: MapId;
   stage?: MatchStageContext;
+  peakingPlayers?: string[];
 }
 
 export interface VetoState {
@@ -470,9 +471,24 @@ export function initMatch(map: MapId, you: FieldTeam, opponent: FieldTeam, conte
     opponentArmor[p.id] = "none";
   });
 
+  const peakingPlayers: string[] = [];
+  const stage = context?.stage;
+  if (stage && stage !== "swiss") {
+    you.players.forEach((p) => {
+      if (p.ovr >= 90 && Math.random() < 0.18) {
+        peakingPlayers.push(p.id);
+      }
+    });
+    opponent.players.forEach((p) => {
+      if (p.ovr >= 90 && Math.random() < 0.18) {
+        peakingPlayers.push(p.id);
+      }
+    });
+  }
+
   return {
     map,
-    context: { ...context, map },
+    context: { ...context, map, peakingPlayers },
     round: 1,
     you: 0,
     opponent: 0,
@@ -1378,6 +1394,42 @@ export function playRound(
       opponentStrength += (p.ovr * 0.15) / 5;
     }
   });
+
+  // Playoff adjustments (split deltas & superstar peaks)
+  if (state.context.stage && state.context.stage !== "swiss") {
+    // 1. Playoff splits delta impact
+    you.players.forEach((p) => {
+      const delta = getPlayoffDelta(p, opponent.rank);
+      if (delta >= 0.13) {
+        yourStrength += delta * 6;
+      } else if (delta <= -0.13 && p.handle.toLowerCase() !== "donk") {
+        yourStrength += delta * 6;
+      }
+    });
+    opponent.players.forEach((p) => {
+      const delta = getPlayoffDelta(p, you.rank);
+      if (delta >= 0.13) {
+        opponentStrength += delta * 6;
+      } else if (delta <= -0.13 && p.handle.toLowerCase() !== "donk") {
+        opponentStrength += delta * 6;
+      }
+    });
+
+    // 2. Peaking superstar carry boost (+3.5 strength per peaking player)
+    if (state.context.peakingPlayers && state.context.peakingPlayers.length > 0) {
+      const peakingSet = new Set(state.context.peakingPlayers);
+      you.players.forEach((p) => {
+        if (peakingSet.has(p.id)) {
+          yourStrength += 3.5;
+        }
+      });
+      opponent.players.forEach((p) => {
+        if (peakingSet.has(p.id)) {
+          opponentStrength += 3.5;
+        }
+      });
+    }
+  }
   const yourLoadout = loadoutProfile(you.players, currentEconomy, yourWeapons, yourArmor);
   const opponentLoadout = loadoutProfile(opponent.players, currentOpponentEconomy, opponentWeapons, opponentArmor);
   const economyMod = economyValue(currentEconomy) - economyValue(currentOpponentEconomy);
@@ -1786,6 +1838,21 @@ function createRoundFeed(
   const openingSide: "you" | "opponent" = Math.random() < 0.58 ? winnerSide : loserSide;
   const feed: FeedLine[] = [];
 
+  let startReason: string | undefined = undefined;
+  if (round === 1 && context.peakingPlayers && context.peakingPlayers.length > 0) {
+    const peakingSet = new Set(context.peakingPlayers);
+    const peakingNames: string[] = [];
+    you.players.forEach((p) => {
+      if (peakingSet.has(p.id)) peakingNames.push(p.handle);
+    });
+    opponent.players.forEach((p) => {
+      if (peakingSet.has(p.id)) peakingNames.push(p.handle);
+    });
+    if (peakingNames.length > 0) {
+      startReason = `🔥 Superstar form active: ${peakingNames.join(", ")} in the zone!`;
+    }
+  }
+
   feed.push({
     round,
     killer: "",
@@ -1796,6 +1863,7 @@ function createRoundFeed(
     team: "neutral",
     first: false,
     type: "round_start",
+    reason: startReason,
   });
 
   const tTeamKey = side === "T" ? "you" : "opponent";
