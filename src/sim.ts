@@ -2239,14 +2239,14 @@ export function recalculateHltvStyleRating(line: PlayerLine) {
     (line.firstDeaths / rounds) * 0.12 +
     (line.multiKills / rounds) * 0.12 +
     (line.clutchWins / rounds) * 0.2;
-  const impact = clamp(2.13 * kpr + 0.42 * apr - 0.41 + contextImpact, 0, 2.4);
+  const impact = clamp(2.13 * kpr + 0.42 * apr - 0.41 + contextImpact, 0, 3.0);
   const rating =
     0.007383 * kast +
     0.359123 * kpr -
     0.532957 * dpr +
     0.237218 * impact +
     0.003235 * adr +
-    0.158739 - 0.04;
+    0.158739;
 
   line.adr = Number(adr.toFixed(1));
   line.impact = Number(impact.toFixed(2));
