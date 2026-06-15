@@ -227,8 +227,8 @@ interface PlayerDatabaseRow {
 interface ScoutRow {
   player: Player;
   roster: Roster;
-  bestMap: { name: string; value: number };
-  worstMap: { name: string; value: number };
+  bestMap: { name: string; value: number; delta: number };
+  worstMap: { name: string; value: number; delta: number };
   hltvLabel: string;
   hltvTone: string;
   sampleLabel: string;
@@ -2454,7 +2454,7 @@ function TeamLab({
               <span>Const.</span>
               <span>AWP</span>
               <span>IGL</span>
-              <span>Maps</span>
+              <span>Map fit</span>
             </div>
             {filteredScoutRows.map((row) => (
               <article className="scout-table-row scout-grid" key={`${row.roster.id}-${row.player.id}`}>
@@ -2483,8 +2483,12 @@ function TeamLab({
                 <StatCell value={row.player.stats.awp} />
                 <StatCell value={row.player.stats.igl} />
                 <span className="scout-map-cell">
-                  <b>{row.bestMap.name} {row.bestMap.value}</b>
-                  <small>{row.worstMap.name} {row.worstMap.value}</small>
+                  <b title={`${row.bestMap.name} raw map value ${row.bestMap.value}`}>
+                    {row.bestMap.name} {formatSignedWhole(row.bestMap.delta)}
+                  </b>
+                  <small title={`${row.worstMap.name} raw map value ${row.worstMap.value}`}>
+                    {row.worstMap.name} {formatSignedWhole(row.worstMap.delta)}
+                  </small>
                 </span>
               </article>
             ))}
@@ -2547,16 +2551,18 @@ function TeamLab({
 function buildScoutRows(rosterPool: Roster[]): ScoutRow[] {
   return rosterPool.flatMap((roster) =>
     roster.players.map((player) => {
-      const maps = mapPool
-        .map((map) => ({ name: map.name, value: player.maps[map.id] ?? roster.mapPool[map.id] ?? 0 }))
+      const mapValues = mapPool.map((map) => ({ name: map.name, value: player.maps[map.id] ?? roster.mapPool[map.id] ?? 0 }));
+      const averageMap = mapValues.reduce((sum, map) => sum + map.value, 0) / Math.max(mapValues.length, 1);
+      const maps = mapValues
+        .map((map) => ({ ...map, delta: Math.round(map.value - averageMap) }))
         .sort((a, b) => b.value - a.value);
       const hasHltvRating = typeof player.hltvRating === "number" && (player.hltvMaps ?? 0) > 0;
 
       return {
         player,
         roster,
-        bestMap: maps[0] ?? { name: "-", value: 0 },
-        worstMap: maps[maps.length - 1] ?? { name: "-", value: 0 },
+        bestMap: maps[0] ?? { name: "-", value: 0, delta: 0 },
+        worstMap: maps[maps.length - 1] ?? { name: "-", value: 0, delta: 0 },
         hltvLabel: hasHltvRating ? player.hltvRating!.toFixed(2) : "-",
         hltvTone: hasHltvRating ? ratingTone(player.hltvRating!) : "muted",
         sampleLabel: hasHltvRating ? `${player.hltvMaps} maps` : "no data",
@@ -2634,6 +2640,10 @@ function StatCell({ value }: { value: number }) {
       <i style={{ "--stat-fill": `${Math.max(0, Math.min(100, value))}%` } as React.CSSProperties} />
     </span>
   );
+}
+
+function formatSignedWhole(value: number) {
+  return `${value > 0 ? "+" : ""}${value}`;
 }
 
 function TeamLogo({ team, small = false }: { team: Pick<Roster | FieldTeam, "tag" | "name" | "accent" | "logo">; small?: boolean }) {
