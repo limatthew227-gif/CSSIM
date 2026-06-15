@@ -3644,6 +3644,30 @@ meter::-webkit-meter-optimum-value {
   letter-spacing: 0.2px;
 }
 
+.map-record-pair > span.winning {
+  border-color: rgba(117, 214, 146, 0.52);
+  background: linear-gradient(180deg, rgba(44, 78, 59, 0.9), rgba(28, 48, 39, 0.9));
+}
+
+.map-record-pair > span.losing {
+  border-color: rgba(255, 123, 123, 0.48);
+  background: linear-gradient(180deg, rgba(83, 48, 55, 0.9), rgba(50, 35, 42, 0.9));
+}
+
+.edge.good .map-record-pair b,
+.edge.bad .map-record-pair b,
+.map-record-pair > span.neutral b {
+  color: #f0f5fb;
+}
+
+.map-record-pair > span.winning b {
+  color: #8ee6a8;
+}
+
+.map-record-pair > span.losing b {
+  color: #ff8f8f;
+}
+
 .edge.banned .map-edge-name {
   opacity: 0.5;
   text-decoration: line-through;

@@ -1849,11 +1849,11 @@ function App() {
                         <span className="map-edge-name">{map.name}</span>
                         {status && <small>{status}</small>}
                         <span className="map-record-pair">
-                          <span>
+                          <span className={mapRecordTone(yourMapRecord)}>
                             <TeamLogo team={yourTeam} small />
                             <b>{formatMapRecord(yourMapRecord)}</b>
                           </span>
-                          <span>
+                          <span className={mapRecordTone(opponentMapRecord)}>
                             <TeamLogo team={opponent} small />
                             <b>{formatMapRecord(opponentMapRecord)}</b>
                           </span>
@@ -4303,6 +4303,12 @@ function mapRecordForTeam(results: SwissResult[], teamId: string, mapId: MapId):
 
 function formatMapRecord(record: SwissRecord) {
   return `${record.wins}-${record.losses}`;
+}
+
+function mapRecordTone(record: SwissRecord) {
+  if (record.wins > record.losses) return "winning";
+  if (record.losses > record.wins) return "losing";
+  return "neutral";
 }
 
 function seriesMapScore(series: ActiveSeries) {
