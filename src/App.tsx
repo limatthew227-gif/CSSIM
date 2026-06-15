@@ -1849,8 +1849,14 @@ function App() {
                         <span className="map-edge-name">{map.name}</span>
                         {status && <small>{status}</small>}
                         <span className="map-record-pair">
-                          <span>{yourTeam.tag} {formatMapRecord(yourMapRecord)}</span>
-                          <span>{opponent.tag} {formatMapRecord(opponentMapRecord)}</span>
+                          <span>
+                            <TeamLogo team={yourTeam} small />
+                            <b>{formatMapRecord(yourMapRecord)}</b>
+                          </span>
+                          <span>
+                            <TeamLogo team={opponent} small />
+                            <b>{formatMapRecord(opponentMapRecord)}</b>
+                          </span>
                         </span>
                       </span>
                       <meter min={-8} max={8} value={map.edge} />
