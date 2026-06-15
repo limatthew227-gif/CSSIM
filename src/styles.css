@@ -3393,7 +3393,7 @@ meter::-webkit-meter-optimum-value {
 
 .edge {
   display: grid;
-  grid-template-columns: minmax(76px, 92px) minmax(0, 1fr) 50px;
+  grid-template-columns: minmax(104px, 128px) minmax(0, 1fr) 50px;
   gap: 8px;
   align-items: center;
   min-width: 0;
@@ -3417,6 +3417,17 @@ meter::-webkit-meter-optimum-value {
   font-size: 8.5px;
   font-weight: 900;
   line-height: 1;
+  text-transform: uppercase;
+}
+
+.map-record-pair {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px 7px;
+  color: #8f98a6;
+  font-size: 9px;
+  font-weight: 900;
+  line-height: 1.05;
   text-transform: uppercase;
 }
 

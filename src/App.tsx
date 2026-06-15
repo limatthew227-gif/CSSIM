@@ -1841,11 +1841,17 @@ function App() {
                 .map((map) => {
                   const status = vetoEdgeStatus(veto, map.id, opponent.tag);
                   const mapState = veto.banned[map.id] ? "banned" : veto.picked[map.id] === "decider" ? "decider" : veto.picked[map.id] ? "picked" : "";
+                  const yourMapRecord = mapRecordForTeam(matchResults, yourTeam.id, map.id);
+                  const opponentMapRecord = mapRecordForTeam(matchResults, opponent.id, map.id);
                   return (
                     <div className={`edge ${map.edge >= 0 ? "good" : "bad"} ${mapState}`} key={map.id}>
                       <span className="map-edge-label">
                         <span className="map-edge-name">{map.name}</span>
                         {status && <small>{status}</small>}
+                        <span className="map-record-pair">
+                          <span>{yourTeam.tag} {formatMapRecord(yourMapRecord)}</span>
+                          <span>{opponent.tag} {formatMapRecord(opponentMapRecord)}</span>
+                        </span>
                       </span>
                       <meter min={-8} max={8} value={map.edge} />
                       <b>{map.edge > 0 ? "+" : ""}{map.edge.toFixed(1)}</b>
@@ -4266,6 +4272,31 @@ function seriesIsDone(series: ActiveSeries) {
 
 function seriesMapWins(results: SeriesMapResult[], teamId: string) {
   return results.filter((result) => result.winnerId === teamId).length;
+}
+
+function mapRecordForTeam(results: SwissResult[], teamId: string, mapId: MapId): SwissRecord {
+  return results.reduce(
+    (record, result) => {
+      const teamPlayedSeries = result.left.id === teamId || result.right.id === teamId;
+      if (!teamPlayedSeries) return record;
+
+      result.maps.forEach((mapResult) => {
+        if (mapResult.map !== mapId) return;
+        if (mapResult.winnerId === teamId) {
+          record.wins += 1;
+        } else {
+          record.losses += 1;
+        }
+      });
+
+      return record;
+    },
+    { wins: 0, losses: 0 },
+  );
+}
+
+function formatMapRecord(record: SwissRecord) {
+  return `${record.wins}-${record.losses}`;
 }
 
 function seriesMapScore(series: ActiveSeries) {
