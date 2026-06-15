@@ -45,6 +45,7 @@ export interface MatchContext {
   map: MapId;
   stage?: MatchStageContext;
   peakingPlayers?: string[];
+  coldPlayers?: string[];
 }
 
 export interface VetoState {
@@ -270,7 +271,7 @@ export function compositionScore(players: Player[], settings: CustomSettings, is
 export function teamStrengthBreakdown(team: FieldTeam, settings: CustomSettings, difficulty?: Difficulty, isOpponent = false): StrengthBreakdown {
   const average = averageOvr(team.players);
   const composition = compositionScore(team.players, settings, team.id === "user");
-  const coachBoost = team.coach ? (team.coach.rating - 78) / 2.8 : 0;
+  const coachBoost = team.coach ? (team.coach.rating - 68) / 18.0 : 0;
   const diffBoost = isOpponent && difficulty ? difficulty.opponentBonus : 0;
   return {
     average,
@@ -474,6 +475,9 @@ export function initMatch(map: MapId, you: FieldTeam, opponent: FieldTeam, conte
   const peakingPlayers: string[] = [];
   const stage = context?.stage;
   if (stage && stage !== "swiss") {
+    const youRank = you.rank || 20;
+    const oppRank = opponent.rank || 20;
+
     you.players.forEach((p) => {
       if (p.ovr >= 85) {
         const pBase = 0.08 + (p.ovr - 90) * 0.015;
@@ -481,7 +485,12 @@ export function initMatch(map: MapId, you: FieldTeam, opponent: FieldTeam, conte
         const deltaAdj = delta * 0.5;
         const volatility = Math.max(0, (95 - p.stats.consistency) / 200);
         const clutchAdj = Math.max(0, (p.stats.clutch - 75) / 200);
-        const peakProb = clamp(pBase + deltaAdj + volatility + clutchAdj, 0.02, 0.35);
+
+        // Underdog effect: positive rank gap (underdog) boosts chance; negative (favorite) reduces it
+        const rankGap = youRank - oppRank;
+        const underdogEffect = rankGap * 0.012;
+
+        const peakProb = clamp(pBase + deltaAdj + volatility + clutchAdj + underdogEffect, 0.02, 0.45);
         if (Math.random() < peakProb) {
           peakingPlayers.push(p.id);
         }
@@ -494,7 +503,11 @@ export function initMatch(map: MapId, you: FieldTeam, opponent: FieldTeam, conte
         const deltaAdj = delta * 0.5;
         const volatility = Math.max(0, (95 - p.stats.consistency) / 200);
         const clutchAdj = Math.max(0, (p.stats.clutch - 75) / 200);
-        const peakProb = clamp(pBase + deltaAdj + volatility + clutchAdj, 0.02, 0.35);
+
+        const rankGap = oppRank - youRank;
+        const underdogEffect = rankGap * 0.012;
+
+        const peakProb = clamp(pBase + deltaAdj + volatility + clutchAdj + underdogEffect, 0.02, 0.45);
         if (Math.random() < peakProb) {
           peakingPlayers.push(p.id);
         }
@@ -502,9 +515,25 @@ export function initMatch(map: MapId, you: FieldTeam, opponent: FieldTeam, conte
     });
   }
 
+  const coldPlayers: string[] = [];
+  you.players.forEach((p) => {
+    if (peakingPlayers.includes(p.id)) return;
+    const coldProb = clamp(0.02 + (90 - p.stats.consistency) * 0.003, 0.01, 0.18);
+    if (Math.random() < coldProb) {
+      coldPlayers.push(p.id);
+    }
+  });
+  opponent.players.forEach((p) => {
+    if (peakingPlayers.includes(p.id)) return;
+    const coldProb = clamp(0.02 + (90 - p.stats.consistency) * 0.003, 0.01, 0.18);
+    if (Math.random() < coldProb) {
+      coldPlayers.push(p.id);
+    }
+  });
+
   return {
     map,
-    context: { ...context, map, peakingPlayers },
+    context: { ...context, map, peakingPlayers, coldPlayers },
     round: 1,
     you: 0,
     opponent: 0,
@@ -1418,7 +1447,7 @@ export function playRound(
       const delta = getPlayoffDelta(p, opponent.rank);
       if (delta >= 0.13) {
         yourStrength += delta * 6;
-      } else if (delta <= -0.13 && p.handle.toLowerCase() !== "donk") {
+      } else if (delta <= -0.13 && p.handle.toLowerCase() !== "donk" && p.handle.toLowerCase() !== "m0nesy") {
         yourStrength += delta * 6;
       }
     });
@@ -1426,7 +1455,7 @@ export function playRound(
       const delta = getPlayoffDelta(p, you.rank);
       if (delta >= 0.13) {
         opponentStrength += delta * 6;
-      } else if (delta <= -0.13 && p.handle.toLowerCase() !== "donk") {
+      } else if (delta <= -0.13 && p.handle.toLowerCase() !== "donk" && p.handle.toLowerCase() !== "m0nesy") {
         opponentStrength += delta * 6;
       }
     });
@@ -1448,6 +1477,24 @@ export function playRound(
       });
     }
   }
+
+  // Cold player penalty (applies in all stages)
+  if (state.context.coldPlayers && state.context.coldPlayers.length > 0) {
+    const coldSet = new Set(state.context.coldPlayers);
+    you.players.forEach((p) => {
+      if (coldSet.has(p.id)) {
+        const penalty = 2.0 + (p.ovr - 85) * 0.10;
+        yourStrength -= penalty;
+      }
+    });
+    opponent.players.forEach((p) => {
+      if (coldSet.has(p.id)) {
+        const penalty = 2.0 + (p.ovr - 85) * 0.10;
+        opponentStrength -= penalty;
+      }
+    });
+  }
+
   const yourLoadout = loadoutProfile(you.players, currentEconomy, yourWeapons, yourArmor);
   const opponentLoadout = loadoutProfile(opponent.players, currentOpponentEconomy, opponentWeapons, opponentArmor);
   const economyMod = economyValue(currentEconomy) - economyValue(currentOpponentEconomy);
@@ -1512,6 +1559,12 @@ export function playRound(
     youScore,
     opponentScore,
     state.context,
+    yourLossStreak,
+    opponentLossStreak,
+    yourMoney,
+    opponentMoney,
+    yourArmor,
+    opponentArmor,
   );
 
   // Add kill rewards to player money
@@ -1756,6 +1809,25 @@ export function playRound(
   };
 }
 
+function getWeaponCost(w: string): number {
+  if (!w) return 200;
+  const upper = w.toUpperCase();
+  if (upper.includes("AWP")) return 4750;
+  if (upper.includes("AK")) return 2700;
+  if (upper.includes("M4A4")) return 3100;
+  if (upper.includes("M4A1")) return 2900;
+  if (upper.includes("FAMAS")) return 2050;
+  if (upper.includes("GALIL")) return 1800;
+  if (upper.includes("MP9")) return 1250;
+  if (upper.includes("MAC")) return 1050;
+  if (upper.includes("DEAGLE")) return 700;
+  if (upper.includes("P90")) return 2350;
+  if (upper.includes("SSG")) return 1700;
+  if (upper.includes("UMP") || upper.includes("MP7") || upper.includes("MP5")) return 1200;
+  if (upper.includes("NOVA") || upper.includes("XM1014") || upper.includes("MAG-7")) return 1500;
+  return 300;
+}
+
 function createRoundFeed(
   round: number,
   you: FieldTeam,
@@ -1772,6 +1844,12 @@ function createRoundFeed(
   youScore: number,
   opponentScore: number,
   context: MatchContext,
+  yourLossStreak: number,
+  opponentLossStreak: number,
+  yourMoney: Record<string, number>,
+  opponentMoney: Record<string, number>,
+  yourArmor: Record<string, "none" | "kevlar" | "helmet">,
+  opponentArmor: Record<string, "none" | "kevlar" | "helmet">,
 ) {
   const teams = { you: you.players, opponent: opponent.players };
   const alive = {
@@ -1785,33 +1863,113 @@ function createRoundFeed(
   const losingBuyState = losingTeamId === "you" ? yourBuyState : opponentBuyState;
   const losingTactic = losingTeamId === "you" ? tactic : "standard";
   const losingSide = losingTeamId === "you" ? side : otherMatchSide(side);
+  const losingPlayers = losingTeamId === "you" ? you.players : opponent.players;
+  const losingWeapons = losingTeamId === "you" ? yourWeapons : opponentWeapons;
+  const losingArmor = losingTeamId === "you" ? yourArmor : opponentArmor;
+  const losingMoney = losingTeamId === "you" ? yourMoney : opponentMoney;
+  const losingLossStreak = losingTeamId === "you" ? yourLossStreak : opponentLossStreak;
 
-  let isSaving = losingTactic === "save" || losingBuyState === "ECO";
-  
-  // T-side special logic: never save on ECO unless holding high value weapons or in extreme deficit
-  if (isSaving && losingSide === "T" && losingBuyState === "ECO") {
-    const losingPlayers = losingTeamId === "you" ? you.players : opponent.players;
-    const losingWeapons = losingTeamId === "you" ? yourWeapons : opponentWeapons;
-    
-    const aliveCount = alive[losingTeamId].length;
-    const opponentAliveCount = alive[youWin ? "you" : "opponent"].length;
-    
-    // Check if anyone has a high value weapon
-    const hasHighValueWeapon = alive[losingTeamId].some(p => {
-      const w = losingWeapons[p.id];
-      return w === "AWP" || w === "AK-47" || w === "M4A4" || w === "M4A1-S";
+  let isSaving = false;
+
+  const isLastRoundOfHalf = round === 12 || round === 24 || (round > 24 && (round - 24) % 6 === 0);
+  const isEnded = isMatchOver(youScore, opponentScore, round);
+
+  if (!isLastRoundOfHalf && !isEnded) {
+    let losingAlive = 2;
+    let winningAlive = 4;
+    if (bombOutcome === "none" && !isTWinner) {
+      losingAlive = Math.random() < 0.5 ? 1 : 2;
+      winningAlive = Math.random() < 0.5 ? 3 : 4;
+    } else if (bombOutcome === "defused") {
+      losingAlive = Math.random() < 0.4 ? 2 : (Math.random() < 0.4 ? 1 : 3);
+      winningAlive = losingAlive === 3 ? 4 : (Math.random() < 0.5 ? 3 : 4);
+    } else if (bombOutcome === "exploded") {
+      losingAlive = Math.random() < 0.4 ? 2 : (Math.random() < 0.4 ? 1 : 3);
+      winningAlive = losingAlive === 3 ? 4 : (Math.random() < 0.5 ? 3 : 4);
+    } else {
+      losingAlive = Math.random() < 0.5 ? 1 : 2;
+      winningAlive = Math.random() < 0.5 ? 3 : 4;
+    }
+
+    let attemptScore = 0;
+
+    attemptScore += (losingAlive - winningAlive) * 12;
+
+    let totalEquipmentValue = 0;
+    losingPlayers.forEach((p) => {
+      const w = losingWeapons[p.id] || "";
+      const arm = losingArmor[p.id] || "none";
+      const wVal = getWeaponCost(w);
+      const aVal = arm === "helmet" ? 1000 : (arm === "kevlar" ? 650 : 0);
+      totalEquipmentValue += wVal + aVal;
     });
+    const avgEquipmentValue = totalEquipmentValue / losingPlayers.length;
 
-    if (!hasHighValueWeapon) {
-      // If no high value weapons, they only save in extreme deficit (e.g., 2v5 or 1v5)
-      // Clutch stat reduces the threshold for saving (braver players try to plant)
-      const avgClutch = losingPlayers.reduce((sum, p) => sum + p.stats.clutch, 0) / losingPlayers.length;
-      const deficitThreshold = avgClutch > 85 ? 4 : 3;
-      
-      if (opponentAliveCount - aliveCount < deficitThreshold) {
-        isSaving = false;
+    if (avgEquipmentValue >= 3500) {
+      attemptScore -= 25;
+    } else if (avgEquipmentValue >= 2200) {
+      attemptScore -= 12;
+    } else {
+      attemptScore += 15;
+    }
+
+    const losingLossBonus = 1400 + Math.min(4, losingLossStreak + 1) * 500;
+    let avgNextRoundMoneyIfDie = 0;
+    losingPlayers.forEach((p) => {
+      let income = losingLossBonus;
+      if (losingSide === "T" && tPlantedBomb) {
+        income += 800;
+      }
+      avgNextRoundMoneyIfDie += (losingMoney[p.id] ?? 0) + income;
+    });
+    avgNextRoundMoneyIfDie /= losingPlayers.length;
+
+    if (avgNextRoundMoneyIfDie >= 4500) {
+      attemptScore += 20;
+    } else if (avgNextRoundMoneyIfDie < 2500) {
+      attemptScore -= 20;
+    }
+
+    const winningBuyState = losingTeamId === "you" ? opponentBuyState : yourBuyState;
+    if (winningBuyState === "ECO") {
+      attemptScore += 18;
+    } else if (winningBuyState === "FORCE") {
+      attemptScore += 8;
+    }
+
+    if (losingSide === "CT" && tPlantedBomb) {
+      const kitPresent = winningBuyState === "FULL" || Math.random() < 0.5;
+      if (kitPresent) {
+        attemptScore += 12;
+      } else {
+        attemptScore -= 18;
       }
     }
+
+    const maxOvr = Math.max(...losingPlayers.map((p) => p.ovr));
+    if (maxOvr >= 90) {
+      attemptScore += 10;
+    } else if (maxOvr >= 86) {
+      attemptScore += 5;
+    }
+
+    const losingScoreVal = losingTeamId === "you" ? youScore - (youWin ? 1 : 0) : opponentScore - (youWin ? 0 : 1);
+    const winningScoreVal = losingTeamId === "you" ? opponentScore : youScore;
+
+    if (winningScoreVal >= 12) {
+      attemptScore += 35;
+    } else if (winningScoreVal >= 10) {
+      attemptScore += 15;
+    }
+
+    if (losingSide === "CT") {
+      attemptScore -= 8;
+    } else {
+      attemptScore += 4;
+    }
+
+    const goForItProbability = 1 / (1 + Math.exp(-attemptScore / 20));
+    isSaving = Math.random() >= goForItProbability;
   }
 
   let ctDeaths = 0;
@@ -1857,17 +2015,39 @@ function createRoundFeed(
   const feed: FeedLine[] = [];
 
   let startReason: string | undefined = undefined;
-  if (round === 1 && context.peakingPlayers && context.peakingPlayers.length > 0) {
-    const peakingSet = new Set(context.peakingPlayers);
+  if (round === 1) {
     const peakingNames: string[] = [];
-    you.players.forEach((p) => {
-      if (peakingSet.has(p.id)) peakingNames.push(p.handle);
-    });
-    opponent.players.forEach((p) => {
-      if (peakingSet.has(p.id)) peakingNames.push(p.handle);
-    });
+    const coldNames: string[] = [];
+
+    if (context.peakingPlayers && context.peakingPlayers.length > 0) {
+      const peakingSet = new Set(context.peakingPlayers);
+      you.players.forEach((p) => {
+        if (peakingSet.has(p.id)) peakingNames.push(p.handle);
+      });
+      opponent.players.forEach((p) => {
+        if (peakingSet.has(p.id)) peakingNames.push(p.handle);
+      });
+    }
+
+    if (context.coldPlayers && context.coldPlayers.length > 0) {
+      const coldSet = new Set(context.coldPlayers);
+      you.players.forEach((p) => {
+        if (coldSet.has(p.id)) coldNames.push(p.handle);
+      });
+      opponent.players.forEach((p) => {
+        if (coldSet.has(p.id)) coldNames.push(p.handle);
+      });
+    }
+
+    const parts: string[] = [];
     if (peakingNames.length > 0) {
-      startReason = `🔥 Superstar form active: ${peakingNames.join(", ")} in the zone!`;
+      parts.push(`🔥 Superstar form active: ${peakingNames.join(", ")} in the zone!`);
+    }
+    if (coldNames.length > 0) {
+      parts.push(`❄️ Cold form active: ${coldNames.join(", ")} struggling to find impact.`);
+    }
+    if (parts.length > 0) {
+      startReason = parts.join("  ");
     }
   }
 
@@ -2169,7 +2349,7 @@ function playerPerformanceMultiplier(player: Player, context: MatchContext, oppo
     const delta = getPlayoffDelta(player, opponentRank);
     if (delta >= 0.13) {
       multiplier *= 1.10;
-    } else if (delta <= -0.13 && handle !== "donk") {
+    } else if (delta <= -0.13 && handle !== "donk" && handle !== "m0nesy") {
       multiplier *= 0.90;
     }
   }
@@ -2178,6 +2358,11 @@ function playerPerformanceMultiplier(player: Player, context: MatchContext, oppo
   if (context.peakingPlayers && context.peakingPlayers.includes(player.id)) {
     const peakMultiplier = 1.10 + (player.stats.aim - 75) * 0.005 + (player.stats.consistency - 75) * 0.002;
     multiplier *= peakMultiplier;
+  }
+
+  // Cold player penalty (Individual performance penalty)
+  if (context.coldPlayers && context.coldPlayers.includes(player.id)) {
+    multiplier *= 0.88;
   }
 
   return multiplier;

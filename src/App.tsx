@@ -886,6 +886,7 @@ function App() {
   }
 
   function advanceCompletedMap(completedMatch: MatchState, activeSeries: ActiveSeries) {
+    setPlayerForm((current) => shiftPlayerForm(current, selected, completedMatch));
     const nextSeries = completedSeriesState(activeSeries, completedMatch);
     if (!seriesIsDone(nextSeries)) {
       const nextMap = nextSeries.maps[nextSeries.currentMapIndex];
@@ -944,7 +945,6 @@ function App() {
     setLastPickemDelta(pickemScore);
     setPickems({});
     setAchievements((current) => unlockAchievements(current, newAchievements));
-    setPlayerForm((current) => shiftPlayerForm(current, selected, match));
     setMatchResults((current) => [...current, ...roundResults]);
     setSelectedResultId(playedResult.id);
     setSeries(undefined);
@@ -4985,7 +4985,7 @@ function laneKeyForRecord(record: SwissRecord) {
 }
 
 function tacticalTimeoutPlan(match: MatchState, you: FieldTeam, opponent: FieldTeam): TimeoutPlan {
-  const coachDelta = (you.coach?.rating ?? 78) - (opponent.coach?.rating ?? 78);
+  const coachDelta = (you.coach?.rating ?? 68) - (opponent.coach?.rating ?? 68);
   const coachValue = coachDelta >= 0 ? Math.min(0.04, coachDelta / 240) : Math.max(-0.006, coachDelta / 900);
   const opponentStreak = trailingRoundWins(match.roundWinners, "opponent");
   const pressure =
