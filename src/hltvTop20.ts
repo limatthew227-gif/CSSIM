@@ -62,9 +62,9 @@ const ratingFilters: RatingFilter[] = ["top5", "top10", "top20", "top50", "overa
 const requiredMaps: Record<RatingFilter, number> = {
   top5: 30,
   top10: 40,
-  top20: 60,
-  top50: 90,
-  overall: 120,
+  top20: 50,
+  top50: 60,
+  overall: 60,
 };
 const filterWeights: Record<RatingFilter, number> = {
   top5: 0.14,
