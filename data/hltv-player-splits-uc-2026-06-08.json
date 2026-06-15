@@ -1669,32 +1669,32 @@
           "kdDiff": 278.0
         },
         "top5": {
-          "rating": null,
-          "maps": null,
+          "rating": 1.17,
+          "maps": 16,
           "rounds": null,
           "kd": null,
           "kdDiff": null
         },
         "top10": {
-          "rating": 1.27,
-          "maps": 17,
-          "rounds": 357,
-          "kd": 1.34,
-          "kdDiff": 74.0
+          "rating": 1.15,
+          "maps": 38,
+          "rounds": null,
+          "kd": null,
+          "kdDiff": null
         },
         "top20": {
-          "rating": 1.13,
-          "maps": 65,
-          "rounds": 1417,
-          "kd": 1.15,
-          "kdDiff": 139.0
+          "rating": 1.12,
+          "maps": 60,
+          "rounds": null,
+          "kd": null,
+          "kdDiff": null
         },
         "top50": {
-          "rating": 1.15,
-          "maps": 97,
-          "rounds": 2111,
-          "kd": 1.18,
-          "kdDiff": 238.0
+          "rating": 1.13,
+          "maps": 93,
+          "rounds": null,
+          "kd": null,
+          "kdDiff": null
         }
       }
     },
