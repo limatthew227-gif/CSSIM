@@ -2286,9 +2286,10 @@ export function getPlayoffDelta(player: Player, opponentRank?: number): number {
 }
 
 function killWeight(player: Player, context: MatchContext, opponentRank?: number, weapon?: string) {
+  const isDonk = player.handle.toLowerCase() === "donk";
   const eliteEntryControl = player.role === "Entry" ? clamp((player.ovr - 86) / 12, 0, 1) : 0;
   const roleMod =
-    player.role === "Entry" ? 1.10 + eliteEntryControl * 0.03 :
+    player.role === "Entry" ? (isDonk ? 1.10 + eliteEntryControl * 0.03 : 1.03 + eliteEntryControl * 0.02) :
     player.role === "AWP" ? 1.06 :
     player.role === "IGL" ? 0.88 :
     player.role === "Support" ? 0.94 :
@@ -2309,9 +2310,10 @@ function killWeight(player: Player, context: MatchContext, opponentRank?: number
 }
 
 function deathWeight(player: Player, context: MatchContext, opponentRank?: number, weapon?: string) {
+  const isDonk = player.handle.toLowerCase() === "donk";
   const eliteEntryControl = player.role === "Entry" ? clamp((player.ovr - 86) / 12, 0, 1) : 0;
   const roleMod =
-    player.role === "Entry" ? 1.12 - eliteEntryControl * 0.12 :
+    player.role === "Entry" ? (isDonk ? 1.12 - eliteEntryControl * 0.12 : 1.16 - eliteEntryControl * 0.04) :
     player.role === "IGL" ? 1.05 :
     player.role === "AWP" ? 0.92 :
     player.role === "Lurker" ? 0.96 :
