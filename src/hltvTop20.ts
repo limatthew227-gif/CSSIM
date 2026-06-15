@@ -613,7 +613,7 @@ const hltvTeams: HltvTeamSeed[] = [
     mapBias: { nuke: 2, dust2: 3, anubis: 1, inferno: -1 },
     players: [
       { handle: "karrigan", realName: "Finn Andersen", country: "DK", role: "IGL", style: "Balanced", hltvRating: 0.72, statOverrides: { igl: 90 } },
-      { handle: "NiKo", realName: "Nikola Kovac", country: "BA", role: "Rifler", style: "Aggressive", hltvRating: 1.13 },
+      { handle: "NiKo", realName: "Nikola Kovac", country: "BA", role: "Rifler", style: "Aggressive", hltvRating: 1.13, statOverrides: { aim: 91, clutch: 88, consistency: 88, awp: 70, igl: 72 } },
       { handle: "TeSeS", realName: "Rene Madsen", country: "DK", role: "Support", style: "Balanced", hltvRating: 1.03 },
       { handle: "m0NESY", realName: "Ilya Osipov", country: "RU", role: "AWP", style: "Aggressive", hltvRating: 1.26 },
       { handle: "kyousuke", realName: "Maxim Lukin", country: "RU", role: "Entry", style: "Aggressive", hltvRating: 1.16 },
