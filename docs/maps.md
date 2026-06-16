@@ -1,91 +1,93 @@
-# Code-constructed maps & navigation
+# Maps & navigation
 
 ## Why this exists
 
-The radar used to position players over a stretched PNG (`backgroundSize: 100% 100%`) and move them
-along ~10 hand-drawn polylines between a handful of nodes (`radarSim.ts`'s `getPathBetween`). A PNG
-carries **no walkable data**, the polylines weren't registered to the image, and any movement outside
-the predefined node-pairs fell back to a **straight line through walls**. You can't get real navigation
-on top of a picture.
+The radar used to position players over a stretched PNG and move them along ~10 hand-drawn polylines
+between a handful of nodes (`radarSim.ts`'s `getPathBetween`). A PNG carries **no walkable data**, the
+polylines weren't registered to the image, and movement outside the predefined node-pairs fell back to
+a **straight line through walls**. So players couldn't actually navigate the map.
 
-So maps are now **defined in code** as vector geometry that is both *rendered* and *navigated* — the
-thing you see is the thing players path through, perfectly registered.
+Two ways to give a map real navigable structure:
+
+1. **Pixel-accurate grid baked from the radar image** (preferred). The radar PNG *is* the authentic
+   map, so we classify its pixels into a walkable occupancy grid. Accurate by construction — no
+   eyeballing. This is what **mirage** uses, and the real radar PNG is rendered as the map.
+2. **Hand-authored vector polygons** (fallback). Define the floor as polygons in 0..100 space and
+   rasterize them. Useful only if a map has no usable radar image; hand-tracing is hard to get right
+   (an early hand-traced mirage looked "very off"), so prefer option 1 whenever a radar PNG exists.
+
+Both feed the same grid → pathfinding → line-of-sight engine.
 
 ## Architecture (`src/mapGeometry.ts`)
 
 ```
-walkable polygons (square 0..100 space)
-        │  rasterize (buildNavGrid)
-        ▼
-   occupancy grid  ──►  Theta* any-angle pathfinding (findPath)  ──►  smooth routes
-        │                                                                  │
-        └──► line-of-sight ray-walk (hasLineOfSight) ◄── smokes            └── mollies reroute
+radar PNG ──► classify pixels (scripts/derive-navgrid.ts) ──► baked mask (src/navGrids.ts)
+                                                                   │  decode
+walkable polygons (0..100) ──► rasterize (buildNavGrid) ───────────┤
+                                                                   ▼
+                                                          occupancy grid (NavGrid)
+                                                                   │
+                              Theta* any-angle pathfinding (findPath) ──► smooth routes
+                                                                   │            └── mollies reroute
+                              line-of-sight ray-walk (hasLineOfSight) ◄── smokes
 ```
 
-- **Geometry**: each `MapGeometry` is a set of `walkable` polygons (corridors, sites, connectors,
-  spawns), optional `walls` carved out, plus `spawns` / `sites` / `mid` / named `regions`. All in a
-  fixed **square** `0..100` space — CS radars are square, which removes the old aspect-ratio stretch.
-- **Occupancy grid**: `buildNavGrid(geo, res=160)` samples each cell center for walkability →
-  `blockedMove` / `blockedVision` bitmaps. `getNavGrid(mapId)` memoizes per map.
-- **Pathfinding**: `findPath(grid, start, goal, { mollies })` runs **Theta\*** (any-angle A\*), so
-  routes are straight, corner-hugging, and near-shortest — nav-mesh/funnel-quality motion without the
-  cost of runtime mesh editing. Endpoints are pinned exactly; intermediate waypoints never cross a wall.
-- **Line of sight**: `hasLineOfSight(grid, a, b, smokes)` ray-walks the vision grid and also tests
-  smoke circles.
+- **`getNavGrid(id)`** returns the grid for a map, memoized. It prefers the baked pixel grid
+  (`navGrids[id]`); else rasterizes hand polygons (`mapGeometries[id]`); else null.
+  `hasPixelNav(id)` reports which path a map uses.
+- **NavGrid**: `blockedMove` / `blockedVision` bitmaps over a `res×res` grid (128 for baked maps,
+  160 for rasterized polygons).
+- **Pathfinding**: `findPath(grid, start, goal, { mollies })` runs **Theta\*** (any-angle A\*) — straight,
+  corner-hugging, near-shortest routes (nav-mesh/funnel-quality motion) that never cross a wall.
+- **Line of sight**: `hasLineOfSight(grid, a, b, smokes)` ray-walks the vision grid and tests smoke
+  circles. Determinism: no `Math.random` anywhere in the nav code, so the radar stays reproducible.
 
-### Why grid + any-angle instead of a nav-mesh
+### Why grid + any-angle (not a nav-mesh)
 
-The goal is dynamic, in-match utility:
+The end goal is dynamic, in-match utility, and that's where a grid wins:
 
 | Utility | Effect | Grid cost | Nav-mesh cost |
 |---|---|---|---|
 | **Molotov** | blocks *movement* in an area | flip cells → re-path (trivial) | cut a hole + re-triangulate + re-funnel (hard) |
 | **Smoke** | blocks *line of sight* | ray-walk fails through smoked cells (trivial) | polygon ray-cast (harder) |
 
-Dynamic obstacles are a nav-mesh's weak spot and a grid's strong suit, and Theta\* gives the grid
-nav-mesh-looking motion. The authoring input (walkable polygons) is the same either way, so a
-triangulated nav-mesh backend remains possible later without re-authoring maps.
+Theta\* gives the grid nav-mesh-looking motion, and a grid drops straight out of the radar pixels.
 
-## API summary
+## Deriving a map from its radar image (preferred)
 
-| Export | Purpose |
-|---|---|
-| `MapGeometry`, `Vec`, `Circle`, `MapRegion`, `NavGrid` | types |
-| `mapGeometries` | `Partial<Record<MapId, MapGeometry>>` — authored maps |
-| `buildNavGrid(geo, res?)` / `getNavGrid(id)` | rasterize / memoized grid |
-| `findPath(grid, start, goal, { mollies? })` | any-angle route (Vec[]) |
-| `hasLineOfSight(grid, a, b, smokes?)` | vision query |
-| `isWalkablePoint`, `pointInPolygon`, `pathLength` | helpers |
+`scripts/derive-navgrid.ts` reads `src/assets/radar/<map>.png`, classifies each cell (navy floor +
+coloured sites/spawns = walkable; black void + white wall lines = blocked), keeps only the connected
+component reachable from the spawns/sites (drops the logo and stray blobs), bit-packs the blocked mask
+to base64, and writes `src/navGrids.ts`. It also emits `scratch/<map>-navmask.png` (a red overlay on
+the radar) so you can confirm the mask matches the floor.
 
-Determinism: pathfinding uses no `Math.random` (fixed neighbour order, heap tie-break by key), so the
-radar stays reproducible.
+```
+npx tsx scripts/derive-navgrid.ts mirage
+qlmanage -t -s 760 -o /tmp scratch/mirage-navmask.png   # macOS: rasterize to inspect
+```
 
-## Authoring a new map
+Then give the map a `MapGeometry` entry with `spawns`/`sites`/`mid` (read from the image) and callout
+`labels`, leaving `walkable`/`walls` empty. `MAP_LAYOUTS[map]` in `radarSim.ts` also needs accurate
+`tSpawn`/`ctSpawn`/`bombsiteA`/`bombsiteB`/`mid` (it drives where radar players spawn and head). Sites,
+spawns and callouts should be cross-checked against web callout guides (e.g. A = triple-box site,
+B = market site).
 
-1. Add a `MapGeometry` to `mapGeometries` keyed by `MapId`: cover the floor with `walkable` rectangles/
-   polygons (overlap them generously at junctions so the grid stays connected), set `spawns`/`sites`/
-   `mid`/`regions`. Trace the existing radar PNG for proportions.
-2. `getNavGrid(id)` picks it up automatically.
-3. Sanity-check with a test like the mirage ones (`tests/mapGeometry.test.ts`): spawns/sites walkable,
-   a route between them crosses no wall.
+## Rendering
 
-## Authoring aid
+`App.tsx` `MatchMapView`: pixel-nav maps render the real radar PNG with callout labels and player dots
+overlaid (no vector floor). Pure-polygon maps render the vector floor as SVG with an optional image
+underlay toggle. Legacy maps (no geometry) render the PNG + legacy node movement.
 
-`npm run preview:map -- mirage` renders the floorplan + sample any-angle routes (T→A, T→B, CT→A, CT→B)
-to `scratch/<id>-preview.svg`. On macOS, rasterize to view: `qlmanage -t -s 700 -o /tmp scratch/mirage-preview.svg`.
-This is the fast loop for tracing/tuning a map without driving a whole match.
+## Status
 
-## Status / remaining work
-
-- ✅ Nav engine + dynamic util hooks + tests.
-- ✅ **mirage** authored (traced from the radar image — corridors winding around the central building
-  and the apartments block) and **wired into the radar**: `radarSim.ts` routes via `findPath` (cached
-  per segment), `App.tsx` renders the geometry as SVG with an optional **image-underlay** toggle, plus
-  callout labels (Top Mid, Palace, Window, Connector, Jungle, Mid, Ramp, Apps, Short, Market) from the
-  geometry's `labels`. The container was already square, so registration is exact.
-- ✅ Authoring aid: `scripts/preview-map.ts` (`npm run preview:map`) — renders floor + walls + routes
-  + callouts, matching the in-app look for fast tuning.
-- ⏳ mirage proportions/labels can always be fine-tuned further via the preview loop.
-- ⏳ Author the other 6 maps (inferno, dust2, nuke, ancient, anubis, train) to the same schema —
-  until then they fall back to the legacy node routing + PNG automatically.
+- ✅ Nav engine (grid + Theta\* + LOS) with molly/smoke hooks; tests in `tests/mapGeometry.test.ts`.
+- ✅ **mirage**: pixel-accurate grid baked from the radar (`navGrids.ts`), the real radar PNG rendered
+  as the map, accurate spawns/sites, and callout labels (A, B, T, CT, Mid, Window, Connector, Jungle,
+  Palace, Ramp, Top Mid, Short, Apps, Market). Players route on the real floor.
+- ✅ Tools: `scripts/derive-navgrid.ts` (pixel extraction + mask overlay), `scripts/preview-map.ts`
+  (`npm run preview:map`, for hand-authored polygon maps).
+- ⏳ Bake the other 6 maps (inferno, dust2, nuke, ancient, anubis, train) — run `derive-navgrid.ts`
+  per map and add their `MapGeometry` labels/spawns + `MAP_LAYOUTS` coords. Until then they fall back
+  to legacy node routing + PNG automatically.
+- ⏳ Fine-tune mirage callout label positions if any read slightly off.
 - ⏳ (Future) in-match smokes/mollies driving `findPath`/`hasLineOfSight` during a round.

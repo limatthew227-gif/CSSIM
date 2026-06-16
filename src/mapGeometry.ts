@@ -12,6 +12,7 @@
  * This module is purely about *where things are / can move* — it never touches match outcomes.
  */
 import type { MapId } from "./gameData";
+import { navGrids } from "./navGrids";
 
 export interface Vec {
   x: number;
@@ -373,64 +374,40 @@ export function pathLength(path: Vec[]): number {
 // floorplan; proportions to be refined against the radar image when rendering.
 // ---------------------------------------------------------------------------
 
-// Traced from the Simple Radar mirage image (A site upper-left, B bottom-centre, CT spawn right,
-// T spawn lower-left). Corridors follow the real callouts and wind around the central building.
+// Navigation for mirage comes from a pixel-accurate occupancy grid baked from the radar image
+// (navGrids.ts via scripts/derive-navgrid.ts) and the real radar PNG is rendered as the map — so the
+// walkable polygons are intentionally empty. This object supplies sites/spawns/mid and the callout
+// labels overlaid on the radar. Coordinates are read from the Simple Radar image and cross-checked
+// against web callout guides (A = triple-box site, B = market site; T = lower-left, CT = upper-right).
 const mirage: MapGeometry = {
   id: "mirage",
-  walkable: [
-    rect(16, 15, 54, 23), // top mid lane
-    rect(50, 14, 73, 24), // top -> CT
-    rect(70, 18, 89, 33), // CT top approach
-    rect(82, 30, 92, 45), // CT spawn
-    rect(80, 42, 92, 64), // right corridor (upper)
-    rect(68, 58, 92, 76), // right corridor (lower) / market side
-    rect(15, 23, 31, 35), // A site
-    rect(23, 20, 35, 28), // A -> top link
-    rect(11, 25, 19, 38), // A left (stairs)
-    rect(19, 33, 37, 53), // ramp
-    rect(30, 27, 46, 53), // connector (A <-> mid)
-    rect(39, 20, 47, 41), // mid window
-    rect(33, 39, 48, 61), // mid
-    rect(46, 45, 75, 61), // mid -> CT (under central building)
-    rect(39, 55, 60, 71), // B short
-    rect(47, 70, 63, 82), // B site
-    rect(58, 68, 81, 82), // market
-    rect(60, 59, 81, 73), // market upper
-    rect(12, 38, 28, 67), // left corridor (T <-> A)
-    rect(19, 62, 34, 80), // T spawn
-    rect(19, 78, 56, 88), // T -> B (bottom lane)
-    rect(26, 53, 42, 68), // T -> apps/mid link
-    rect(45, 57, 62, 72), // apps -> B
-  ],
-  walls: [
-    rect(48, 24, 70, 45), // central building
-    rect(34, 66, 47, 80), // apartments block
-  ],
-  spawns: { ct: { x: 87, y: 37 }, t: { x: 26, y: 71 } },
-  sites: { a: { x: 22, y: 29 }, b: { x: 55, y: 76 } },
-  mid: { x: 42, y: 49 },
+  walkable: [],
+  walls: [],
+  spawns: { ct: { x: 87, y: 37 }, t: { x: 28, y: 71 } },
+  sites: { a: { x: 24, y: 28 }, b: { x: 54, y: 76 } },
+  mid: { x: 42, y: 44 },
   regions: [
-    { name: "A", poly: rect(15, 23, 31, 35) },
-    { name: "B", poly: rect(47, 70, 63, 82) },
-    { name: "Mid", poly: rect(33, 39, 48, 61) },
-    { name: "Market", poly: rect(58, 68, 81, 82) },
+    { name: "A", poly: rect(16, 22, 30, 34) },
+    { name: "B", poly: rect(47, 71, 62, 82) },
+    { name: "Mid", poly: rect(36, 26, 48, 48) },
+    { name: "Market", poly: rect(58, 70, 80, 82) },
     { name: "CT", poly: rect(82, 30, 92, 45) },
   ],
   labels: [
-    { text: "A", at: { x: 22, y: 29 } },
-    { text: "B", at: { x: 55, y: 76 } },
-    { text: "T", at: { x: 25, y: 71 } },
+    { text: "A", at: { x: 24, y: 28 } },
+    { text: "B", at: { x: 54, y: 76 } },
+    { text: "T", at: { x: 28, y: 71 } },
     { text: "CT", at: { x: 87, y: 37 } },
-    { text: "Mid", at: { x: 41, y: 50 } },
-    { text: "Window", at: { x: 43, y: 26 } },
-    { text: "Connector", at: { x: 37, y: 33 } },
-    { text: "Palace", at: { x: 29, y: 24 } },
-    { text: "Ramp", at: { x: 23, y: 46 } },
-    { text: "Jungle", at: { x: 44, y: 43 } },
-    { text: "Top Mid", at: { x: 27, y: 18 } },
-    { text: "Short", at: { x: 51, y: 64 } },
-    { text: "Apps", at: { x: 32, y: 61 } },
-    { text: "Market", at: { x: 70, y: 76 } },
+    { text: "Mid", at: { x: 42, y: 44 } },
+    { text: "Window", at: { x: 45, y: 30 } },
+    { text: "Connector", at: { x: 34, y: 35 } },
+    { text: "Palace", at: { x: 30, y: 31 } },
+    { text: "Jungle", at: { x: 41, y: 38 } },
+    { text: "Ramp", at: { x: 23, y: 47 } },
+    { text: "Top Mid", at: { x: 33, y: 20 } },
+    { text: "Short", at: { x: 49, y: 60 } },
+    { text: "Apps", at: { x: 36, y: 62 } },
+    { text: "Market", at: { x: 68, y: 76 } },
   ],
 };
 
@@ -438,16 +415,42 @@ export const mapGeometries: Partial<Record<MapId, MapGeometry>> = {
   mirage,
 };
 
+/** Decode a base64 bit-packed blocked mask (baked from a radar PNG) into a NavGrid. */
+function decodeBakedGrid(res: number, bits: string): NavGrid {
+  const bin = typeof atob === "function" ? atob(bits) : Buffer.from(bits, "base64").toString("binary");
+  const n = res * res;
+  const move = new Uint8Array(n);
+  const vision = new Uint8Array(n);
+  for (let i = 0; i < n; i += 1) {
+    const bit = (bin.charCodeAt(i >> 3) >> (7 - (i & 7))) & 1;
+    move[i] = bit;
+    vision[i] = bit;
+  }
+  return { res, blockedMove: move, blockedVision: vision };
+}
+
 const gridCache = new Map<MapId, NavGrid>();
 
-/** Memoized nav grid for a map, or null if the map has no code geometry yet. */
+/** True for maps navigated via a pixel-accurate grid baked from the radar image. */
+export function hasPixelNav(id: MapId): boolean {
+  return Boolean(navGrids[id]);
+}
+
+/**
+ * Memoized nav grid for a map. Prefers a pixel-accurate grid baked from the radar PNG; falls back
+ * to rasterizing hand-authored polygons; null if the map has neither yet.
+ */
 export function getNavGrid(id: MapId): NavGrid | null {
-  const geo = mapGeometries[id];
-  if (!geo) return null;
   let grid = gridCache.get(id);
-  if (!grid) {
+  if (grid) return grid;
+  const baked = navGrids[id];
+  if (baked) {
+    grid = decodeBakedGrid(baked.res, baked.bits);
+  } else {
+    const geo = mapGeometries[id];
+    if (!geo) return null;
     grid = buildNavGrid(geo);
-    gridCache.set(id, grid);
   }
+  gridCache.set(id, grid);
   return grid;
 }

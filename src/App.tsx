@@ -69,7 +69,7 @@ import {
 } from "./sim";
 import { hltvTop20Coaches, hltvTop20Rosters } from "./hltvTop20";
 import { simulateRadarPlayers, MAP_LAYOUTS, getStepDelay } from "./radarSim";
-import { mapGeometries } from "./mapGeometry";
+import { mapGeometries, hasPixelNav } from "./mapGeometry";
 import "./styles.css";
 
 import mirageRadar from "./assets/radar/mirage.png";
@@ -2970,6 +2970,8 @@ function MatchMapView({ match, you, opponent, speed = 1 }: { match: MatchState; 
   const mapInfo = mapPool.find((map) => map.id === match.map);
   const layout = MAP_LAYOUTS[match.map] || MAP_LAYOUTS.mirage;
   const geometry = mapGeometries[match.map];
+  const pixelNav = hasPixelNav(match.map); // nav + visual come from the real radar image
+  const showVectorFloor = Boolean(geometry) && !pixelNav;
 
   const [smoothMovement, setSmoothMovement] = React.useState(true);
   const [showUnderlay, setShowUnderlay] = React.useState(false);
@@ -3017,7 +3019,7 @@ function MatchMapView({ match, you, opponent, speed = 1 }: { match: MatchState; 
         style={
           {
             "--map-accent": mapInfo?.accent ?? "#65a7ff",
-            backgroundImage: radarImage && (!geometry || showUnderlay) ? `url(${radarImage})` : undefined,
+            backgroundImage: radarImage && (pixelNav || !geometry || showUnderlay) ? `url(${radarImage})` : undefined,
             backgroundSize: "100% 100%",
             backgroundPosition: "center",
             "--transition-duration": `${duration}ms`,
@@ -3036,7 +3038,7 @@ function MatchMapView({ match, you, opponent, speed = 1 }: { match: MatchState; 
             />
             <span>Fluid Motion</span>
           </label>
-          {geometry && (
+          {showVectorFloor && (
             <label className="radar-smooth-toggle" style={{ marginLeft: "8px", display: "inline-flex", alignItems: "center", gap: "4px", fontSize: "10px", cursor: "pointer", userSelect: "none", opacity: 0.85 }}>
               <input
                 type="checkbox"
@@ -3049,13 +3051,13 @@ function MatchMapView({ match, you, opponent, speed = 1 }: { match: MatchState; 
           )}
         </div>
 
-        {/* Code-built map geometry (walkable floor) — the surface players actually navigate */}
-        {geometry && (
+        {/* Vector floor only for maps without a pixel-accurate radar (pixel-nav maps render the PNG) */}
+        {showVectorFloor && (
           <svg className="radar-geometry" viewBox="0 0 100 100" preserveAspectRatio="none">
-            {geometry.walkable.map((poly, i) => (
+            {geometry!.walkable.map((poly, i) => (
               <polygon key={`floor-${i}`} className="floor" points={poly.map((pt) => `${pt.x},${pt.y}`).join(" ")} />
             ))}
-            {geometry.walls.map((poly, i) => (
+            {geometry!.walls.map((poly, i) => (
               <polygon key={`wall-${i}`} className="wall" points={poly.map((pt) => `${pt.x},${pt.y}`).join(" ")} />
             ))}
           </svg>

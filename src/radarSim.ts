@@ -30,11 +30,14 @@ export interface MapLayout {
 
 export const MAP_LAYOUTS: Record<MapId, MapLayout> = {
   mirage: {
-    tSpawn: { x: 88, y: 36 },
-    ctSpawn: { x: 28, y: 70 },
-    bombsiteA: { x: 54, y: 76 },
-    bombsiteB: { x: 23, y: 28 },
-    mid: { x: 50, y: 50 },
+    // Spawns/sites read from the radar image (A = triple-box upper-left, B = market bottom-centre,
+    // T = lower-left, CT = upper-right). Navigation uses the pixel-accurate baked grid, not the
+    // legacy node routes below.
+    tSpawn: { x: 28, y: 71 },
+    ctSpawn: { x: 87, y: 37 },
+    bombsiteA: { x: 24, y: 28 },
+    bombsiteB: { x: 54, y: 76 },
+    mid: { x: 42, y: 44 },
     chokePoints: {
       "A Ramp": { x: 65, y: 65 },
       "Palace": { x: 72, y: 52 },
