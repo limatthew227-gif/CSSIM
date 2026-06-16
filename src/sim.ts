@@ -592,7 +592,28 @@ function makeLines(players: Player[]) {
 
 export type Tactic = "standard" | "aggressive" | "cautious" | "force" | "save";
 
-function getAutoBuyState(
+export function lossBonusForStreak(lossStreak: number): number {
+  return 1400 + Math.min(lossStreak, 4) * 500;
+}
+
+/**
+ * Per-player money earned at the end of a round.
+ *
+ * Real CS2: the entire losing team receives the loss bonus regardless of side or
+ * whether an individual survived. (Survivors additionally keep their weapons, which is
+ * modeled separately via weapon carry-over.) Ts who planted the bomb but still lost the
+ * round earn an extra $800.
+ *
+ * `side` is the team's own side for the round.
+ */
+export function roundIncome(opts: { won: boolean; side: MatchSide; planted: boolean; lossBonus: number }): number {
+  if (opts.won) return 3250;
+  let income = opts.lossBonus;
+  if (opts.side === "T" && opts.planted) income += 800;
+  return income;
+}
+
+export function getAutoBuyState(
   playersMoney: number[],
   side: MatchSide,
   lossStreak: number,
@@ -606,7 +627,7 @@ function getAutoBuyState(
   if (wonPrevRound) {
     return "FORCE";
   }
-  const lossBonus = 1400 + Math.min(lossStreak, 4) * 500;
+  const lossBonus = lossBonusForStreak(lossStreak);
   if (avgMoney + lossBonus >= fullBuyThreshold) {
     return "ECO";
   }
@@ -1575,49 +1596,32 @@ export function playRound(
     opponentLossStreak = Math.max(0, opponentLossStreak - 1);
   }
 
-  const yourLossBonus = 1400 + yourLossStreak * 500;
-  const opponentLossBonus = 1400 + opponentLossStreak * 500;
+  const yourLossBonus = lossBonusForStreak(yourLossStreak);
+  const opponentLossBonus = lossBonusForStreak(opponentLossStreak);
 
   const deadPlayerIds = new Set(feed.map((event) => event.victimId));
 
+  const yourIncome = roundIncome({
+    won: winningTeamId === "you",
+    side: state.side,
+    planted: tPlantedBomb,
+    lossBonus: yourLossBonus,
+  });
+  const opponentIncome = roundIncome({
+    won: winningTeamId === "opponent",
+    side: otherMatchSide(state.side),
+    planted: tPlantedBomb,
+    lossBonus: opponentLossBonus,
+  });
+
   const pendingYourMoney: Record<string, number> = {};
   you.players.forEach((p) => {
-    let income = 0;
-    if (winningTeamId === "you") {
-      income = 3250;
-    } else {
-      if (state.side === "T") {
-        if (tPlantedBomb) {
-          income = yourLossBonus + 800;
-        } else {
-          const survived = !deadPlayerIds.has(p.id);
-          income = survived ? 0 : yourLossBonus;
-        }
-      } else {
-        income = yourLossBonus;
-      }
-    }
-    pendingYourMoney[p.id] = clamp((endOfRoundYourMoney[p.id] ?? 800) + income, 0, 10000);
+    pendingYourMoney[p.id] = clamp((endOfRoundYourMoney[p.id] ?? 800) + yourIncome, 0, 10000);
   });
 
   const pendingOpponentMoney: Record<string, number> = {};
   opponent.players.forEach((p) => {
-    let income = 0;
-    if (winningTeamId === "opponent") {
-      income = 3250;
-    } else {
-      if (state.side === "CT") {
-        if (tPlantedBomb) {
-          income = opponentLossBonus + 800;
-        } else {
-          const survived = !deadPlayerIds.has(p.id);
-          income = survived ? 0 : opponentLossBonus;
-        }
-      } else {
-        income = opponentLossBonus;
-      }
-    }
-    pendingOpponentMoney[p.id] = clamp((endOfRoundOpponentMoney[p.id] ?? 800) + income, 0, 10000);
+    pendingOpponentMoney[p.id] = clamp((endOfRoundOpponentMoney[p.id] ?? 800) + opponentIncome, 0, 10000);
   });
 
   const winningPlayers = winningTeamId === "you" ? you.players : opponent.players;
@@ -1837,7 +1841,8 @@ export function generateDynamicRound(
   deathWeightFn: (p: Player, ctx: MatchContext, oppRank?: number, weapon?: string) => number
 ) {
   let p = clamp(initialProbability, 0.01, 0.99);
-  let logit = Math.log(p / (1 - p));
+  let logit = Math.log(p / (1 - p)) * 0.7;
+
 
   let timeRemaining = 115;
   let bombTimer = 0;
@@ -1921,10 +1926,12 @@ export function generateDynamicRound(
   const isMatchPoint = (youScore >= matchWinThreshold(round) - 1) || (opponentScore >= matchWinThreshold(round) - 1);
 
   while (!roundEnded && timeRemaining > 0) {
-    let timeStep = Math.floor(Math.random() * 15) + 5; 
+
+    // 1. Shorter time steps to allow more sequential fights/events
+    let timeStep = Math.floor(Math.random() * 5) + 2; // 2-6 seconds pre-plant
     
     if (tPlantedBomb) {
-      timeStep = Math.floor(Math.random() * 8) + 3; 
+      timeStep = Math.floor(Math.random() * 4) + 2; // 2-5 seconds post-plant
       bombTimer -= timeStep;
       if (bombTimer <= 0) {
         bombOutcome = "exploded";
@@ -1945,19 +1952,35 @@ export function generateDynamicRound(
     }
 
     const counts = getAliveCounts();
-    let eventType: "kill" | "plant" | "defuse" | "save" = "kill";
+    let eventType: "kill" | "plant" | "defuse" | "save" | "idle" = "idle";
 
     if (tPlantedBomb) {
        if (counts.ct > 0 && counts.t === 0) {
          eventType = "defuse";
        } else if (counts.ct > 0) {
-         if (Math.random() < 0.04) eventType = "defuse"; 
+         // Ninja defuse chance is very rare (0.5% per step) while Ts are still alive
+         if (Math.random() < 0.005) {
+           eventType = "defuse";
+         } else if (Math.random() > 0.30) {
+           eventType = "kill";
+         }
        }
     } else {
-       if (counts.t > 0 && timeRemaining < 40) {
-         if (Math.random() < 0.45) eventType = "plant";
-       } else if (counts.t > 0 && Math.random() < 0.12) {
-         eventType = "plant";
+       const ctAlive = counts.ct;
+       const tAlive = counts.t;
+       const isDesperate = timeRemaining < 35;
+       // Strict site control: Ts must have numbers advantage (t > ct) or defenders must be cleared (ct <= 1)
+       const hasSiteControl = tAlive > ctAlive || ctAlive <= 1;
+
+       if (tAlive > 0 && (hasSiteControl || isDesperate)) {
+         const pPlant = isDesperate ? 0.35 : 0.20;
+         if (Math.random() < pPlant) {
+           eventType = "plant";
+         } else if (Math.random() > 0.30) {
+           eventType = "kill";
+         }
+       } else if (Math.random() > 0.30) {
+         eventType = "kill";
        }
     }
 
@@ -2034,7 +2057,8 @@ export function generateDynamicRound(
     if (eventType === "kill") {
        let youGetKillProb = getP();
        const playerAdvantage = alive.you.length - alive.opponent.length;
-       youGetKillProb = clamp(youGetKillProb + playerAdvantage * 0.12, 0.05, 0.95);
+       // Scaled player advantage coefficient: 0.045
+       youGetKillProb = clamp(youGetKillProb + playerAdvantage * 0.045, 0.05, 0.95);
 
        const killerSide = Math.random() < youGetKillProb ? "you" : "opponent";
        const victimSide = otherSide(killerSide);
@@ -2053,20 +2077,24 @@ export function generateDynamicRound(
 
        if (isFirstKill) {
           isFirstKill = false;
-          const delta = 0.9;
+          // Scaled opener shift: 0.35
+          const delta = 0.35;
           logit += killerSide === "you" ? delta : -delta;
        } else {
           if (timeRemaining > lastKillTime - 12 && killerSide !== lastKillerSide) {
-            const tradeDelta = 0.65;
-            logit += killerSide === "you" ? tradeDelta : -tradeDelta;
+             // Scaled trade shift: 0.25
+             const tradeDelta = 0.25;
+             logit += killerSide === "you" ? tradeDelta : -tradeDelta;
           } else {
-            const normalDelta = 0.45;
-            logit += killerSide === "you" ? normalDelta : -normalDelta;
+             // Scaled standard kill shift: 0.18
+             const normalDelta = 0.18;
+             logit += killerSide === "you" ? normalDelta : -normalDelta;
           }
        }
 
        if (victim.ovr >= 85) {
-          const starDelta = 0.2 + (victim.ovr - 85) * 0.05;
+          // Scaled star death penalty
+          const starDelta = 0.08 + (victim.ovr - 85) * 0.02;
           logit += victimSide === "you" ? -starDelta : starDelta;
        }
 
@@ -2386,7 +2414,7 @@ function wasTraded(playerId: string, feed: FeedLine[], team: "you" | "opponent")
     .some((event) => event.team === team && event.victimId === killerId);
 }
 
-function getKillReward(weapon: string): number {
+export function getKillReward(weapon: string): number {
   if (weapon === "AWP") return 100;
   if (weapon === "MP9" || weapon === "MAC-10") return 600;
   return 300;
