@@ -31,13 +31,13 @@ export interface MapLayout {
 export const MAP_LAYOUTS: Record<MapId, MapLayout> = {
   mirage: {
     // Spawns/sites read from the radar image (A = triple-box upper-left, B = market bottom-centre,
-    // T = lower-left, CT = upper-right). Navigation uses the pixel-accurate baked grid, not the
+    // T = upper-right, CT = lower-left). Navigation uses the pixel-accurate baked grid, not the
     // legacy node routes below.
-    tSpawn: { x: 28, y: 71 },
-    ctSpawn: { x: 87, y: 37 },
+    tSpawn: { x: 87, y: 37 },
+    ctSpawn: { x: 28, y: 71 },
     bombsiteA: { x: 24, y: 28 },
     bombsiteB: { x: 54, y: 76 },
-    mid: { x: 42, y: 44 },
+    mid: { x: 44, y: 45 },
     chokePoints: {
       "A Ramp": { x: 65, y: 65 },
       "Palace": { x: 72, y: 52 },
@@ -446,28 +446,21 @@ function getPlayerPositionAtStep(wps: Waypoint[], step: number, layout: MapLayou
     pathLength += Math.sqrt(dx * dx + dy * dy);
   }
 
-  // Calculate the walking fraction (player walks at constant velocity, then holds)
-  const f_walk = pathLength > 0 ? pathLength / (pathLength + 14) : 0;
+  // Walk at a roughly constant speed regardless of route length: cap the distance covered per
+  // event-step so long routes don't "teleport" (sonic) and short ones don't crawl. stepSpan = how
+  // many event-steps this waypoint interval spans; SPEED = radar units (0..100) per step.
+  const stepSpan = Math.max(1, w2.step - w1.step);
+  const SPEED = 15;
+  const f_walk = pathLength > 0 ? Math.min(1, pathLength / (SPEED * stepSpan)) : 0;
 
   let t = 1.0;
-  let isHolding = true;
   if (f_walk > 0 && t_linear < f_walk) {
     t = t_linear / f_walk;
-    isHolding = false;
   }
 
-  const pos = getPathPosition(cleaned, t);
-
-  // Add realistic micro-movement/wobble/jiggle when holding angles or static
-  if (isHolding && isAlive) {
-    const seed = pos.x * 17 + pos.y * 31 + step * 47;
-    const wobbleSpeed = 7.5;
-    const wobbleScale = 0.35;
-    pos.x += Math.sin(seed * wobbleSpeed) * wobbleScale;
-    pos.y += Math.cos(seed * wobbleSpeed) * wobbleScale;
-  }
-
-  return pos;
+  // No per-frame wobble here: the old jiggle reseeded every animation frame off the fractional
+  // step, which made holding players visibly buzz/vibrate. Holding players now stay put.
+  return getPathPosition(cleaned, t);
 }
 
 export interface RadarTrace {

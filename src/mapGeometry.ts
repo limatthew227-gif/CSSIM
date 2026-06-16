@@ -378,36 +378,36 @@ export function pathLength(path: Vec[]): number {
 // (navGrids.ts via scripts/derive-navgrid.ts) and the real radar PNG is rendered as the map — so the
 // walkable polygons are intentionally empty. This object supplies sites/spawns/mid and the callout
 // labels overlaid on the radar. Coordinates are read from the Simple Radar image and cross-checked
-// against web callout guides (A = triple-box site, B = market site; T = lower-left, CT = upper-right).
+// against web callout guides (A = triple-box site, B = market site; T = upper-right, CT = lower-left).
 const mirage: MapGeometry = {
   id: "mirage",
   walkable: [],
   walls: [],
-  spawns: { ct: { x: 87, y: 37 }, t: { x: 28, y: 71 } },
+  spawns: { ct: { x: 28, y: 71 }, t: { x: 87, y: 37 } },
   sites: { a: { x: 24, y: 28 }, b: { x: 54, y: 76 } },
-  mid: { x: 42, y: 44 },
+  mid: { x: 44, y: 45 },
   regions: [
     { name: "A", poly: rect(16, 22, 30, 34) },
     { name: "B", poly: rect(47, 71, 62, 82) },
     { name: "Mid", poly: rect(36, 26, 48, 48) },
-    { name: "Market", poly: rect(58, 70, 80, 82) },
-    { name: "CT", poly: rect(82, 30, 92, 45) },
+    { name: "Market", poly: rect(36, 66, 50, 80) },
+    { name: "CT", poly: rect(22, 64, 36, 78) },
   ],
   labels: [
     { text: "A", at: { x: 24, y: 28 } },
     { text: "B", at: { x: 54, y: 76 } },
-    { text: "T", at: { x: 28, y: 71 } },
-    { text: "CT", at: { x: 87, y: 37 } },
-    { text: "Mid", at: { x: 42, y: 44 } },
-    { text: "Window", at: { x: 45, y: 30 } },
-    { text: "Connector", at: { x: 34, y: 35 } },
-    { text: "Palace", at: { x: 30, y: 31 } },
-    { text: "Jungle", at: { x: 41, y: 38 } },
-    { text: "Ramp", at: { x: 23, y: 47 } },
-    { text: "Top Mid", at: { x: 33, y: 20 } },
-    { text: "Short", at: { x: 49, y: 60 } },
-    { text: "Apps", at: { x: 36, y: 62 } },
-    { text: "Market", at: { x: 68, y: 76 } },
+    { text: "CT", at: { x: 28, y: 71 } },
+    { text: "T", at: { x: 87, y: 37 } },
+    { text: "Mid", at: { x: 44, y: 45 } },
+    { text: "Window", at: { x: 42, y: 30 } },
+    { text: "Connector", at: { x: 34, y: 34 } },
+    { text: "Jungle", at: { x: 39, y: 39 } },
+    { text: "Palace", at: { x: 32, y: 21 } },
+    { text: "Ramp", at: { x: 41, y: 23 } },
+    { text: "Top Mid", at: { x: 49, y: 20 } },
+    { text: "Short", at: { x: 50, y: 58 } },
+    { text: "Apps", at: { x: 62, y: 66 } },
+    { text: "Market", at: { x: 40, y: 70 } },
   ],
 };
 
