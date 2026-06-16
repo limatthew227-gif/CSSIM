@@ -369,6 +369,31 @@ export function pathLength(path: Vec[]): number {
   return total;
 }
 
+/** Point at fraction t (0..1) along a polyline route, measured by arc length. */
+export function positionAlongPath(path: Vec[], t: number): Vec {
+  if (path.length === 0) return { x: 50, y: 50 };
+  if (path.length === 1) return path[0];
+  const dists = [0];
+  let total = 0;
+  for (let i = 0; i < path.length - 1; i += 1) {
+    total += Math.hypot(path[i + 1].x - path[i].x, path[i + 1].y - path[i].y);
+    dists.push(total);
+  }
+  if (total === 0) return path[0];
+  const target = Math.max(0, Math.min(1, t)) * total;
+  for (let i = 0; i < path.length - 1; i += 1) {
+    if (target >= dists[i] && target <= dists[i + 1]) {
+      const seg = dists[i + 1] - dists[i];
+      const st = seg > 0 ? (target - dists[i]) / seg : 0;
+      return {
+        x: path[i].x + (path[i + 1].x - path[i].x) * st,
+        y: path[i].y + (path[i + 1].y - path[i].y) * st,
+      };
+    }
+  }
+  return path[path.length - 1];
+}
+
 // ---------------------------------------------------------------------------
 // Map definitions (first map: mirage). Authored as a simplified, connected
 // floorplan; proportions to be refined against the radar image when rendering.

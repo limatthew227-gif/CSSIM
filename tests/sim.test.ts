@@ -39,6 +39,7 @@ import {
   utilFactor,
 } from "../src/sim";
 import type { FieldTeam } from "../src/sim";
+import { getNavGrid, hasLineOfSight } from "../src/mapGeometry";
 
 // ---------------------------------------------------------------------------
 // Seeded RNG
@@ -335,6 +336,37 @@ test("generateDynamicRound: utility events appear only when nades were bought, a
     !noUtil.feed.some((f) => f.type && utilTypes.has(f.type)),
     "a round with zero nades bought should show no utility events",
   );
+});
+
+test("generateDynamicRound on mirage: kills are gated to players with line of sight", () => {
+  const grid = getNavGrid("mirage");
+  assert.ok(grid, "mirage has a nav grid");
+  const you = makeTeam("you", 85);
+  const opp = makeTeam("opp", 85);
+  const armed = (t: FieldTeam) => t.players.reduce((a, p) => ((a[p.id] = "AK-47"), a), {} as Record<string, string>);
+  const helm = (t: FieldTeam) =>
+    t.players.reduce((a, p) => ((a[p.id] = "helmet"), a), {} as Record<string, "none" | "kevlar" | "helmet">);
+  const money = (t: FieldTeam) => t.players.reduce((a, p) => ((a[p.id] = 4000), a), {} as Record<string, number>);
+  const ctx = { map: "mirage", stage: "swiss" } as const;
+  const w = () => 1;
+
+  let positioned = 0;
+  let withLos = 0;
+  for (let seed = 1; seed <= 40; seed += 1) {
+    const r = withSeed(seed, () =>
+      generateDynamicRound(8, you, opp, armed(you), armed(opp), "standard", "FULL", "FULL", "CT", 6, 6, ctx, 0, 0, money(you), money(opp), helm(you), helm(opp), 0.5, w, w, 0, 0),
+    );
+    for (const e of r.feed) {
+      if ((!e.type || e.type === "kill") && e.killerPos && e.victimPos) {
+        positioned += 1;
+        if (hasLineOfSight(grid!, e.killerPos, e.victimPos)) withLos += 1;
+      }
+    }
+  }
+  assert.ok(positioned > 30, `expected many positioned kills on mirage, got ${positioned}`);
+  // The vast majority of kills should be true sightline duels; the small remainder are the
+  // push/rotation fallback that keeps rounds from stalling when nobody has LOS.
+  assert.ok(withLos / positioned >= 0.8, `most kills should have line of sight, got ${withLos}/${positioned}`);
 });
 
 // ===========================================================================

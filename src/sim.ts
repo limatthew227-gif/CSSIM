@@ -10,6 +10,8 @@ import {
 } from "./gameData";
 import { hltvPlayerSplits2026 } from "./hltvPlayerSplits2026";
 import { hltvPlayerPlayoffs2026 } from "./hltvPlayerPlayoffs2026";
+import { getNavGrid, hasPixelNav, findPath, hasLineOfSight, positionAlongPath, mapGeometries } from "./mapGeometry";
+import type { NavGrid, Vec } from "./mapGeometry";
 
 export interface BonusLine {
   label: string;
@@ -94,6 +96,8 @@ export interface FeedLine {
   first: boolean;
   type?: "kill" | "plant" | "defuse" | "explode" | "round_start" | "round_over" | "flash" | "smoke" | "molotov" | "he";
   flashAssist?: boolean;
+  killerPos?: { x: number; y: number };
+  victimPos?: { x: number; y: number };
   assistant?: string;
   assistantId?: string;
   killerDamage?: number;
@@ -1894,6 +1898,31 @@ function getWeaponCost(w: string): number {
   return 300;
 }
 
+// --- Map-aware engagement helpers (used by generateDynamicRound on pixel-nav maps like mirage) ---
+
+// Matches radarSim's strategy seed so the sim and the radar agree on T executes / destinations.
+function hashStr(str: string): number {
+  let hash = 0;
+  for (let i = 0; i < str.length; i += 1) {
+    hash = (hash << 5) - hash + str.charCodeAt(i);
+    hash |= 0;
+  }
+  return Math.abs(hash);
+}
+
+// findPath is deterministic per (grid, endpoints) and only a few spawn->objective routes recur, so
+// cache them across rounds/matches to keep the line-of-sight engagement model cheap.
+const routeCache = new Map<string, Vec[]>();
+function cachedRoute(grid: NavGrid, a: Vec, b: Vec): Vec[] {
+  const key = `${grid.res}:${a.x.toFixed(1)},${a.y.toFixed(1)}>${b.x.toFixed(1)},${b.y.toFixed(1)}`;
+  let route = routeCache.get(key);
+  if (!route) {
+    route = findPath(grid, a, b);
+    routeCache.set(key, route);
+  }
+  return route;
+}
+
 export function generateDynamicRound(
   round: number,
   you: FieldTeam,
@@ -1976,6 +2005,74 @@ export function generateDynamicRound(
 
   const tTeamKey = side === "T" ? "you" : "opponent";
   const ctTeamKey = side === "CT" ? "you" : "opponent";
+
+  // --- Map-aware engagements (pixel-nav maps like mirage): players advance from spawn toward their
+  // objective along the nav grid, and kills are gated to killer/victim pairs with line of sight.
+  // The OVR-based weighting for who wins the duel is unchanged. Non-pixel maps skip all of this. ---
+  const navGrid = getNavGrid(context.map);
+  const mapGeo = mapGeometries[context.map];
+  const usePositions = Boolean(navGrid && mapGeo && hasPixelNav(context.map));
+  const WALK_SECONDS = 28; // reach the held position
+  const PUSH_SECONDS = 55; // then push toward the enemy so engagements develop into sightlines
+  let noLosStreak = 0;
+  const approachOf = new Map<string, Vec[]>(); // spawn -> objective
+  const pushOf = new Map<string, Vec[]>(); // objective -> enemy side
+
+  if (usePositions && navGrid && mapGeo) {
+    const tName = side === "T" ? you.name : opponent.name;
+    const tStrategy = (hashStr(tName) + round) % 3;
+    const objectiveOf = new Map<string, Vec>();
+    const assignTeam = (teamKey: "you" | "opponent") => {
+      const players = teamKey === "you" ? you.players : opponent.players;
+      const teamSide: MatchSide = teamKey === tTeamKey ? "T" : "CT";
+      players.forEach((pl, idx) => {
+        const spawn = teamSide === "CT" ? mapGeo.spawns.ct : mapGeo.spawns.t;
+        let dest: Vec;
+        if (teamSide === "CT") {
+          dest = idx === 0 || idx === 3 ? mapGeo.sites.a : idx === 1 || idx === 4 ? mapGeo.sites.b : mapGeo.mid;
+        } else if (tStrategy === 1) {
+          dest = idx === 4 ? mapGeo.mid : mapGeo.sites.a;
+        } else if (tStrategy === 2) {
+          dest = idx === 4 ? mapGeo.mid : mapGeo.sites.b;
+        } else {
+          dest = idx === 0 || idx === 1 ? mapGeo.sites.a : idx === 2 || idx === 3 ? mapGeo.sites.b : mapGeo.mid;
+        }
+        objectiveOf.set(pl.id, dest);
+        approachOf.set(pl.id, cachedRoute(navGrid, spawn, dest));
+      });
+    };
+    assignTeam("you");
+    assignTeam("opponent");
+
+    // After holding, players push toward the enemy team's centre, so off-angle holders rotate into
+    // the fight and most kills become real sightline duels rather than fallback cleanups.
+    const centroidOf = (players: Player[]): Vec => {
+      let sx = 0;
+      let sy = 0;
+      let n = 0;
+      players.forEach((pl) => {
+        const o = objectiveOf.get(pl.id);
+        if (o) {
+          sx += o.x;
+          sy += o.y;
+          n += 1;
+        }
+      });
+      return n ? { x: sx / n, y: sy / n } : { x: 50, y: 50 };
+    };
+    const contact = centroidOf([...you.players, ...opponent.players]);
+    you.players.forEach((pl) => pushOf.set(pl.id, cachedRoute(navGrid, objectiveOf.get(pl.id)!, contact)));
+    opponent.players.forEach((pl) => pushOf.set(pl.id, cachedRoute(navGrid, objectiveOf.get(pl.id)!, contact)));
+  }
+
+  const posOf = (pl: Player, elapsed: number): Vec => {
+    const approach = approachOf.get(pl.id);
+    if (!approach) return { x: 50, y: 50 };
+    if (elapsed < WALK_SECONDS) return positionAlongPath(approach, elapsed / WALK_SECONDS);
+    const push = pushOf.get(pl.id);
+    if (!push || push.length < 2) return positionAlongPath(approach, 1);
+    return positionAlongPath(push, Math.min(1, (elapsed - WALK_SECONDS) / PUSH_SECONDS));
+  };
 
   function throwUtil(teamSide: "you" | "opponent", type: "smoke" | "flash" | "molotov" | "he"): boolean {
     if (utilLeft[teamSide] <= 0 || utilEventsThisRound >= MAX_UTIL_EVENTS) return false;
@@ -2174,8 +2271,43 @@ export function generateDynamicRound(
        const killerOppRank = killerSide === "you" ? opponent.rank : you.rank;
        const victimOppRank = victimSide === "you" ? opponent.rank : you.rank;
 
-       const killer = pickWeightedBy(alive[killerSide], p => killWeightFn(p, context, killerOppRank, killerEquipped[p.id]));
-       const victim = pickWeightedBy(alive[victimSide], p => deathWeightFn(p, context, victimOppRank, victimEquipped[p.id]));
+       let killer: Player;
+       let victim: Player;
+       let killerPos: Vec | undefined;
+       let victimPos: Vec | undefined;
+
+       if (usePositions && navGrid) {
+         // Only let players who can actually SEE each other trade. Outcome among the visible pairs is
+         // still OVR/role-weighted via killWeightFn / deathWeightFn.
+         const elapsed = 115 - timeRemaining;
+         const losPairs: Array<[Player, Player]> = [];
+         for (const k of alive[killerSide]) {
+           const kp = posOf(k, elapsed);
+           for (const v of alive[victimSide]) {
+             if (hasLineOfSight(navGrid, kp, posOf(v, elapsed))) losPairs.push([k, v]);
+           }
+         }
+         if (losPairs.length === 0) {
+           noLosStreak += 1;
+           const cleanup = alive[killerSide].length <= 1 || alive[victimSide].length <= 1;
+           // No sightline yet: let players keep approaching and try again next tick. The cap + low-time
+           // + cleanup conditions guarantee the round still resolves (a push/rotation engagement).
+           if (noLosStreak < 6 && timeRemaining > 15 && !cleanup) continue;
+           killer = pickWeightedBy(alive[killerSide], p => killWeightFn(p, context, killerOppRank, killerEquipped[p.id]));
+           victim = pickWeightedBy(alive[victimSide], p => deathWeightFn(p, context, victimOppRank, victimEquipped[p.id]));
+         } else {
+           noLosStreak = 0;
+           const killersWithLos = Array.from(new Set(losPairs.map(([k]) => k)));
+           killer = pickWeightedBy(killersWithLos, p => killWeightFn(p, context, killerOppRank, killerEquipped[p.id]));
+           const visibleVictims = losPairs.filter(([k]) => k.id === killer.id).map(([, v]) => v);
+           victim = pickWeightedBy(visibleVictims, p => deathWeightFn(p, context, victimOppRank, victimEquipped[p.id]));
+         }
+         killerPos = posOf(killer, elapsed);
+         victimPos = posOf(victim, elapsed);
+       } else {
+         killer = pickWeightedBy(alive[killerSide], p => killWeightFn(p, context, killerOppRank, killerEquipped[p.id]));
+         victim = pickWeightedBy(alive[victimSide], p => deathWeightFn(p, context, victimOppRank, victimEquipped[p.id]));
+       }
 
        alive[victimSide] = alive[victimSide].filter(p => p.id !== victim.id);
 
@@ -2225,7 +2357,7 @@ export function generateDynamicRound(
          round, killer: killer.handle, killerId: killer.id, victim: victim.handle, victimId: victim.id,
          weapon: killerEquipped[killer.id] ?? "Pistol", team: killerSide, first: feed.filter(f => !f.type || f.type === "kill").length === 0,
          assistant: assistant?.handle, assistantId: assistant?.id, killerDamage: killerDmg, assistantDamage: assistantDmg,
-         isHeadshot: Math.random() < 0.38, flashAssist,
+         isHeadshot: Math.random() < 0.38, flashAssist, killerPos, victimPos,
        });
 
        if (alive[victimSide].length === 0) {

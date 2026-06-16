@@ -594,22 +594,22 @@ export function simulateRadarPlayers(
       const killerId = event.killerId;
       deadIdsSet.add(victimId);
       
-      // Kill happens at the victim's destination (where they were heading)
-      // This prevents teleportation — victim was walking there anyway
-      const victimDestination = playerDest.get(victimId) ?? layout.mid;
-      
+      // Prefer the exact line-of-sight position the sim resolved the duel at (pixel-nav maps like
+      // mirage); otherwise fall back to the victim's destination (where they were heading).
+      const victimDestination = event.victimPos ?? playerDest.get(victimId) ?? layout.mid;
+
       const victimWps = playerWaypoints.get(victimId);
       if (victimWps) {
         victimWps.push({ step: i, pos: victimDestination });
         victimWps.push({ step: totalSteps, pos: victimDestination }); // stay dead
       }
-      
+
       if (killerId) {
         const killerWps = playerWaypoints.get(killerId);
         if (killerWps) {
-          // Killer approaches the encounter from a tiny offset (realistic peek)
+          // Killer at the sim's resolved position, else a tiny offset from the victim (realistic peek)
           const angle = hashString(killerId + i) * (Math.PI / 180);
-          const killerFightPos = {
+          const killerFightPos = event.killerPos ?? {
             x: victimDestination.x + Math.cos(angle) * 1.2,
             y: victimDestination.y + Math.sin(angle) * 1.2
           };

@@ -78,6 +78,18 @@ B = market site).
 overlaid (no vector floor). Pure-polygon maps render the vector floor as SVG with an optional image
 underlay toggle. Legacy maps (no geometry) render the PNG + legacy node movement.
 
+## Line-of-sight kills (mirage)
+
+On pixel-nav maps, `generateDynamicRound` (in `sim.ts`) runs a lightweight position model alongside
+the existing OVR/logit simulation: each player advances from spawn → objective (site/mid by role and
+T strategy, matching the radar) and then pushes toward the enemy centre. When the round wants a kill,
+it only allows killer/victim pairs that have **line of sight** (`hasLineOfSight` on the nav grid);
+*who* wins among the visible pairs is still decided by `killWeight`/`deathWeight` (OVRs, roles, form).
+If nobody is in sight yet the kill waits (players keep approaching); a cap + low-time + last-player
+fallback guarantees the round still resolves via a push/rotation engagement. Kill events carry the
+resolved `killerPos`/`victimPos`, which the radar uses to show each duel where it happened. Maps
+without a baked grid keep the original position-agnostic kill logic untouched.
+
 ## Status
 
 - ✅ Nav engine (grid + Theta\* + LOS) with molly/smoke hooks; tests in `tests/mapGeometry.test.ts`.
