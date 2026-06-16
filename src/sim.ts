@@ -2258,8 +2258,20 @@ export function generateDynamicRound(
     if (eventType === "kill") {
        let youGetKillProb = getP();
        const playerAdvantage = alive.you.length - alive.opponent.length;
-       // Scaled player advantage coefficient: 0.045
-       youGetKillProb = clamp(youGetKillProb + playerAdvantage * 0.045, 0.05, 0.95);
+       // Individual skill of the best player still alive on each side sways the duel, so a star can
+       // carry a weak team (and isn't "shut down" just because his teammates are low-rated). The
+       // carry's edge persists while they live and vanishes when they die. getP() stays the
+       // team-strength baseline; this adds the star factor a team average alone misses.
+       // Carry factor: how much the best player still alive OUTSHINES their own team average — large
+       // for a star stuck with weak mates, ~0 for a uniformly strong side (getP already covers that),
+       // so it lifts the shut-down star without inflating already-good teams. Persists while the star
+       // lives (carry + clutch) and disappears when they die.
+       const topYou = alive.you.reduce((m, pl) => Math.max(m, pl.ovr), 0);
+       const topOpp = alive.opponent.reduce((m, pl) => Math.max(m, pl.ovr), 0);
+       const avgYou = you.players.reduce((s, pl) => s + pl.ovr, 0) / you.players.length;
+       const avgOpp = opponent.players.reduce((s, pl) => s + pl.ovr, 0) / opponent.players.length;
+       const carryEdge = Math.max(0, topYou - avgYou) - Math.max(0, topOpp - avgOpp);
+       youGetKillProb = clamp(youGetKillProb + playerAdvantage * 0.045 + carryEdge * 0.0035, 0.05, 0.95);
 
        const killerSide = Math.random() < youGetKillProb ? "you" : "opponent";
        const victimSide = otherSide(killerSide);

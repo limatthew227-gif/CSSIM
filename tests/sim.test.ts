@@ -404,3 +404,41 @@ test("a mirror match is roughly balanced", () => {
   }
   assert.ok(aWins >= 35 && aWins <= 65, `mirror should be ~even, got ${aWins}/${N} for team A`);
 });
+
+test("a star on a weak team still frags like a star (not shut down by weak teammates)", () => {
+  // One 92-OVR star ("donk") carried by four 70-OVR mates, vs an even 80 team.
+  const star: FieldTeam = {
+    id: "weak",
+    tag: "WK",
+    name: "weak",
+    country: "US",
+    era: "CS2",
+    year: "2026",
+    accent: "#fff",
+    rank: 10,
+    players: [
+      makePlayer("donk", "Entry", 92, "Aggressive"),
+      makePlayer("m-igl", "IGL", 70),
+      makePlayer("m-awp", "AWP", 70),
+      makePlayer("m-sup", "Support", 70, "Passive"),
+      makePlayer("m-rif", "Rifler", 70),
+    ],
+  };
+  const opp = makeTeam("opp", 80, 10);
+  const N = 80;
+  let rating = 0;
+  for (let seed = 1; seed <= N; seed += 1) {
+    const final = withSeed(seed * 7 + 1, () => {
+      let s = initMatch("inferno", star, opp);
+      let guard = 0;
+      while (!s.ended && guard < 200) {
+        s = playRound(s, star, opp, defaultSettings, difficulties[0], "standard", 0, true);
+        guard += 1;
+      }
+      return s;
+    });
+    rating += final.yourStats["donk"].rating;
+  }
+  // Before the carry fix this sat ~0.85 (below average!); a 92-OVR star should clearly outperform.
+  assert.ok(rating / N >= 1.05, `star on a weak team should rate well above average, got ${(rating / N).toFixed(2)}`);
+});
