@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
-    "test": "tsx tests/sim.test.ts",
+    "test": "tsx --test tests/*.test.ts",
     "build": "tsc && vite build",
     "preview": "vite preview --host 127.0.0.1",
     "verify:hltv": "node scripts/verify-hltv-top20.mjs",
