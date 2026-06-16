@@ -29,6 +29,7 @@ are arguably bugs. They are all documented here. Line numbers are approximate.
 | Kill reward | **AWP \$100**, SMG (MP9/MAC-10) \$600, everything else \$300 |
 | Money clamp | \$0 … \$10,000 |
 | Overtime start money | \$10,000 + full rifles + helmet |
+| Grenade costs | flash \$200, smoke \$300, HE \$300, molotov \$400 (T) / incendiary \$600 (CT) |
 
 ## `getAutoBuyState` decision order (≈595)
 
@@ -117,6 +118,37 @@ Not part of buying, but it caps the *win probability* of a genuine eco/save agai
 (`hasRealFullBuy`: ≥3 primaries and ≥3 armor). A naked eco is capped lower than an eco holding a pistol/SMG,
 and a large strength advantage raises the cap. This is what stops ecos from winning too often regardless of
 the buy decisions above.
+
+## Utility (grenades)
+
+Utility is modeled as a real economy cost plus a skill multiplier on round win-probability
+(no per-nade physics — that would not fit an outcome-first sim).
+
+**Buying (in `spendMoney`).** After the weapon + armor buy, each player spends *leftover* cash on
+nades (cheapest-first: flash → smoke → HE → molotov/incendiary), capped at 4 nades for Support/IGL
+and 3 for others on a full buy, 2 on a force, and 0 on an eco. Because it spends only what's left,
+a full buy naturally fields lots of util while ecos/forces are util-starved — no separate gating
+needed. Nades are consumed each round (not carried), so `finalUtility` is a pure per-round count and
+util spend never drives a player below \$0.
+
+**Effect on the round (in `playRound`).**
+
+```
+utilEdge = utilityRating(you)      * utilFactor(yourNades)
+         - utilityRating(opponent) * utilFactor(oppNades)
+utilMod  = clamp(utilEdge * 0.012, -0.04, +0.04)        // added into baseProbability
+```
+
+- `utilityRating(team)` (0..4): a money-independent skill score from dedicated Support players, the
+  IGL's `igl` stat, average `consistency`, and a Tactical/Discipline coach.
+- `utilFactor(nadeCount)` (0..1): `clamp(nadeCount / 12, 0, 1)` — 0 on a full eco, ~1 on a full util
+  load. This is what ties util effectiveness to having actually bought nades.
+- Net effect: the better-util team gains more from an equivalent buy, and util barely matters on ecos.
+  The `±0.04` cap keeps it a nudge (about side-advantage magnitude), not a dominant term.
+
+This is **Phase 1** — economy + win-probability only. There are no utility events in the kill feed or
+on the radar yet (that's Phase 2/3). `utilityRating`/`utilFactor`/`spendMoney` are exported and covered
+by `tests/sim.test.ts`.
 
 ## If you change the economy
 

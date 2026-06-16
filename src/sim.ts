@@ -286,6 +286,34 @@ export function teamStrength(team: FieldTeam, settings: CustomSettings, difficul
   return teamStrengthBreakdown(team, settings, difficulty, isOpponent).total;
 }
 
+/**
+ * How well a team uses utility (smokes / flashes / mollies), independent of money.
+ * Derived from existing signals — dedicated Support players, IGL coordination, team
+ * discipline (consistency), and a tactical/disciplined coach. Returns roughly 0..4.
+ */
+export function utilityRating(team: FieldTeam): number {
+  const players = team.players;
+  if (!players.length) return 0;
+  const supportCount = players.filter((p) => p.role === "Support").length;
+  const igl = players.find((p) => p.role === "IGL");
+  const avgConsistency = players.reduce((sum, p) => sum + p.stats.consistency, 0) / players.length;
+
+  let rating = (avgConsistency - 75) * 0.05; // disciplined teams throw better util
+  rating += supportCount * 0.6; // dedicated support players bring more lineups
+  rating += igl ? (igl.stats.igl - 80) * 0.04 : -0.5; // a good caller coordinates the util
+  if (team.coach?.style === "Tactical" || team.coach?.style === "Discipline") rating += 0.5;
+
+  return clamp(rating, 0, 4);
+}
+
+/**
+ * How much of a team's utility skill is actually expressed this round, gated by how
+ * many nades they bought: 0 on a full eco (no nades) ramping to 1 on a full util load.
+ */
+export function utilFactor(nadeCount: number): number {
+  return clamp(nadeCount / 12, 0, 1);
+}
+
 export function mapScore(team: FieldTeam, map: MapId, settings: CustomSettings) {
   const playerValue = team.players.reduce((sum, player) => sum + player.maps[map], 0) / Math.max(team.players.length, 1);
   const styleValue = team.players.reduce((sum, player) => {
@@ -634,7 +662,7 @@ export function getAutoBuyState(
   return avgMoney >= 2000 ? "FORCE" : "ECO";
 }
 
-function spendMoney(
+export function spendMoney(
   money: Record<string, number>,
   players: Player[],
   side: MatchSide,
@@ -645,6 +673,7 @@ function spendMoney(
   nextMoney: Record<string, number>;
   finalWeapons: Record<string, string>;
   finalArmor: Record<string, "none" | "kevlar" | "helmet">;
+  finalUtility: Record<string, number>;
 } {
   const nextMoney = { ...money };
   const finalWeapons = { ...carriedWeapons };
@@ -917,7 +946,43 @@ function spendMoney(
     }
   });
 
-  return { nextMoney, finalWeapons, finalArmor };
+  // --- Utility (grenade) purchases with whatever is left after guns + armor ---
+  // Nades are consumed each round (not carried), so this is a pure per-round spend.
+  // Leftover cash after the weapon/armor buy naturally caps how much util a team fields,
+  // which is what makes eco/force rounds util-starved relative to a full buy.
+  const finalUtility: Record<string, number> = {};
+  players.forEach((p) => {
+    finalUtility[p.id] = 0;
+    if (buyState === "ECO") return;
+
+    const weapon = finalWeapons[p.id] ?? "";
+    const hasGun =
+      weapon === "AK-47" || weapon === "M4A4" || weapon === "M4A1-S" || weapon === "M4A1" || weapon === "AWP" ||
+      weapon === "Galil AR" || weapon === "Galil" || weapon === "Famas" || weapon === "MP9" || weapon === "MAC-10";
+    if (!hasGun) return; // pistol-only loadouts skip nades
+
+    const reserve = buyState === "FULL" ? 0 : 250;
+    let budget = Math.max(0, (nextMoney[p.id] ?? 0) - reserve);
+
+    // cheapest-first: flash, smoke, HE, then molotov (T) / incendiary (CT)
+    const nadeCosts = [200, 300, 300, side === "CT" ? 600 : 400];
+    const maxNades = buyState === "FULL" ? (p.role === "Support" || p.role === "IGL" ? 4 : 3) : 2;
+
+    let count = 0;
+    for (let i = 0; i < maxNades && i < nadeCosts.length; i += 1) {
+      if (budget >= nadeCosts[i]) {
+        budget -= nadeCosts[i];
+        count += 1;
+      } else {
+        break;
+      }
+    }
+    const spent = (nextMoney[p.id] ?? 0) - reserve - budget;
+    if (spent > 0) nextMoney[p.id] = Math.max(0, (nextMoney[p.id] ?? 0) - spent);
+    finalUtility[p.id] = count;
+  });
+
+  return { nextMoney, finalWeapons, finalArmor, finalUtility };
 }
 
 function getEquippedWeapon(player: Player, side: MatchSide, buyState: "ECO" | "FORCE" | "FULL"): string {
@@ -1424,7 +1489,7 @@ export function playRound(
     currentEconomy = "FORCE";
   }
 
-  const { nextMoney: updatedYourMoney, finalWeapons: yourWeapons, finalArmor: yourArmor } = spendMoney(
+  const { nextMoney: updatedYourMoney, finalWeapons: yourWeapons, finalArmor: yourArmor, finalUtility: yourUtility } = spendMoney(
     yourMoney,
     you.players,
     state.side,
@@ -1434,7 +1499,7 @@ export function playRound(
   );
   yourMoney = updatedYourMoney;
 
-  const { nextMoney: updatedOpponentMoney, finalWeapons: opponentWeapons, finalArmor: opponentArmor } = spendMoney(
+  const { nextMoney: updatedOpponentMoney, finalWeapons: opponentWeapons, finalArmor: opponentArmor, finalUtility: opponentUtility } = spendMoney(
     opponentMoney,
     opponent.players,
     otherMatchSide(state.side),
@@ -1535,7 +1600,16 @@ export function playRound(
             ? -0.04
             : 0;
   const luck = (Math.random() - 0.5) * (settings.luck + difficulty.luck) * 0.34;
-  const baseProbability = clamp(0.5 + (yourStrength - opponentStrength) / 58 + economyMod + sideMod + tacticMod + timeoutBoost + luck, 0.16, 0.84);
+
+  // Utility edge: how much each team's util skill is expressed this round, gated by how
+  // many nades they actually bought (eco rounds buy none → ~0 effect). The better-util
+  // team gains more from an equivalent buy. Bounded so it nudges rather than dominates.
+  const yourUtilCount = Object.values(yourUtility).reduce((sum, n) => sum + n, 0);
+  const opponentUtilCount = Object.values(opponentUtility).reduce((sum, n) => sum + n, 0);
+  const utilEdge = utilityRating(you) * utilFactor(yourUtilCount) - utilityRating(opponent) * utilFactor(opponentUtilCount);
+  const utilMod = clamp(utilEdge * 0.012, -0.04, 0.04);
+
+  const baseProbability = clamp(0.5 + (yourStrength - opponentStrength) / 58 + economyMod + sideMod + tacticMod + timeoutBoost + utilMod + luck, 0.16, 0.84);
   const probability = applyEcoUpsetCaps(baseProbability, yourLoadout, opponentLoadout, yourStrength, opponentStrength);
 
   const dynamicResult = generateDynamicRound(

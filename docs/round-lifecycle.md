@@ -60,8 +60,9 @@ until the queue drains.
   cleared, economy `ECO`.
 - **Overtime start** (round 25, 31, …): everyone → \$10,000, full rifles + helmet, economy `FULL`.
 - Tactic override: `save` forces `ECO`, `force` forces `FORCE`.
-- `spendMoney(...)` runs for both teams → final `weapons`, `armor`, and post-buy `money`.
-  (All the buy edge cases — drops, IGL sacrifice, fallbacks — live here; see `docs/economy.md`.)
+- `spendMoney(...)` runs for both teams → final `weapons`, `armor`, post-buy `money`, and
+  `finalUtility` (nades bought this round). (All the buy edge cases — drops, IGL sacrifice, fallbacks,
+  and the leftover-cash nade buy — live here; see `docs/economy.md`.)
 
 ### 2b. Strength (≈1429–1496)
 ```
@@ -78,12 +79,15 @@ then add, per team:
 ### 2c. Win probability (≈1500–1518)
 ```
 luck            = (rand-0.5) * (settings.luck + difficulty.luck) * 0.34
+utilMod         = clamp((utilityRating(you)*utilFactor(yourNades)
+                         - utilityRating(opp)*utilFactor(oppNades)) * 0.012, -0.04, +0.04)
 baseProbability = clamp(0.5 + (yourStrength-opponentStrength)/58
-                        + economyMod + sideMod + tacticMod + timeoutBoost + luck, 0.16, 0.84)
+                        + economyMod + sideMod + tacticMod + timeoutBoost + utilMod + luck, 0.16, 0.84)
 probability     = applyEcoUpsetCaps(baseProbability, yourLoadout, opponentLoadout, yourStrength, opponentStrength)
 ```
 - `economyMod` = `economyValue(yours) - economyValue(theirs)` (FULL `+0.035`, FORCE `-0.005`, ECO `-0.055`).
 - `sideMod` = CT `+0.015`, T `-0.005`. `tacticMod` from the chosen tactic.
+- `utilMod` = utility edge, gated by nades actually bought this round (≈0 on ecos); see `docs/economy.md`.
 - `applyEcoUpsetCaps` clamps how often a real eco/save can beat a real full buy (and the inverse).
 
 ---

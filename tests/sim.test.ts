@@ -25,7 +25,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import { defaultSettings, difficulties, mapPool } from "../src/gameData";
-import type { MapId, Player, Role, Style } from "../src/gameData";
+import type { Coach, MapId, Player, Role, Style } from "../src/gameData";
 import {
   initMatch,
   playRound,
@@ -33,6 +33,9 @@ import {
   lossBonusForStreak,
   getAutoBuyState,
   getKillReward,
+  spendMoney,
+  utilityRating,
+  utilFactor,
 } from "../src/sim";
 import type { FieldTeam } from "../src/sim";
 
@@ -235,6 +238,70 @@ test("per-round invariants hold across many seeded matches", () => {
       assert.ok(sawTSide, `seed ${seed}: your team's side should swap to T by halftime`);
     });
   }
+});
+
+// ===========================================================================
+// 2b. Utility (Phase 1: economy + win-prob)
+// ===========================================================================
+
+const TACTICAL_COACH: Coach = {
+  id: "coach",
+  handle: "Coach",
+  realName: "Coach",
+  country: "US",
+  style: "Tactical",
+  rating: 85,
+  text: "",
+};
+
+test("utilFactor: 0 with no nades, ramps to 1 at a full util load", () => {
+  assert.equal(utilFactor(0), 0);
+  assert.ok(utilFactor(6) > 0 && utilFactor(6) < 1);
+  assert.equal(utilFactor(12), 1);
+  assert.equal(utilFactor(20), 1); // clamped
+});
+
+test("utilityRating: bounded to 0..4 and rewards discipline", () => {
+  const disciplined = makeTeam("disc", 88); // consistency 88, 1 Support, IGL igl=90
+  const raw: FieldTeam = {
+    ...makeTeam("raw", 88),
+    players: makeTeam("raw", 88).players.map((p) => ({ ...p, stats: { ...p.stats, consistency: 68 } })),
+  };
+  const dr = utilityRating(disciplined);
+  assert.ok(dr >= 0 && dr <= 4, `rating out of bounds: ${dr}`);
+  assert.ok(dr > utilityRating(raw), "a more consistent team should use util better");
+});
+
+test("utilityRating: a tactical/disciplined coach adds coordination", () => {
+  const base = makeTeam("base", 85);
+  const coached: FieldTeam = { ...base, coach: TACTICAL_COACH };
+  assert.ok(utilityRating(coached) > utilityRating(base));
+});
+
+test("spendMoney: full buys purchase utility, ecos buy none", () => {
+  const team = makeTeam("t", 85);
+  const weapons = team.players.reduce((acc, p) => ((acc[p.id] = ""), acc), {} as Record<string, string>);
+  const armor = team.players.reduce(
+    (acc, p) => ((acc[p.id] = "none"), acc),
+    {} as Record<string, "none" | "kevlar" | "helmet">,
+  );
+
+  withSeed(7, () => {
+    const rich = team.players.reduce((acc, p) => ((acc[p.id] = 6000), acc), {} as Record<string, number>);
+    const full = spendMoney(rich, team.players, "CT", "FULL", weapons, armor);
+    const fullUtil = Object.values(full.finalUtility).reduce((a, b) => a + b, 0);
+    assert.ok(fullUtil > 0, `a flush full buy should field utility, got ${fullUtil}`);
+    // util spend never drives anyone below zero
+    for (const p of team.players) assert.ok((full.nextMoney[p.id] ?? -1) >= 0);
+
+    const broke = team.players.reduce((acc, p) => ((acc[p.id] = 200), acc), {} as Record<string, number>);
+    const eco = spendMoney(broke, team.players, "CT", "ECO", weapons, armor);
+    assert.equal(
+      Object.values(eco.finalUtility).reduce((a, b) => a + b, 0),
+      0,
+      "ecos field no utility",
+    );
+  });
 });
 
 // ===========================================================================
