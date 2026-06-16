@@ -69,6 +69,7 @@ import {
 } from "./sim";
 import { hltvTop20Coaches, hltvTop20Rosters } from "./hltvTop20";
 import { simulateRadarPlayers, MAP_LAYOUTS, getStepDelay } from "./radarSim";
+import { mapGeometries } from "./mapGeometry";
 import "./styles.css";
 
 import mirageRadar from "./assets/radar/mirage.png";
@@ -2968,8 +2969,10 @@ function MatchMapView({ match, you, opponent, speed = 1 }: { match: MatchState; 
   const yourSide = match.side;
   const mapInfo = mapPool.find((map) => map.id === match.map);
   const layout = MAP_LAYOUTS[match.map] || MAP_LAYOUTS.mirage;
+  const geometry = mapGeometries[match.map];
 
   const [smoothMovement, setSmoothMovement] = React.useState(true);
+  const [showUnderlay, setShowUnderlay] = React.useState(false);
   const [fraction, setFraction] = React.useState(1);
   const prevStepRef = React.useRef(roundEvents.length);
 
@@ -3014,7 +3017,7 @@ function MatchMapView({ match, you, opponent, speed = 1 }: { match: MatchState; 
         style={
           {
             "--map-accent": mapInfo?.accent ?? "#65a7ff",
-            backgroundImage: radarImage ? `url(${radarImage})` : undefined,
+            backgroundImage: radarImage && (!geometry || showUnderlay) ? `url(${radarImage})` : undefined,
             backgroundSize: "100% 100%",
             backgroundPosition: "center",
             "--transition-duration": `${duration}ms`,
@@ -3033,7 +3036,30 @@ function MatchMapView({ match, you, opponent, speed = 1 }: { match: MatchState; 
             />
             <span>Fluid Motion</span>
           </label>
+          {geometry && (
+            <label className="radar-smooth-toggle" style={{ marginLeft: "8px", display: "inline-flex", alignItems: "center", gap: "4px", fontSize: "10px", cursor: "pointer", userSelect: "none", opacity: 0.85 }}>
+              <input
+                type="checkbox"
+                checked={showUnderlay}
+                onChange={(e) => setShowUnderlay(e.target.checked)}
+                style={{ cursor: "pointer" }}
+              />
+              <span>Image underlay</span>
+            </label>
+          )}
         </div>
+
+        {/* Code-built map geometry (walkable floor) — the surface players actually navigate */}
+        {geometry && (
+          <svg className="radar-geometry" viewBox="0 0 100 100" preserveAspectRatio="none">
+            {geometry.walkable.map((poly, i) => (
+              <polygon key={`floor-${i}`} className="floor" points={poly.map((pt) => `${pt.x},${pt.y}`).join(" ")} />
+            ))}
+            {geometry.walls.map((poly, i) => (
+              <polygon key={`wall-${i}`} className="wall" points={poly.map((pt) => `${pt.x},${pt.y}`).join(" ")} />
+            ))}
+          </svg>
+        )}
 
         {/* Dynamic site tags positioned at exact coords */}
         <div className="radar-site site-a" style={{ left: `${layout.bombsiteA.x}%`, top: `${layout.bombsiteA.y}%` }}>A</div>

@@ -69,12 +69,21 @@ radar stays reproducible.
 3. Sanity-check with a test like the mirage ones (`tests/mapGeometry.test.ts`): spawns/sites walkable,
    a route between them crosses no wall.
 
+## Authoring aid
+
+`npm run preview:map -- mirage` renders the floorplan + sample any-angle routes (T→A, T→B, CT→A, CT→B)
+to `scratch/<id>-preview.svg`. On macOS, rasterize to view: `qlmanage -t -s 700 -o /tmp scratch/mirage-preview.svg`.
+This is the fast loop for tracing/tuning a map without driving a whole match.
+
 ## Status / remaining work
 
 - ✅ Nav engine + dynamic util hooks + tests.
-- ✅ First map authored: **mirage** (simplified floorplan — refine proportions against the PNG).
-- ⏳ **Wire into the radar**: `radarSim.ts` should route via `findPath` (replacing `getPathBetween`,
-  with per-segment path caching since `getPlayerPositionAtStep` runs every frame), and `App.tsx`
-  should render the geometry as SVG in a square container (PNG demoted to an optional underlay).
-- ⏳ Author the other 6 maps (inferno, dust2, nuke, ancient, anubis, train) to the same schema.
+- ✅ **mirage** authored (traced from the radar image — corridors winding around the central building)
+  and **wired into the radar**: `radarSim.ts` routes via `findPath` (cached per segment), `App.tsx`
+  renders the geometry as SVG with an optional **image-underlay** toggle. The container was already
+  square, so registration is exact.
+- ✅ Authoring aid: `scripts/preview-map.ts` (`npm run preview:map`).
+- ⏳ Refine mirage proportions further against the radar image.
+- ⏳ Author the other 6 maps (inferno, dust2, nuke, ancient, anubis, train) to the same schema —
+  until then they fall back to the legacy node routing + PNG automatically.
 - ⏳ (Future) in-match smokes/mollies driving `findPath`/`hasLineOfSight` during a round.

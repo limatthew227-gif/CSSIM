@@ -371,33 +371,39 @@ export function pathLength(path: Vec[]): number {
 // floorplan; proportions to be refined against the radar image when rendering.
 // ---------------------------------------------------------------------------
 
+// Traced from the Simple Radar mirage image: A site upper-left, B site bottom-centre,
+// CT spawn right, T spawn bottom-left, with a large central building that routes wind around.
 const mirage: MapGeometry = {
   id: "mirage",
   walkable: [
-    rect(76, 28, 96, 56), // T spawn
-    rect(70, 30, 86, 64), // T -> A ramp (right vertical)
-    rect(60, 52, 88, 82), // A approach / ramp
-    rect(54, 60, 80, 86), // A site
-    rect(33, 44, 74, 60), // mid
-    rect(50, 54, 64, 72), // connector (mid -> A)
-    rect(28, 16, 80, 34), // apps (T top -> B)
-    rect(10, 16, 36, 42), // B site
-    rect(28, 30, 46, 54), // mid -> B (short/market)
-    rect(18, 60, 44, 82), // CT spawn
-    rect(40, 66, 62, 82), // CT -> A
-    rect(30, 52, 44, 66), // CT -> mid
-    rect(16, 40, 34, 66), // CT -> B
+    rect(15, 23, 30, 35), // A site
+    rect(15, 14, 50, 23), // A -> top (top-left lane)
+    rect(44, 14, 84, 25), // top -> CT (top-right lane)
+    rect(82, 23, 93, 46), // CT spawn
+    rect(80, 44, 93, 72), // right corridor (CT down)
+    rect(54, 68, 90, 84), // market / B apartments (bottom-right)
+    rect(44, 70, 60, 84), // B site
+    rect(34, 14, 46, 58), // mid (left of central building)
+    rect(34, 52, 50, 72), // mid -> B connector
+    rect(46, 52, 58, 70), // link around building -> market
+    rect(13, 34, 27, 66), // left corridor (A down to T)
+    rect(18, 62, 36, 78), // T spawn
+    rect(34, 72, 50, 84), // T -> B (bottom lane)
+    rect(27, 52, 40, 66), // T -> mid link
   ],
-  walls: [],
-  spawns: { ct: { x: 30, y: 72 }, t: { x: 86, y: 42 } },
-  sites: { a: { x: 66, y: 74 }, b: { x: 22, y: 28 } },
-  mid: { x: 52, y: 52 },
+  walls: [
+    rect(46, 25, 80, 52), // central building (upper)
+    rect(58, 52, 80, 68), // central building (lower-right)
+  ],
+  spawns: { ct: { x: 88, y: 35 }, t: { x: 27, y: 70 } },
+  sites: { a: { x: 22, y: 29 }, b: { x: 52, y: 77 } },
+  mid: { x: 40, y: 40 },
   regions: [
-    { name: "A", poly: rect(54, 60, 80, 86) },
-    { name: "B", poly: rect(10, 16, 36, 42) },
-    { name: "Mid", poly: rect(33, 44, 74, 60) },
-    { name: "Apps", poly: rect(28, 16, 80, 34) },
-    { name: "Connector", poly: rect(50, 54, 64, 72) },
+    { name: "A", poly: rect(15, 23, 30, 35) },
+    { name: "B", poly: rect(44, 70, 60, 84) },
+    { name: "Mid", poly: rect(34, 14, 46, 58) },
+    { name: "Market", poly: rect(54, 68, 90, 84) },
+    { name: "CT", poly: rect(82, 23, 93, 46) },
   ],
 };
 

@@ -1,5 +1,7 @@
 import { MatchState, FieldTeam } from "./sim";
 import { MapId, Player } from "./gameData";
+import { getNavGrid, findPath } from "./mapGeometry";
+import type { NavGrid } from "./mapGeometry";
 
 export interface Position {
   x: number;
@@ -383,7 +385,26 @@ interface Waypoint {
   pos: Position;
 }
 
-function getPlayerPositionAtStep(wps: Waypoint[], step: number, layout: MapLayout, isAlive: boolean = true): Position {
+// Cache any-angle routes per nav grid + endpoint pair. getPlayerPositionAtStep runs every frame
+// for every player, so we memoize findPath by rounded endpoints (waypoints are stable nodes/dests).
+const navPathCache = new WeakMap<NavGrid, Map<string, Position[]>>();
+
+function navRoute(grid: NavGrid, a: Position, b: Position): Position[] {
+  let cache = navPathCache.get(grid);
+  if (!cache) {
+    cache = new Map();
+    navPathCache.set(grid, cache);
+  }
+  const key = `${a.x.toFixed(1)},${a.y.toFixed(1)}>${b.x.toFixed(1)},${b.y.toFixed(1)}`;
+  let route = cache.get(key);
+  if (!route) {
+    route = findPath(grid, a, b) as Position[];
+    if (cache.size < 4000) cache.set(key, route);
+  }
+  return route;
+}
+
+function getPlayerPositionAtStep(wps: Waypoint[], step: number, layout: MapLayout, isAlive: boolean = true, grid?: NavGrid | null): Position {
   if (wps.length === 0) return { x: 50, y: 50 };
   if (wps.length === 1) return wps[0].pos;
   if (step >= wps[wps.length - 1].step) return wps[wps.length - 1].pos;
@@ -401,12 +422,18 @@ function getPlayerPositionAtStep(wps: Waypoint[], step: number, layout: MapLayou
   const denominator = w2.step - w1.step;
   const t_linear = denominator > 0 ? (step - w1.step) / denominator : 0;
 
-  const n1 = getClosestNodeKey(w1.pos, layout);
-  const n2 = getClosestNodeKey(w2.pos, layout);
-
-  const pathNodes = getPathBetween(n1, n2, layout);
-  const fullPath = [w1.pos, ...pathNodes, w2.pos];
-  const cleaned = cleanRoute(fullPath);
+  let cleaned: Position[];
+  if (grid) {
+    // Code-built map: route through real walkable space with any-angle pathfinding.
+    cleaned = cleanRoute(navRoute(grid, w1.pos, w2.pos));
+  } else {
+    // Legacy node-graph fallback for maps without code geometry yet.
+    const n1 = getClosestNodeKey(w1.pos, layout);
+    const n2 = getClosestNodeKey(w2.pos, layout);
+    const pathNodes = getPathBetween(n1, n2, layout);
+    const fullPath = [w1.pos, ...pathNodes, w2.pos];
+    cleaned = cleanRoute(fullPath);
+  }
 
   // Compute total path length to implement constant-velocity-then-hold logic
   let pathLength = 0;
@@ -463,6 +490,7 @@ export function simulateRadarPlayers(
 ): RadarSimulationResult {
   const mapId = match.map;
   const layout = MAP_LAYOUTS[mapId] || MAP_LAYOUTS.mirage;
+  const navGrid = getNavGrid(mapId); // null until a map has code geometry → legacy routing
   const yourSide = match.side;
   const opponentSide: "CT" | "T" = yourSide === "CT" ? "T" : "CT";
 
@@ -627,7 +655,7 @@ export function simulateRadarPlayers(
   const youSimulated = you.players.map((p) => {
     const wps = playerWaypoints.get(p.id) || [];
     const isAlive = !deadIds.has(p.id);
-    const pos = getPlayerPositionAtStep(wps, stepIndex, layout, isAlive);
+    const pos = getPlayerPositionAtStep(wps, stepIndex, layout, isAlive, navGrid);
     return {
       ...p,
       x: pos.x,
@@ -641,7 +669,7 @@ export function simulateRadarPlayers(
   const opponentSimulated = opponent.players.map((p) => {
     const wps = playerWaypoints.get(p.id) || [];
     const isAlive = !deadIds.has(p.id);
-    const pos = getPlayerPositionAtStep(wps, stepIndex, layout, isAlive);
+    const pos = getPlayerPositionAtStep(wps, stepIndex, layout, isAlive, navGrid);
     return {
       ...p,
       x: pos.x,
