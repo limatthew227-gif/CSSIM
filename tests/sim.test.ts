@@ -29,6 +29,7 @@ import type { Coach, MapId, Player, Role, Style } from "../src/gameData";
 import {
   initMatch,
   playRound,
+  generateDynamicRound,
   roundIncome,
   lossBonusForStreak,
   getAutoBuyState,
@@ -302,6 +303,38 @@ test("spendMoney: full buys purchase utility, ecos buy none", () => {
       "ecos field no utility",
     );
   });
+});
+
+// ===========================================================================
+// 2c. Utility feed events (Phase 2)
+// ===========================================================================
+
+test("generateDynamicRound: utility events appear only when nades were bought, and never mint kills", () => {
+  const you = makeTeam("you", 85);
+  const opp = makeTeam("opp", 85);
+  const armed = (t: FieldTeam) => t.players.reduce((a, p) => ((a[p.id] = "AK-47"), a), {} as Record<string, string>);
+  const helm = (t: FieldTeam) =>
+    t.players.reduce((a, p) => ((a[p.id] = "helmet"), a), {} as Record<string, "none" | "kevlar" | "helmet">);
+  const money = (t: FieldTeam) => t.players.reduce((a, p) => ((a[p.id] = 4000), a), {} as Record<string, number>);
+  const ctx = { map: "mirage", stage: "swiss" } as const;
+  const w = () => 1;
+  const utilTypes = new Set(["flash", "smoke", "molotov", "he"]);
+
+  const withUtil = withSeed(3, () =>
+    generateDynamicRound(5, you, opp, armed(you), armed(opp), "standard", "FULL", "FULL", "CT", 5, 5, ctx, 0, 0, money(you), money(opp), helm(you), helm(opp), 0.5, w, w, 14, 14),
+  );
+  const utilEvents = withUtil.feed.filter((f) => f.type && utilTypes.has(f.type));
+  assert.ok(utilEvents.length > 0, "a full-util round should surface utility events");
+  // util is purely narrative — no phantom killers/victims
+  assert.ok(utilEvents.every((f) => !f.killerId && !f.victimId), "util events must not carry kill/death ids");
+
+  const noUtil = withSeed(3, () =>
+    generateDynamicRound(5, you, opp, armed(you), armed(opp), "standard", "FULL", "FULL", "CT", 5, 5, ctx, 0, 0, money(you), money(opp), helm(you), helm(opp), 0.5, w, w, 0, 0),
+  );
+  assert.ok(
+    !noUtil.feed.some((f) => f.type && utilTypes.has(f.type)),
+    "a round with zero nades bought should show no utility events",
+  );
 });
 
 // ===========================================================================

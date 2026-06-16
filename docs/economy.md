@@ -146,9 +146,16 @@ utilMod  = clamp(utilEdge * 0.012, -0.04, +0.04)        // added into baseProbab
 - Net effect: the better-util team gains more from an equivalent buy, and util barely matters on ecos.
   The `±0.04` cap keeps it a nudge (about side-advantage magnitude), not a dominant term.
 
-This is **Phase 1** — economy + win-probability only. There are no utility events in the kill feed or
-on the radar yet (that's Phase 2/3). `utilityRating`/`utilFactor`/`spendMoney` are exported and covered
-by `tests/sim.test.ts`.
+**Phases shipped:**
+- **Phase 1** — economy + win-probability (everything above).
+- **Phase 2** — narrative utility events in the live kill feed. `generateDynamicRound` spends each
+  team's per-round nade budget on `flash`/`smoke`/`molotov`/`he` feed events (T execute setup, CT area
+  denial, and a flash before ~28% of kills which tags the kill `flashAssist`). These are **cosmetic** —
+  they never change the round outcome, scores, or player K/D (`createRoundStatPatch` only processes
+  kills). Icons live in `src/assets/utility/`, rendered via `utilityIcons` in `App.tsx`.
+- **Phase 3** (radar visuals) — not done.
+
+Exports `utilityRating`/`utilFactor`/`spendMoney`/`generateDynamicRound` are covered by `tests/sim.test.ts`.
 
 ## If you change the economy
 

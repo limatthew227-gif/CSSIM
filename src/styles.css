@@ -5066,6 +5066,25 @@ meter::-webkit-meter-optimum-value {
   justify-self: center;
 }
 
+/* Utility (grenade) feed lines — keep the icons' own colors (no white-out filter) */
+.feed-line.util-line {
+  border-color: rgba(255, 255, 255, 0.16);
+}
+
+.util-feed-icon {
+  height: 16px;
+  width: 16px;
+  object-fit: contain;
+  margin-right: 6px;
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.5));
+}
+
+.util-feed-icon.flash-assist {
+  height: 13px;
+  width: 13px;
+  margin: 0 0 0 4px;
+}
+
 .drawer-backdrop {
   position: fixed;
   inset: 0;

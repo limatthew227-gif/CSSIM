@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <!-- smoke grenade: gray canister, olive band, vents -->
+  <path d="M18 8 L26 10 L25 12.4 L18 10.6 Z" fill="#5c636b"/>
+  <rect x="13" y="6.5" width="6" height="4.5" rx="1.2" fill="#5c636b"/>
+  <rect x="11" y="10.5" width="10" height="15.5" rx="4.6" fill="#aeb6bf" stroke="#7e868f" stroke-width="1.2"/>
+  <rect x="11" y="13.5" width="10" height="2.6" fill="#7a9b5b"/>
+  <circle cx="14.2" cy="20" r="1.1" fill="#6b7079"/>
+  <circle cx="17.8" cy="20" r="1.1" fill="#6b7079"/>
+  <circle cx="16" cy="23.2" r="1.1" fill="#6b7079"/>
+</svg>

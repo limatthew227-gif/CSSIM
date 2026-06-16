@@ -100,6 +100,11 @@ import mp9Icon from "./assets/weapons/mp9.svg";
 import p250Icon from "./assets/weapons/p250.svg";
 import uspSilencerIcon from "./assets/weapons/usp_silencer.svg";
 
+import flashIcon from "./assets/utility/flash.svg";
+import smokeIcon from "./assets/utility/smoke.svg";
+import molotovIcon from "./assets/utility/molotov.svg";
+import heIcon from "./assets/utility/he.svg";
+
 const weaponIcons: Record<string, string> = {
   "AK-47": ak47Icon,
   "M4A4": m4a1Icon,
@@ -114,6 +119,20 @@ const weaponIcons: Record<string, string> = {
   "USP-S": uspSilencerIcon,
   "Glock-18": glockIcon,
   "P250": p250Icon,
+};
+
+const utilityIcons: Record<string, string> = {
+  flash: flashIcon,
+  smoke: smokeIcon,
+  molotov: molotovIcon,
+  he: heIcon,
+};
+
+const utilityLabels: Record<string, string> = {
+  flash: "popped a flashbang",
+  smoke: "deployed smoke",
+  molotov: "threw a molotov",
+  he: "threw an HE grenade",
 };
 
 const COACH_SHORTLIST_SIZE = 5;
@@ -2028,6 +2047,19 @@ function App() {
                       );
                     }
 
+                    if (feed.type === "flash" || feed.type === "smoke" || feed.type === "molotov" || feed.type === "he") {
+                      const utilSide = getEventSide(feed.team);
+                      return (
+                        <div className={`feed-line util-line ${utilSide.toLowerCase()}`} key={`${feed.round}-${index}`}>
+                          <span className="feed-round-badge">R{feed.round}</span>
+                          <img className="util-feed-icon" src={utilityIcons[feed.type]} alt={feed.type} title={feed.type} />
+                          <span className="feed-message">
+                            <b className={`${utilSide.toLowerCase()}-team`}>{feed.killer}</b> {utilityLabels[feed.type]}
+                          </span>
+                        </div>
+                      );
+                    }
+
                     const killerSide = getEventSide(feed.team);
                     const victimSide = killerSide === "CT" ? "T" : "CT";
                     const assistantSide = feed.assistant ? killerSide : null;
@@ -2049,6 +2081,9 @@ function App() {
                             <img className="weapon-feed-icon" src={weaponIcons[feed.weapon]} alt={feed.weapon} title={feed.weapon} />
                           ) : (
                             <span className="weapon-text">{feed.weapon}</span>
+                          )}
+                          {feed.flashAssist && (
+                            <img className="util-feed-icon flash-assist" src={utilityIcons.flash} alt="flash assist" title="Flash assist" />
                           )}
                           {feed.isHeadshot && <span className="hs-icon" title="Headshot">💀</span>}
                         </div>

@@ -92,7 +92,8 @@ export interface FeedLine {
   weapon: string;
   team: "you" | "opponent" | "neutral";
   first: boolean;
-  type?: "kill" | "plant" | "defuse" | "explode" | "round_start" | "round_over";
+  type?: "kill" | "plant" | "defuse" | "explode" | "round_start" | "round_over" | "flash" | "smoke" | "molotov" | "he";
+  flashAssist?: boolean;
   assistant?: string;
   assistantId?: string;
   killerDamage?: number;
@@ -1633,7 +1634,9 @@ export function playRound(
     opponentArmor,
     probability,
     killWeight,
-    deathWeight
+    deathWeight,
+    yourUtilCount,
+    opponentUtilCount
   );
 
   const youWin = dynamicResult.youWin;
@@ -1912,7 +1915,9 @@ export function generateDynamicRound(
   opponentArmor: Record<string, "none" | "kevlar" | "helmet">,
   initialProbability: number,
   killWeightFn: (p: Player, ctx: MatchContext, oppRank?: number, weapon?: string) => number,
-  deathWeightFn: (p: Player, ctx: MatchContext, oppRank?: number, weapon?: string) => number
+  deathWeightFn: (p: Player, ctx: MatchContext, oppRank?: number, weapon?: string) => number,
+  yourUtilCount = 0,
+  opponentUtilCount = 0,
 ) {
   let p = clamp(initialProbability, 0.01, 0.99);
   let logit = Math.log(p / (1 - p)) * 0.7;
@@ -1961,9 +1966,27 @@ export function generateDynamicRound(
   let isFirstKill = true;
   let lastKillTime = 0;
   let lastKillerSide: "you" | "opponent" | null = null;
-  
+
+  // --- Utility events (Phase 2): narrative only. Budgets come from nades actually bought
+  // this round; throwing util never changes the round outcome or player K/D, it just
+  // surfaces flashes/smokes/mollies in the feed (and flags flash-assisted kills). ---
+  const utilLeft: Record<"you" | "opponent", number> = { you: yourUtilCount, opponent: opponentUtilCount };
+  let utilEventsThisRound = 0;
+  const MAX_UTIL_EVENTS = 6;
+
   const tTeamKey = side === "T" ? "you" : "opponent";
   const ctTeamKey = side === "CT" ? "you" : "opponent";
+
+  function throwUtil(teamSide: "you" | "opponent", type: "smoke" | "flash" | "molotov" | "he"): boolean {
+    if (utilLeft[teamSide] <= 0 || utilEventsThisRound >= MAX_UTIL_EVENTS) return false;
+    const squad = alive[teamSide];
+    if (!squad.length) return false;
+    utilLeft[teamSide] -= 1;
+    utilEventsThisRound += 1;
+    const thrower = squad[Math.floor(Math.random() * squad.length)];
+    feed.push({ round, killer: thrower.handle, killerId: "", victim: "", victimId: "", weapon: type, team: teamSide, first: false, type });
+    return true;
+  }
 
   const getAliveCounts = () => ({
     ct: alive[ctTeamKey].length,
@@ -2026,6 +2049,13 @@ export function generateDynamicRound(
     }
 
     const counts = getAliveCounts();
+
+    // Occasional standalone utility — T execute setup / CT area denial (pre-plant).
+    if (!tPlantedBomb && counts.t > 0 && counts.ct > 0) {
+      if (Math.random() < 0.12) throwUtil(tTeamKey, Math.random() < 0.6 ? "smoke" : "flash");
+      else if (Math.random() < 0.09) throwUtil(ctTeamKey, Math.random() < 0.5 ? "molotov" : "he");
+    }
+
     let eventType: "kill" | "plant" | "defuse" | "save" | "idle" = "idle";
 
     if (tPlantedBomb) {
@@ -2174,7 +2204,10 @@ export function generateDynamicRound(
 
        lastKillTime = timeRemaining;
        lastKillerSide = killerSide;
-       
+
+       // A flash from the killer's side that immediately precedes the kill = flash assist.
+       const flashAssist = Math.random() < 0.28 ? throwUtil(killerSide, "flash") : false;
+
        let assistant: Player | undefined;
        let assistantDmg = 0;
        let killerDmg = 0;
@@ -2192,7 +2225,7 @@ export function generateDynamicRound(
          round, killer: killer.handle, killerId: killer.id, victim: victim.handle, victimId: victim.id,
          weapon: killerEquipped[killer.id] ?? "Pistol", team: killerSide, first: feed.filter(f => !f.type || f.type === "kill").length === 0,
          assistant: assistant?.handle, assistantId: assistant?.id, killerDamage: killerDmg, assistantDamage: assistantDmg,
-         isHeadshot: Math.random() < 0.38
+         isHeadshot: Math.random() < 0.38, flashAssist,
        });
 
        if (alive[victimSide].length === 0) {
@@ -2391,7 +2424,8 @@ function createRoundStatPatch(
   });
 
   feed.forEach((event) => {
-    if (event.type === "plant" || event.type === "defuse" || event.type === "explode") return;
+    // Only kills (legacy untyped events) mutate stats; plant/defuse/explode/util are inert here.
+    if (event.type && event.type !== "kill") return;
 
     if (event.team === team) {
       const killerId = event.killerId;

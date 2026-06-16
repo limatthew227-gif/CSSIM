@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <!-- HE / frag: olive pineapple body with grid -->
+  <path d="M18 8 L26 10 L25 12.4 L18 10.6 Z" fill="#8b939c"/>
+  <rect x="13" y="6.5" width="6" height="4" rx="1.2" fill="#7e868f"/>
+  <ellipse cx="16" cy="19.5" rx="7.2" ry="8" fill="#5f6b3a" stroke="#3c4424" stroke-width="1.2"/>
+  <path d="M9.5 16.5 H22.5 M9.5 20 H22.5 M9.5 23.5 H22.5" stroke="#3c4424" stroke-width="1"/>
+  <path d="M12.5 12.5 V26.5 M16 11.8 V27.2 M19.5 12.5 V26.5" stroke="#3c4424" stroke-width="1" opacity="0.85"/>
+  <ellipse cx="13.5" cy="16" rx="1.6" ry="2.2" fill="#ffffff" opacity="0.18"/>
+</svg>

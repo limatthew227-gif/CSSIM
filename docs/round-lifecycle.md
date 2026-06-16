@@ -115,6 +115,9 @@ This is where `probability` becomes a play-by-play. It is a **logit random walk*
        (`ovr ≥ 85`) dies.
     5. ~36% chance of an assist (splitting damage); push a `kill` `FeedLine` (with headshot flag).
     6. If a side is wiped → resolve (bomb explode/defuse if planted, else elimination).
+- **Utility** (Phase 2): the loop also emits cosmetic `flash`/`smoke`/`molotov`/`he` events from each
+  team's per-round nade budget (T execute setup, CT area denial, and a flash before ~28% of kills →
+  `flashAssist`). These never touch the logit, scores, or stats — narrative only.
 - Push a `round_over` line carrying the new CT/T scores and the reason string.
 - Return `{ feed, youWin, tPlantedBomb, bombOutcome, roundReason }`.
 
