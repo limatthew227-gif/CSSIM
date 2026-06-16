@@ -4454,16 +4454,34 @@ meter::-webkit-meter-optimum-value {
   pointer-events: none;
 }
 
+/* Near-opaque so overlapping floor polygons read as one seamless surface (no alpha banding). */
 .radar-geometry .floor {
-  fill: color-mix(in srgb, var(--map-accent), transparent 84%);
-  stroke: color-mix(in srgb, var(--map-accent), white 16%);
-  stroke-width: 0.5;
-  stroke-linejoin: round;
+  fill: color-mix(in srgb, var(--map-accent) 22%, #1b2634);
+  stroke: none;
 }
 
 .radar-geometry .wall {
-  fill: rgba(0, 0, 0, 0.5);
+  fill: rgba(8, 11, 15, 0.92);
   stroke: none;
+}
+
+.radar-region-label {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  font-size: 8px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: rgba(220, 232, 245, 0.62);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.85);
+  pointer-events: none;
+  white-space: nowrap;
+  z-index: 2;
+}
+
+.radar-region-label.site {
+  font-size: 11px;
+  font-weight: 700;
+  color: #ffd23d;
 }
 
 .radar-map-label {

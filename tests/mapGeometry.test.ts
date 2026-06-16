@@ -60,8 +60,8 @@ test("findPath: routes T spawn -> B site without crossing a wall", () => {
 });
 
 // Two points with clear line of sight inside the open market box (bottom-right).
-const OPEN_A = { x: 58, y: 76 };
-const OPEN_B = { x: 86, y: 76 };
+const OPEN_A = { x: 60, y: 76 };
+const OPEN_B = { x: 80, y: 76 };
 
 test("findPath: open stretches come out near-straight (any-angle, not grid-stepped)", () => {
   const grid = buildNavGrid(GEO);
@@ -73,7 +73,7 @@ test("findPath: open stretches come out near-straight (any-angle, not grid-stepp
 
 test("findPath: a molly reroutes movement around the fire", () => {
   const grid = buildNavGrid(GEO);
-  const molly: Circle = { c: { x: 72, y: 76 }, r: 5 };
+  const molly: Circle = { c: { x: 70, y: 76 }, r: 4 };
   const open = findPath(grid, OPEN_A, OPEN_B);
   const around = findPath(grid, OPEN_A, OPEN_B, { mollies: [molly] });
   const entersFire = sampleSegments(around).some((p) => Math.hypot(p.x - molly.c.x, p.y - molly.c.y) < molly.r - 0.6);
@@ -84,7 +84,7 @@ test("findPath: a molly reroutes movement around the fire", () => {
 test("hasLineOfSight: walls and smokes both cut vision", () => {
   const grid = buildNavGrid(GEO);
   assert.ok(hasLineOfSight(grid, OPEN_A, OPEN_B), "clear market sightline");
-  const smoke: Circle = { c: { x: 72, y: 76 }, r: 5 };
+  const smoke: Circle = { c: { x: 70, y: 76 }, r: 4 };
   assert.ok(!hasLineOfSight(grid, OPEN_A, OPEN_B, [smoke]), "smoke on the sightline blocks it");
-  assert.ok(!hasLineOfSight(grid, GEO.mid, { x: 65, y: 40 }), "sightline through the central building is blocked");
+  assert.ok(!hasLineOfSight(grid, GEO.mid, { x: 60, y: 34 }), "sightline through the central building is blocked");
 });

@@ -38,8 +38,10 @@ export interface MapGeometry {
   spawns: { ct: Vec; t: Vec };
   sites: { a: Vec; b: Vec };
   mid: Vec;
-  /** Named areas for labels and future util targeting (smoke/molly a region). */
+  /** Named areas for future util targeting (smoke/molly a region). */
   regions: MapRegion[];
+  /** Callout text drawn on the radar (connector, palace, apps, …). */
+  labels: { text: string; at: Vec }[];
 }
 
 export interface NavGrid {
@@ -371,39 +373,64 @@ export function pathLength(path: Vec[]): number {
 // floorplan; proportions to be refined against the radar image when rendering.
 // ---------------------------------------------------------------------------
 
-// Traced from the Simple Radar mirage image: A site upper-left, B site bottom-centre,
-// CT spawn right, T spawn bottom-left, with a large central building that routes wind around.
+// Traced from the Simple Radar mirage image (A site upper-left, B bottom-centre, CT spawn right,
+// T spawn lower-left). Corridors follow the real callouts and wind around the central building.
 const mirage: MapGeometry = {
   id: "mirage",
   walkable: [
-    rect(15, 23, 30, 35), // A site
-    rect(15, 14, 50, 23), // A -> top (top-left lane)
-    rect(44, 14, 84, 25), // top -> CT (top-right lane)
-    rect(82, 23, 93, 46), // CT spawn
-    rect(80, 44, 93, 72), // right corridor (CT down)
-    rect(54, 68, 90, 84), // market / B apartments (bottom-right)
-    rect(44, 70, 60, 84), // B site
-    rect(34, 14, 46, 58), // mid (left of central building)
-    rect(34, 52, 50, 72), // mid -> B connector
-    rect(46, 52, 58, 70), // link around building -> market
-    rect(13, 34, 27, 66), // left corridor (A down to T)
-    rect(18, 62, 36, 78), // T spawn
-    rect(34, 72, 50, 84), // T -> B (bottom lane)
-    rect(27, 52, 40, 66), // T -> mid link
+    rect(16, 15, 54, 23), // top mid lane
+    rect(50, 14, 73, 24), // top -> CT
+    rect(70, 18, 89, 33), // CT top approach
+    rect(82, 30, 92, 45), // CT spawn
+    rect(80, 42, 92, 64), // right corridor (upper)
+    rect(68, 58, 92, 76), // right corridor (lower) / market side
+    rect(15, 23, 31, 35), // A site
+    rect(23, 20, 35, 28), // A -> top link
+    rect(11, 25, 19, 38), // A left (stairs)
+    rect(19, 33, 37, 53), // ramp
+    rect(30, 27, 46, 53), // connector (A <-> mid)
+    rect(39, 20, 47, 41), // mid window
+    rect(33, 39, 48, 61), // mid
+    rect(46, 45, 75, 61), // mid -> CT (under central building)
+    rect(39, 55, 60, 71), // B short
+    rect(47, 70, 63, 82), // B site
+    rect(58, 68, 81, 82), // market
+    rect(60, 59, 81, 73), // market upper
+    rect(12, 38, 28, 67), // left corridor (T <-> A)
+    rect(19, 62, 34, 80), // T spawn
+    rect(19, 78, 56, 88), // T -> B (bottom lane)
+    rect(26, 53, 42, 68), // T -> apps/mid link
+    rect(45, 57, 62, 72), // apps -> B
   ],
   walls: [
-    rect(46, 25, 80, 52), // central building (upper)
-    rect(58, 52, 80, 68), // central building (lower-right)
+    rect(48, 24, 70, 45), // central building
+    rect(34, 66, 47, 80), // apartments block
   ],
-  spawns: { ct: { x: 88, y: 35 }, t: { x: 27, y: 70 } },
-  sites: { a: { x: 22, y: 29 }, b: { x: 52, y: 77 } },
-  mid: { x: 40, y: 40 },
+  spawns: { ct: { x: 87, y: 37 }, t: { x: 26, y: 71 } },
+  sites: { a: { x: 22, y: 29 }, b: { x: 55, y: 76 } },
+  mid: { x: 42, y: 49 },
   regions: [
-    { name: "A", poly: rect(15, 23, 30, 35) },
-    { name: "B", poly: rect(44, 70, 60, 84) },
-    { name: "Mid", poly: rect(34, 14, 46, 58) },
-    { name: "Market", poly: rect(54, 68, 90, 84) },
-    { name: "CT", poly: rect(82, 23, 93, 46) },
+    { name: "A", poly: rect(15, 23, 31, 35) },
+    { name: "B", poly: rect(47, 70, 63, 82) },
+    { name: "Mid", poly: rect(33, 39, 48, 61) },
+    { name: "Market", poly: rect(58, 68, 81, 82) },
+    { name: "CT", poly: rect(82, 30, 92, 45) },
+  ],
+  labels: [
+    { text: "A", at: { x: 22, y: 29 } },
+    { text: "B", at: { x: 55, y: 76 } },
+    { text: "T", at: { x: 25, y: 71 } },
+    { text: "CT", at: { x: 87, y: 37 } },
+    { text: "Mid", at: { x: 41, y: 50 } },
+    { text: "Window", at: { x: 43, y: 26 } },
+    { text: "Connector", at: { x: 37, y: 33 } },
+    { text: "Palace", at: { x: 29, y: 24 } },
+    { text: "Ramp", at: { x: 23, y: 46 } },
+    { text: "Jungle", at: { x: 44, y: 43 } },
+    { text: "Top Mid", at: { x: 27, y: 18 } },
+    { text: "Short", at: { x: 51, y: 64 } },
+    { text: "Apps", at: { x: 32, y: 61 } },
+    { text: "Market", at: { x: 70, y: 76 } },
   ],
 };
 

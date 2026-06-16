@@ -78,12 +78,14 @@ This is the fast loop for tracing/tuning a map without driving a whole match.
 ## Status / remaining work
 
 - ✅ Nav engine + dynamic util hooks + tests.
-- ✅ **mirage** authored (traced from the radar image — corridors winding around the central building)
-  and **wired into the radar**: `radarSim.ts` routes via `findPath` (cached per segment), `App.tsx`
-  renders the geometry as SVG with an optional **image-underlay** toggle. The container was already
-  square, so registration is exact.
-- ✅ Authoring aid: `scripts/preview-map.ts` (`npm run preview:map`).
-- ⏳ Refine mirage proportions further against the radar image.
+- ✅ **mirage** authored (traced from the radar image — corridors winding around the central building
+  and the apartments block) and **wired into the radar**: `radarSim.ts` routes via `findPath` (cached
+  per segment), `App.tsx` renders the geometry as SVG with an optional **image-underlay** toggle, plus
+  callout labels (Top Mid, Palace, Window, Connector, Jungle, Mid, Ramp, Apps, Short, Market) from the
+  geometry's `labels`. The container was already square, so registration is exact.
+- ✅ Authoring aid: `scripts/preview-map.ts` (`npm run preview:map`) — renders floor + walls + routes
+  + callouts, matching the in-app look for fast tuning.
+- ⏳ mirage proportions/labels can always be fine-tuned further via the preview loop.
 - ⏳ Author the other 6 maps (inferno, dust2, nuke, ancient, anubis, train) to the same schema —
   until then they fall back to the legacy node routing + PNG automatically.
 - ⏳ (Future) in-match smokes/mollies driving `findPath`/`hasLineOfSight` during a round.

@@ -34,9 +34,13 @@ const routes: Array<[Vec, Vec, string]> = [
 
 const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${100 * S}" height="${100 * S}" viewBox="0 0 ${100 * S} ${100 * S}">
 <rect width="100%" height="100%" fill="#11161d"/>
-${geo.walkable.map((poly) => `<polygon points="${pts(poly)}" fill="rgba(101,167,255,0.16)" stroke="rgba(101,167,255,0.55)" stroke-width="1"/>`).join("\n")}
-${geo.walls.map((poly) => `<polygon points="${pts(poly)}" fill="rgba(0,0,0,0.55)"/>`).join("\n")}
+${geo.walkable.map((poly) => `<polygon points="${pts(poly)}" fill="#22303f"/>`).join("\n")}
+${geo.walls.map((poly) => `<polygon points="${pts(poly)}" fill="#0a0e13"/>`).join("\n")}
 ${routes.map(([a, b, c]) => line(findPath(grid, a, b), c)).join("\n")}
+${geo.labels
+  .filter((lb) => !["A", "B", "T", "CT"].includes(lb.text))
+  .map((lb) => `<text x="${lb.at.x * S}" y="${lb.at.y * S}" fill="rgba(230,238,247,0.85)" font-size="11" font-family="sans-serif" text-anchor="middle">${lb.text}</text>`)
+  .join("\n")}
 ${dot(geo.spawns.t, "#ff5b5b", "T")}
 ${dot(geo.spawns.ct, "#4da6ff", "CT")}
 ${dot(geo.sites.a, "#ffd23d", "A")}

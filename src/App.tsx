@@ -3061,13 +3061,25 @@ function MatchMapView({ match, you, opponent, speed = 1 }: { match: MatchState; 
           </svg>
         )}
 
-        {/* Dynamic site tags positioned at exact coords */}
-        <div className="radar-site site-a" style={{ left: `${layout.bombsiteA.x}%`, top: `${layout.bombsiteA.y}%` }}>A</div>
-        <div className="radar-site site-b" style={{ left: `${layout.bombsiteB.x}%`, top: `${layout.bombsiteB.y}%` }}>B</div>
-
-        {/* Spawn points labels */}
-        <div className="radar-spawn t-spawn-label" style={{ left: `${layout.tSpawn.x}%`, top: `${layout.tSpawn.y}%` }}>T Spawn</div>
-        <div className="radar-spawn ct-spawn-label" style={{ left: `${layout.ctSpawn.x}%`, top: `${layout.ctSpawn.y}%` }}>CT Spawn</div>
+        {/* Callouts: from code geometry when available, else the legacy site/spawn tags */}
+        {geometry ? (
+          geometry.labels.map((lb) => (
+            <div
+              key={`${lb.text}-${lb.at.x}-${lb.at.y}`}
+              className={`radar-region-label${lb.text === "A" || lb.text === "B" ? " site" : ""}`}
+              style={{ left: `${lb.at.x}%`, top: `${lb.at.y}%` }}
+            >
+              {lb.text}
+            </div>
+          ))
+        ) : (
+          <>
+            <div className="radar-site site-a" style={{ left: `${layout.bombsiteA.x}%`, top: `${layout.bombsiteA.y}%` }}>A</div>
+            <div className="radar-site site-b" style={{ left: `${layout.bombsiteB.x}%`, top: `${layout.bombsiteB.y}%` }}>B</div>
+            <div className="radar-spawn t-spawn-label" style={{ left: `${layout.tSpawn.x}%`, top: `${layout.tSpawn.y}%` }}>T Spawn</div>
+            <div className="radar-spawn ct-spawn-label" style={{ left: `${layout.ctSpawn.x}%`, top: `${layout.ctSpawn.y}%` }}>CT Spawn</div>
+          </>
+        )}
 
         {/* Bomb icon */}
         {bomb && (
