@@ -275,6 +275,7 @@ function hashString(str: string): number {
 export interface SimulatedRadarPlayer extends Player {
   x: number;
   y: number;
+  yaw: number; // facing in degrees (0 = +x / east), from movement direction
   alive: boolean;
   side: "CT" | "T";
   team: "you" | "opponent";
@@ -404,6 +405,23 @@ function graphRoute(a: Position, b: Position): Position[] {
   return route;
 }
 
+// Corner-cutting smoothing (Chaikin) — rounds a polyline so motion through callouts looks fluid.
+function chaikin(pts: Position[], iterations = 2): Position[] {
+  let out = pts;
+  for (let it = 0; it < iterations && out.length > 2; it += 1) {
+    const next: Position[] = [out[0]];
+    for (let i = 0; i < out.length - 1; i += 1) {
+      const a = out[i];
+      const b = out[i + 1];
+      next.push({ x: a.x * 0.75 + b.x * 0.25, y: a.y * 0.75 + b.y * 0.25 });
+      next.push({ x: a.x * 0.25 + b.x * 0.75, y: a.y * 0.25 + b.y * 0.75 });
+    }
+    next.push(out[out.length - 1]);
+    out = next;
+  }
+  return out;
+}
+
 function getPlayerPositionAtStep(wps: Waypoint[], step: number, layout: MapLayout, isAlive: boolean = true, useGraph = false): Position {
   if (wps.length === 0) return { x: 50, y: 50 };
   if (wps.length === 1) return wps[0].pos;
@@ -425,7 +443,8 @@ function getPlayerPositionAtStep(wps: Waypoint[], step: number, layout: MapLayou
   let cleaned: Position[];
   if (useGraph) {
     // Tactical graph: route callout-to-callout (elevation-aware), never off the radar image.
-    cleaned = cleanRoute(graphRoute(w1.pos, w2.pos));
+    // Chaikin-smooth the polyline so players glide through callouts instead of hard zig-zagging.
+    cleaned = chaikin(cleanRoute(graphRoute(w1.pos, w2.pos)), 2);
   } else {
     // Legacy node-graph fallback for maps without code geometry yet.
     const n1 = getClosestNodeKey(w1.pos, layout);
@@ -644,7 +663,18 @@ export function simulateRadarPlayers(
     }
   }
 
-  // 5. Calculate final positions at current stepIndex
+  // 5. Calculate final positions (+ facing) at current stepIndex
+  const yawOf = (p: Player, pos: Position): number => {
+    const wps = playerWaypoints.get(p.id) || [];
+    const prev = getPlayerPositionAtStep(wps, Math.max(0, stepIndex - 0.06), layout, true, useGraph);
+    const dx = pos.x - prev.x;
+    const dy = pos.y - prev.y;
+    if (dx * dx + dy * dy > 0.04) return (Math.atan2(dy, dx) * 180) / Math.PI; // face movement
+    const dest = playerDest.get(p.id);
+    if (dest) return (Math.atan2(dest.y - pos.y, dest.x - pos.x) * 180) / Math.PI; // hold: face objective
+    return 0;
+  };
+
   const youSimulated = you.players.map((p) => {
     const wps = playerWaypoints.get(p.id) || [];
     const isAlive = !deadIds.has(p.id);
@@ -653,6 +683,7 @@ export function simulateRadarPlayers(
       ...p,
       x: pos.x,
       y: pos.y,
+      yaw: yawOf(p, pos),
       alive: isAlive,
       side: yourSide,
       team: "you" as const,
@@ -667,6 +698,7 @@ export function simulateRadarPlayers(
       ...p,
       x: pos.x,
       y: pos.y,
+      yaw: yawOf(p, pos),
       alive: isAlive,
       side: opponentSide,
       team: "opponent" as const,

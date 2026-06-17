@@ -142,5 +142,12 @@ the `RoundState` the pathfinder weights with. `generateDynamicRound` re-plans on
 puts the bomb there. Utility events carry the thrower's position, and the radar renders **smoke clouds
 / molotov fire / flash / HE markers** at those spots.
 
-**Remaining Phase 3 polish:** player **yaw/facing** + finer movement smoothing (intermediate
-waypoints between callouts), economy-driven save decisions, and extending the graph to the other maps.
+**Movement polish (done):** routes are Chaikin-smoothed so players glide through callouts instead of
+zig-zagging, and each player has a `yaw` (movement direction, falling back to facing their objective
+when holding) drawn as a facing tick on the radar.
+
+**Known look issue:** the graph is coarse, so some straight callout-to-callout segments cross the
+PNG's buildings (e.g. the central building on a T→A route). Fixing it fully means either authoring
+per-edge corridor waypoints (`via` polylines that hug the real corridors) or rendering a vector
+backdrop from the graph instead of the PNG. **Remaining:** that look fix, economy-driven saves, and
+extending the graph to the other maps.

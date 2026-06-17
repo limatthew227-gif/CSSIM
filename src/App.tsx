@@ -3142,7 +3142,7 @@ function MatchMapView({ match, you, opponent, speed = 1 }: { match: MatchState; 
           );
         })}
         {radarPlayers.map((simPlayer, index) => {
-          const { id, handle, side, team, alive, x, y } = simPlayer;
+          const { id, handle, side, team, alive, x, y, yaw } = simPlayer;
           return (
             <div
               className={`radar-player ${side.toLowerCase()} ${team} ${alive ? "alive" : "dead"}`}
@@ -3151,9 +3151,11 @@ function MatchMapView({ match, you, opponent, speed = 1 }: { match: MatchState; 
                 {
                   left: `${x}%`,
                   top: `${y}%`,
+                  "--yaw": `${yaw}deg`,
                 } as React.CSSProperties
               }
             >
+              {alive && <i className="radar-facing" aria-hidden="true" />}
               <span>{handle.slice(0, 2).toUpperCase()}</span>
               <small>{handle}</small>
             </div>

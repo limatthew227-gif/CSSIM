@@ -4669,6 +4669,28 @@ meter::-webkit-meter-optimum-value {
   transition: left var(--transition-duration, 0ms) linear, top var(--transition-duration, 0ms) linear;
 }
 
+/* Facing tick — a small triangle orbiting the dot centre, pointed in the player's yaw direction. */
+.radar-facing {
+  position: absolute;
+  left: 50%;
+  top: 8.5px; /* ≈ dot centre within the stacked dot+label */
+  width: 0;
+  height: 0;
+  transform: rotate(var(--yaw, 0deg));
+  z-index: 5;
+  pointer-events: none;
+}
+
+.radar-facing::after {
+  content: "";
+  position: absolute;
+  left: 8px; /* just outside the dot edge */
+  top: -3px;
+  border-top: 3px solid transparent;
+  border-bottom: 3px solid transparent;
+  border-left: 5px solid rgba(255, 255, 255, 0.9);
+}
+
 .radar-player span {
   display: grid;
   place-items: center;
