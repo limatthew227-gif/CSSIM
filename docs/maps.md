@@ -152,5 +152,16 @@ which routes the segment (any-angle) on the radar's walkable pixel mask (`getNav
 This is **visual only**: the graph still owns all connectivity, objectives and line-of-sight; the
 pixel mask just bends the *drawn* path to follow the floor. Both `radarSim` (movement) and
 `generateDynamicRound` (kill positions) use it; kills also carry the engagement's two callouts
-(`FeedLine.engage`) so the gating is testable. **Remaining:** economy-driven saves, and extending the
-graph to the other maps.
+(`FeedLine.engage`) so the gating is testable.
+
+**Wall-snap + no teleports (done):** corner-smoothing (Chaikin) could still shave a route into a wall
+corner, and a stray kill spot could land just off the floor. `mapGeometry.snapToWalkable(grid, p)`
+pushes any blocked point to the nearest free cell (and is a no-op when already on the floor, so smooth
+motion is preserved); `radarSim` applies it to every rendered player position, smoothed route vertex,
+kill trace and the bomb. Measured over 20 real rounds: rendered positions on a wall went to **0%**.
+Separately, two waypoints sharing a step (e.g. a post-kill "head to dest" point colliding with a
+second kill on the very next event) made the dot teleport across the map; `radarSim` now collapses
+duplicate-step waypoints (latest wins) — **0 teleport jumps** over the same sample.
+
+**Remaining:** economy-driven saves, and extending the graph to the other maps (they still use the
+legacy straight-line node paths).

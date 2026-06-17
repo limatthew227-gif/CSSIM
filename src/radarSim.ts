@@ -2,6 +2,11 @@ import { MatchState, FieldTeam } from "./sim";
 import { MapId, Player } from "./gameData";
 import { findRoute, corridorPath } from "./pathfinder";
 import { nearestNode } from "./mirageNav";
+import { getNavGrid, snapToWalkable } from "./mapGeometry";
+
+// Walkable mask for the graph map, memoized once (getNavGrid is itself memoized).
+const MIRAGE_GRID = getNavGrid("mirage");
+const onFloor = (p: Position): Position => (MIRAGE_GRID ? snapToWalkable(MIRAGE_GRID, p) : p);
 
 export interface Position {
   x: number;
@@ -444,8 +449,9 @@ function getPlayerPositionAtStep(wps: Waypoint[], step: number, layout: MapLayou
   let cleaned: Position[];
   if (useGraph) {
     // Tactical graph: route callout-to-callout (elevation-aware), never off the radar image.
-    // Chaikin-smooth the polyline so players glide through callouts instead of hard zig-zagging.
-    cleaned = chaikin(cleanRoute(graphRoute(w1.pos, w2.pos)), 2);
+    // Chaikin-smooth the polyline so players glide through callouts instead of hard zig-zagging,
+    // then snap each smoothed vertex back onto the floor (corner-cutting can shave into a wall).
+    cleaned = chaikin(cleanRoute(graphRoute(w1.pos, w2.pos)), 2).map(onFloor);
   } else {
     // Legacy node-graph fallback for maps without code geometry yet.
     const n1 = getClosestNodeKey(w1.pos, layout);
@@ -477,7 +483,10 @@ function getPlayerPositionAtStep(wps: Waypoint[], step: number, layout: MapLayou
 
   // No per-frame wobble here: the old jiggle reseeded every animation frame off the fractional
   // step, which made holding players visibly buzz/vibrate. Holding players now stay put.
-  return getPathPosition(cleaned, t);
+  const pos = getPathPosition(cleaned, t);
+  // Final guard: a point interpolated between two floor vertices can still clip a wall corner, so
+  // snap the rendered position onto the walkable mask (no-op when already on the floor).
+  return useGraph ? onFloor(pos) : pos;
 }
 
 export interface RadarTrace {
@@ -613,7 +622,7 @@ export function simulateRadarPlayers(
       
       // Prefer the exact line-of-sight position the sim resolved the duel at (pixel-nav maps like
       // mirage); otherwise fall back to the victim's destination (where they were heading).
-      const victimDestination = event.victimPos ?? playerDest.get(victimId) ?? layout.mid;
+      const victimDestination = onFloor(event.victimPos ?? playerDest.get(victimId) ?? layout.mid);
 
       const victimWps = playerWaypoints.get(victimId);
       if (victimWps) {
@@ -626,10 +635,10 @@ export function simulateRadarPlayers(
         if (killerWps) {
           // Killer at the sim's resolved position, else a tiny offset from the victim (realistic peek)
           const angle = hashString(killerId + i) * (Math.PI / 180);
-          const killerFightPos = event.killerPos ?? {
+          const killerFightPos = onFloor(event.killerPos ?? {
             x: victimDestination.x + Math.cos(angle) * 1.2,
             y: victimDestination.y + Math.sin(angle) * 1.2
-          };
+          });
           
           killerWps.push({ step: i, pos: killerFightPos });
           
@@ -662,6 +671,19 @@ export function simulateRadarPlayers(
         wps.push({ step: totalSteps, pos: playerDest.get(p.id)! });
       }
     }
+  }
+
+  // 4b. Collapse any duplicate-step waypoints (keep the latest write) and sort by step. Two
+  // waypoints at the same step — e.g. a post-kill "head to dest" point colliding with a second
+  // kill on the next event — would otherwise make the dot teleport across the map within one step.
+  for (const { p } of allPlayers) {
+    const wps = playerWaypoints.get(p.id)!;
+    const byStep = new Map<number, Position>();
+    for (const wp of wps) byStep.set(wp.step, wp.pos); // later writes win
+    playerWaypoints.set(
+      p.id,
+      [...byStep.entries()].sort((a, b) => a[0] - b[0]).map(([step, pos]) => ({ step, pos })),
+    );
   }
 
   // 5. Calculate final positions (+ facing) at current stepIndex
@@ -716,7 +738,7 @@ export function simulateRadarPlayers(
   let currentBombPos: Position | null = null;
   if (plantEventIndex !== -1 && stepIndex >= plantEventIndex) {
     // Prefer the plant position the sim chose (matches the CT retake target); else fall back to the seed.
-    currentBombPos = allEvents[plantEventIndex].killerPos ?? (plantSite === "A" ? layout.bombsiteA : layout.bombsiteB);
+    currentBombPos = onFloor(allEvents[plantEventIndex].killerPos ?? (plantSite === "A" ? layout.bombsiteA : layout.bombsiteB));
   }
 
   return {

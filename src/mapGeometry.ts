@@ -462,6 +462,20 @@ export function hasPixelNav(id: MapId): boolean {
 }
 
 /**
+ * Push a world point onto the walkable floor: if it's already on a free cell, return it UNCHANGED
+ * (so smooth motion is preserved); only if it lands on a wall/void cell is it moved to the nearest
+ * free cell's centre. Used by the radar to guarantee no dot/route ever sits on a building, after
+ * corner-smoothing or an off-floor kill spot would otherwise nudge it into a wall.
+ */
+export function snapToWalkable(grid: NavGrid, p: Vec): Vec {
+  const { gx, gy } = toCell(p, grid.res);
+  if (!moveBlocked(grid, gx, gy)) return p;
+  const idx = nearestFreeIdx(grid, gx, gy);
+  if (idx < 0) return p;
+  return cellCenter(idx % grid.res, Math.floor(idx / grid.res), grid.res);
+}
+
+/**
  * Memoized nav grid for a map. Prefers a pixel-accurate grid baked from the radar PNG; falls back
  * to rasterizing hand-authored polygons; null if the map has neither yet.
  */
