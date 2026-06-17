@@ -11,7 +11,7 @@ import {
 import { hltvPlayerSplits2026 } from "./hltvPlayerSplits2026";
 import { hltvPlayerPlayoffs2026 } from "./hltvPlayerPlayoffs2026";
 import type { Vec } from "./mapGeometry";
-import { findRoute, pointAlongRoute, nodeIndexAt } from "./pathfinder";
+import { findRoute, pointAlongRoute, nodeIndexAt, corridorPath } from "./pathfinder";
 import { mirageStrategy, spawnNodeId, areConnected, getNode, type MapNode } from "./mirageNav";
 import { objectiveFor, roundStateFor, type Situation, type Site } from "./roundAI";
 
@@ -100,6 +100,7 @@ export interface FeedLine {
   flashAssist?: boolean;
   killerPos?: { x: number; y: number };
   victimPos?: { x: number; y: number };
+  engage?: { from: string; to: string }; // callouts the duel was resolved between (graph nav)
   assistant?: string;
   assistantId?: string;
   killerDamage?: number;
@@ -1991,7 +1992,8 @@ export function generateDynamicRound(
   const usePositions = context.map === "mirage";
   const WALK_SECONDS = 30; // ~time to reach the held objective
   let noLosStreak = 0;
-  const routeOf = new Map<string, MapNode[]>();
+  const routeOf = new Map<string, Vec[]>(); // corridor-hugging point polyline (drives positions)
+  const nodesOf = new Map<string, MapNode[]>(); // callout node route (drives LOS / current callout)
   const phaseStartOf = new Map<string, number>(); // elapsed (s into round) when the current route began
 
   const tName = side === "T" ? you.name : opponent.name;
@@ -2019,9 +2021,9 @@ export function generateDynamicRound(
     return pointAlongRoute(route, progressOf(pl, elapsed));
   };
   const nodeOf = (pl: Player, elapsed: number): MapNode | undefined => {
-    const route = routeOf.get(pl.id);
-    if (!route || !route.length) return undefined;
-    return route[nodeIndexAt(route, progressOf(pl, elapsed))];
+    const nodes = nodesOf.get(pl.id);
+    if (!nodes || !nodes.length) return undefined;
+    return nodes[nodeIndexAt(nodes, progressOf(pl, elapsed))];
   };
 
   // Plan a team's routes (objectives + RoundState come from roundAI). fromCurrent re-routes alive
@@ -2033,7 +2035,10 @@ export function generateDynamicRound(
     players.forEach((pl, idx) => {
       const start = fromCurrent ? nodeOf(pl, elapsed)?.id ?? spawnNodeId(teamSide) : spawnNodeId(teamSide);
       const route = findRoute(start, objectiveFor(teamSide, idx, strategy, sit), roundStateFor(sit));
-      routeOf.set(pl.id, route ? route.nodes : []);
+      const nodes = route ? route.nodes : [];
+      nodesOf.set(pl.id, nodes);
+      // shape the drawn/position path to hug the real corridors (graph still owns connectivity/LOS)
+      routeOf.set(pl.id, corridorPath(context.map, nodes.map((n) => ({ x: n.x, y: n.y }))));
       phaseStartOf.set(pl.id, fromCurrent ? elapsed : 0);
     });
   };
@@ -2265,6 +2270,7 @@ export function generateDynamicRound(
        let victim: Player;
        let killerPos: Vec | undefined;
        let victimPos: Vec | undefined;
+       let engage: { from: string; to: string } | undefined;
 
        if (usePositions) {
          // Only players in contact on the graph (same/adjacent callout) can trade. Among those pairs
@@ -2295,6 +2301,9 @@ export function generateDynamicRound(
          }
          killerPos = posOf(killer, elapsed);
          victimPos = posOf(victim, elapsed);
+         const kNode = nodeOf(killer, elapsed);
+         const vNode = nodeOf(victim, elapsed);
+         if (kNode && vNode) engage = { from: kNode.id, to: vNode.id };
        } else {
          killer = pickWeightedBy(alive[killerSide], p => killWeightFn(p, context, killerOppRank, killerEquipped[p.id]));
          victim = pickWeightedBy(alive[victimSide], p => deathWeightFn(p, context, victimOppRank, victimEquipped[p.id]));
@@ -2348,7 +2357,7 @@ export function generateDynamicRound(
          round, killer: killer.handle, killerId: killer.id, victim: victim.handle, victimId: victim.id,
          weapon: killerEquipped[killer.id] ?? "Pistol", team: killerSide, first: feed.filter(f => !f.type || f.type === "kill").length === 0,
          assistant: assistant?.handle, assistantId: assistant?.id, killerDamage: killerDmg, assistantDamage: assistantDmg,
-         isHeadshot: Math.random() < 0.38, flashAssist, killerPos, victimPos,
+         isHeadshot: Math.random() < 0.38, flashAssist, killerPos, victimPos, engage,
        });
 
        if (alive[victimSide].length === 0) {

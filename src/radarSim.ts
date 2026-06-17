@@ -1,6 +1,6 @@
 import { MatchState, FieldTeam } from "./sim";
 import { MapId, Player } from "./gameData";
-import { findRoute } from "./pathfinder";
+import { findRoute, corridorPath } from "./pathfinder";
 import { nearestNode } from "./mirageNav";
 
 export interface Position {
@@ -398,8 +398,9 @@ function graphRoute(a: Position, b: Position): Position[] {
   let route = graphRouteCache.get(key);
   if (!route) {
     const r = findRoute(nearestNode(a.x, a.y).id, nearestNode(b.x, b.y).id);
-    const mids = r ? r.nodes.map((n) => ({ x: n.x, y: n.y })) : [];
-    route = [a, ...mids, b]; // pin exact endpoints; callout node positions in between
+    const corners = r ? [a, ...r.nodes.map((n) => ({ x: n.x, y: n.y })), b] : [a, b];
+    // snap each callout->callout leg to the real corridor (walkable mask) so movement hugs the map
+    route = corridorPath("mirage", corners);
     if (graphRouteCache.size < 4000) graphRouteCache.set(key, route);
   }
   return route;

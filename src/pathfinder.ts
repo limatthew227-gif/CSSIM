@@ -4,6 +4,33 @@
  * A-ramp with no smokes, avoid mid/window vs a strong AWP, take the fastest rotate after a plant).
  */
 import { mirageNodes, neighbors, getNode, type MapEdge, type MapNode } from "./mirageNav";
+import { getNavGrid, findPath } from "./mapGeometry";
+import type { MapId } from "./gameData";
+
+type XY = { x: number; y: number };
+
+// Expand a polyline into one that HUGS the real corridors, by routing each segment on the radar's
+// walkable pixel mask (any-angle). Visual only — the graph decides connectivity/tactics/sightlines;
+// this just shapes the *drawn* path between callouts so movement doesn't cut across buildings on the
+// image. Cached per segment (only a handful of callout pairs recur).
+const corridorCache = new Map<string, XY[]>();
+export function corridorPath(mapId: MapId, points: XY[]): XY[] {
+  const grid = getNavGrid(mapId);
+  if (!grid || points.length < 2) return points;
+  const out: XY[] = [points[0]];
+  for (let i = 0; i < points.length - 1; i += 1) {
+    const a = points[i];
+    const b = points[i + 1];
+    const key = `${mapId}:${a.x.toFixed(1)},${a.y.toFixed(1)}>${b.x.toFixed(1)},${b.y.toFixed(1)}`;
+    let seg = corridorCache.get(key);
+    if (!seg) {
+      seg = findPath(grid, a, b);
+      if (corridorCache.size < 4000) corridorCache.set(key, seg);
+    }
+    for (let j = 1; j < seg.length; j += 1) out.push(seg[j]); // seg[0] === a, already in out
+  }
+  return out;
+}
 
 export interface RoundState {
   enemyAwperPressure: number; // 0..1 — how much the enemy AWP locks down open angles
@@ -109,8 +136,8 @@ export function nodeIndexAt(nodes: MapNode[], t: number): number {
   return Math.max(0, Math.min(nodes.length - 1, Math.round(t * (nodes.length - 1))));
 }
 
-/** Interpolated radar point at fraction t (0..1) along a route's nodes (uniform per segment). */
-export function pointAlongRoute(nodes: MapNode[], t: number): { x: number; y: number } {
+/** Interpolated radar point at fraction t (0..1) along a polyline of points (uniform per segment). */
+export function pointAlongRoute(nodes: XY[], t: number): { x: number; y: number } {
   if (nodes.length === 0) return { x: 50, y: 50 };
   if (nodes.length === 1) return { x: nodes[0].x, y: nodes[0].y };
   const ct = Math.max(0, Math.min(1, t)) * (nodes.length - 1);

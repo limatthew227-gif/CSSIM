@@ -146,8 +146,11 @@ puts the bomb there. Utility events carry the thrower's position, and the radar 
 zig-zagging, and each player has a `yaw` (movement direction, falling back to facing their objective
 when holding) drawn as a facing tick on the radar.
 
-**Known look issue:** the graph is coarse, so some straight callout-to-callout segments cross the
-PNG's buildings (e.g. the central building on a T→A route). Fixing it fully means either authoring
-per-edge corridor waypoints (`via` polylines that hug the real corridors) or rendering a vector
-backdrop from the graph instead of the PNG. **Remaining:** that look fix, economy-driven saves, and
-extending the graph to the other maps.
+**Corridor-snap (look fix, done):** so movement doesn't cut across buildings on the PNG, each
+callout→callout leg of a route is shaped to hug the real corridor via `pathfinder.corridorPath` —
+which routes the segment (any-angle) on the radar's walkable pixel mask (`getNavGrid`/`findPath`).
+This is **visual only**: the graph still owns all connectivity, objectives and line-of-sight; the
+pixel mask just bends the *drawn* path to follow the floor. Both `radarSim` (movement) and
+`generateDynamicRound` (kill positions) use it; kills also carry the engagement's two callouts
+(`FeedLine.engage`) so the gating is testable. **Remaining:** economy-driven saves, and extending the
+graph to the other maps.

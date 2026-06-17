@@ -39,7 +39,7 @@ import {
   utilFactor,
 } from "../src/sim";
 import type { FieldTeam } from "../src/sim";
-import { nearestNode, areConnected } from "../src/mirageNav";
+import { areConnected } from "../src/mirageNav";
 
 // ---------------------------------------------------------------------------
 // Seeded RNG
@@ -355,16 +355,15 @@ test("generateDynamicRound on mirage: kills happen between players in contact on
       generateDynamicRound(8, you, opp, armed(you), armed(opp), "standard", "FULL", "FULL", "CT", 6, 6, ctx, 0, 0, money(you), money(opp), helm(you), helm(opp), 0.5, w, w, 0, 0),
     );
     for (const e of r.feed) {
-      if ((!e.type || e.type === "kill") && e.killerPos && e.victimPos) {
+      if ((!e.type || e.type === "kill") && e.engage) {
         positioned += 1;
-        const kn = nearestNode(e.killerPos.x, e.killerPos.y);
-        const vn = nearestNode(e.victimPos.x, e.victimPos.y);
-        if (areConnected(kn.id, vn.id)) inContact += 1;
+        // The duel's two callouts must be the same or directly connected on the graph.
+        if (areConnected(e.engage.from, e.engage.to)) inContact += 1;
       }
     }
   }
   assert.ok(positioned > 30, `expected many positioned kills on mirage, got ${positioned}`);
-  // Most kills are real graph engagements; the remainder are the push/rotation fallback.
+  // The remainder are the push/rotation fallback that keeps rounds resolving when nobody has contact.
   assert.ok(inContact / positioned >= 0.75, `most kills should be between connected callouts, got ${inContact}/${positioned}`);
 });
 
