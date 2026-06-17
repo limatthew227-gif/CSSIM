@@ -2,11 +2,36 @@ import { MatchState, FieldTeam } from "./sim";
 import { MapId, Player } from "./gameData";
 import { findRoute, corridorPath } from "./pathfinder";
 import { nearestNode } from "./mirageNav";
-import { getNavGrid, snapToWalkable } from "./mapGeometry";
+import { getNavGrid, snapToWalkable, hasLineOfSight } from "./mapGeometry";
 
 // Walkable mask for the graph map, memoized once (getNavGrid is itself memoized).
 const MIRAGE_GRID = getNavGrid("mirage");
 const onFloor = (p: Position): Position => (MIRAGE_GRID ? snapToWalkable(MIRAGE_GRID, p) : p);
+
+// Longest believable engagement on the radar (units, 0..100). Kills resolved farther apart than this
+// — or with no clear sightline — get the victim pulled in toward the killer so the trace reads as a
+// real duel down a sightline instead of a shot across the whole map through buildings.
+const MAX_ENGAGE = 34;
+function plausibleEngagement(killer: Position, victim: Position): Position {
+  const dx = victim.x - killer.x;
+  const dy = victim.y - killer.y;
+  const d = Math.hypot(dx, dy);
+  let v = victim;
+  // 1. Cap the distance so nothing reads as a shot across the whole map.
+  if (d > MAX_ENGAGE) {
+    const k = MAX_ENGAGE / d;
+    v = { x: killer.x + dx * k, y: killer.y + dy * k };
+  }
+  // 2. Only correct line-of-sight on the longer shots — close-range grid LOS is noisy (thin 1-cell
+  //    walls between adjacent free cells), and pulling every short duel in collapses them onto the
+  //    killer and kills the spatial variety. Gentle pull, few steps.
+  if (Math.hypot(v.x - killer.x, v.y - killer.y) > 14) {
+    for (let i = 0; i < 3 && MIRAGE_GRID && !hasLineOfSight(MIRAGE_GRID, killer, v); i += 1) {
+      v = { x: killer.x + (v.x - killer.x) * 0.75, y: killer.y + (v.y - killer.y) * 0.75 };
+    }
+  }
+  return onFloor(v);
+}
 
 export interface Position {
   x: number;
@@ -575,6 +600,7 @@ export function simulateRadarPlayers(
 
   const roundTraces: RadarTrace[] = [];
   const deadIdsSet = new Set<string>();
+  const deathPos = new Map<string, Position>(); // where each victim died — dead dots freeze here
 
   // 3. Process events chronologically
   for (let i = 0; i < allEvents.length; i++) {
@@ -614,10 +640,18 @@ export function simulateRadarPlayers(
       const victimId = event.victimId;
       const killerId = event.killerId;
       deadIdsSet.add(victimId);
-      
-      // Prefer the exact line-of-sight position the sim resolved the duel at (pixel-nav maps like
-      // mirage); otherwise fall back to the victim's destination (where they were heading).
-      const victimDestination = onFloor(event.victimPos ?? playerDest.get(victimId) ?? layout.mid);
+
+      // Raw spots the sim resolved the duel at (pixel-nav maps like mirage); else where they headed.
+      const rawVictim = onFloor(event.victimPos ?? playerDest.get(victimId) ?? layout.mid);
+      // Killer position first (needed to make the engagement plausible): the sim's, else a peek offset.
+      const angle = hashString((killerId || "") + i) * (Math.PI / 180);
+      const killerFightPos = onFloor(event.killerPos ?? {
+        x: rawVictim.x + Math.cos(angle) * 1.2,
+        y: rawVictim.y + Math.sin(angle) * 1.2,
+      });
+      // Pull the victim in so the duel is a believable sightline, not a cross-map shot through walls.
+      const victimDestination = killerId ? plausibleEngagement(killerFightPos, rawVictim) : rawVictim;
+      deathPos.set(victimId, victimDestination); // dead players freeze here (no ghost wandering)
 
       const victimWps = playerWaypoints.get(victimId);
       if (victimWps) {
@@ -628,13 +662,6 @@ export function simulateRadarPlayers(
       if (killerId) {
         const killerWps = playerWaypoints.get(killerId);
         if (killerWps) {
-          // Killer at the sim's resolved position, else a tiny offset from the victim (realistic peek)
-          const angle = hashString(killerId + i) * (Math.PI / 180);
-          const killerFightPos = onFloor(event.killerPos ?? {
-            x: victimDestination.x + Math.cos(angle) * 1.2,
-            y: victimDestination.y + Math.sin(angle) * 1.2
-          });
-          
           killerWps.push({ step: i, pos: killerFightPos });
 
           // After the kill the killer drifts toward their objective over the REST of the round, not
@@ -704,6 +731,11 @@ export function simulateRadarPlayers(
   }
 
   // 5. Calculate final positions (+ facing) at current stepIndex
+  // A dead player freezes at the spot they died — never keeps drifting along their route ("ghost").
+  const positionFor = (p: Player, isAlive: boolean): Position => {
+    if (!isAlive && deathPos.has(p.id)) return deathPos.get(p.id)!;
+    return getPlayerPositionAtStep(playerWaypoints.get(p.id) || [], stepIndex, layout, isAlive, useGraph);
+  };
   const yawOf = (p: Player, pos: Position): number => {
     const wps = playerWaypoints.get(p.id) || [];
     const prev = getPlayerPositionAtStep(wps, Math.max(0, stepIndex - 0.06), layout, true, useGraph);
@@ -716,9 +748,8 @@ export function simulateRadarPlayers(
   };
 
   const youSimulated = you.players.map((p) => {
-    const wps = playerWaypoints.get(p.id) || [];
     const isAlive = !deadIds.has(p.id);
-    const pos = getPlayerPositionAtStep(wps, stepIndex, layout, isAlive, useGraph);
+    const pos = positionFor(p, isAlive);
     return {
       ...p,
       x: pos.x,
@@ -731,9 +762,8 @@ export function simulateRadarPlayers(
   });
 
   const opponentSimulated = opponent.players.map((p) => {
-    const wps = playerWaypoints.get(p.id) || [];
     const isAlive = !deadIds.has(p.id);
-    const pos = getPlayerPositionAtStep(wps, stepIndex, layout, isAlive, useGraph);
+    const pos = positionFor(p, isAlive);
     return {
       ...p,
       x: pos.x,

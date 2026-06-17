@@ -160,6 +160,17 @@ drift runs over the rest of the round instead of a one-step hop. Measured over 3
 overlaid callout labels (which didn't register to the image) are omitted there; vector-floor and
 legacy maps still draw theirs.
 
+**Plausible kill rendering + no ghosts (done):** the sim gates kills to graph-adjacent callouts, but
+adjacent callouts can be far apart on the radar, so a duel's two route positions could draw a long
+trace across (or through) buildings. `radarSim.plausibleEngagement` caps the killer↔victim render
+distance (`MAX_ENGAGE`) and, for the longer shots, pulls the victim in until the straight line has
+line-of-sight on the vision grid (`hasLineOfSight`) — close-range duels are left alone (grid LOS is
+noisy across thin 1-cell walls). Over 40 rounds: rendered trace distance avg 14.7 → 6.0 u, max
+56.6 → 19.1, shots >30u 22% → 0%. The sim's kill *selection* (OVR/role/form + graph contact) is
+unchanged — this only moves where the duel is *drawn*. Separately, dead players now freeze at the spot
+they died (`deathPos`) instead of continuing along their route, which fixed dead "ghost" dots that
+kept drifting (42% of dead samples were still moving → 0%).
+
 **Corridor-snap (look fix, done):** so movement doesn't cut across buildings on the PNG, each
 callout→callout leg of a route is shaped to hug the real corridor via `pathfinder.corridorPath` —
 which routes the segment (any-angle) on the radar's walkable pixel mask (`getNavGrid`/`findPath`).
