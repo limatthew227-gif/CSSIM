@@ -411,21 +411,14 @@ function graphRoute(a: Position, b: Position): Position[] {
   return route;
 }
 
-// Corner-cutting smoothing (Chaikin) — rounds a polyline so motion through callouts looks fluid.
-function chaikin(pts: Position[], iterations = 2): Position[] {
-  let out = pts;
-  for (let it = 0; it < iterations && out.length > 2; it += 1) {
-    const next: Position[] = [out[0]];
-    for (let i = 0; i < out.length - 1; i += 1) {
-      const a = out[i];
-      const b = out[i + 1];
-      next.push({ x: a.x * 0.75 + b.x * 0.25, y: a.y * 0.75 + b.y * 0.25 });
-      next.push({ x: a.x * 0.25 + b.x * 0.75, y: a.y * 0.25 + b.y * 0.75 });
-    }
-    next.push(out[out.length - 1]);
-    out = next;
-  }
-  return out;
+// Movement speed for graph maps, in radar units (0..100) per event-step. Waypoint steps are re-timed
+// so no leg is ever traversed faster than this — the cure for "supersonic" sprints.
+const WALK_SPEED = 15;
+
+function polylineLength(pts: Position[]): number {
+  let len = 0;
+  for (let i = 1; i < pts.length; i += 1) len += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
+  return len;
 }
 
 function getPlayerPositionAtStep(wps: Waypoint[], step: number, layout: MapLayout, isAlive: boolean = true, useGraph = false): Position {
@@ -448,10 +441,10 @@ function getPlayerPositionAtStep(wps: Waypoint[], step: number, layout: MapLayou
 
   let cleaned: Position[];
   if (useGraph) {
-    // Tactical graph: route callout-to-callout (elevation-aware), never off the radar image.
-    // Chaikin-smooth the polyline so players glide through callouts instead of hard zig-zagging,
-    // then snap each smoothed vertex back onto the floor (corner-cutting can shave into a wall).
-    cleaned = chaikin(cleanRoute(graphRoute(w1.pos, w2.pos)), 2).map(onFloor);
+    // Tactical graph: route callout-to-callout (elevation-aware), never off the radar image. The
+    // any-angle corridor path is already corner-hugging and strictly on the floor; we do NOT Chaikin
+    // it (corner-cutting shaved routes back into walls, and snapping those back caused jitter).
+    cleaned = cleanRoute(graphRoute(w1.pos, w2.pos)).map(onFloor);
   } else {
     // Legacy node-graph fallback for maps without code geometry yet.
     const n1 = getClosestNodeKey(w1.pos, layout);
@@ -469,12 +462,11 @@ function getPlayerPositionAtStep(wps: Waypoint[], step: number, layout: MapLayou
     pathLength += Math.sqrt(dx * dx + dy * dy);
   }
 
-  // Walk at a roughly constant speed regardless of route length: cap the distance covered per
-  // event-step so long routes don't "teleport" (sonic) and short ones don't crawl. stepSpan = how
-  // many event-steps this waypoint interval spans; SPEED = radar units (0..100) per step.
-  const stepSpan = Math.max(1, w2.step - w1.step);
-  const SPEED = 15;
-  const f_walk = pathLength > 0 ? Math.min(1, pathLength / (SPEED * stepSpan)) : 0;
+  // Walk at a constant speed: cover at most WALK_SPEED units per event-step. For graph maps the
+  // waypoint steps have been re-timed (step 4c) so each leg spans >= its length / WALK_SPEED, which
+  // makes f_walk≈1 (steady walk); a player who has time to spare reaches the spot early and holds.
+  const stepSpan = Math.max(1e-3, w2.step - w1.step);
+  const f_walk = pathLength > 0 ? Math.min(1, pathLength / (WALK_SPEED * stepSpan)) : 0;
 
   let t = 1.0;
   if (f_walk > 0 && t_linear < f_walk) {
@@ -594,11 +586,14 @@ export function simulateRadarPlayers(
          if (!deadIdsSet.has(p.id)) {
            const wps = playerWaypoints.get(p.id)!;
            const lastWp = wps[wps.length - 1];
-           // Hold current position until plant event
+           // By the plant a player should be AT their pre-plant objective (site/mid), then rotate —
+           // NOT frozen at spawn. Anchor them at their current destination at the plant step; the
+           // rotate leg (below) then runs from there over the rest of the round.
+           const preplantDest = playerDest.get(p.id) ?? lastWp.pos;
            if (lastWp.step < i) {
-             wps.push({ step: i, pos: lastWp.pos });
+             wps.push({ step: i, pos: preplantDest });
            }
-           
+
            const actualSide = team === "you" ? yourSide : opponentSide;
            if (actualSide === "T") {
              // One lurker goes mid, rest play on site
@@ -641,13 +636,14 @@ export function simulateRadarPlayers(
           });
           
           killerWps.push({ step: i, pos: killerFightPos });
-          
-          // After the kill, killer continues toward their own destination
+
+          // After the kill the killer drifts toward their objective over the REST of the round, not
+          // in a single step — a one-step hop across the map was the main "supersonic" sprint.
           const killerOwnDest = playerDest.get(killerId) ?? victimDestination;
-          if (i + 1 <= totalSteps) {
-            killerWps.push({ step: Math.min(i + 1, totalSteps), pos: killerOwnDest });
+          if (i + 1 < totalSteps) {
+            killerWps.push({ step: totalSteps, pos: killerOwnDest });
           }
-          
+
           const traceSide = event.team === "you" ? yourSide : opponentSide;
           roundTraces.push({
             round: activeRound,
@@ -684,6 +680,27 @@ export function simulateRadarPlayers(
       p.id,
       [...byStep.entries()].sort((a, b) => a[0] - b[0]).map(([step, pos]) => ({ step, pos })),
     );
+  }
+
+  // 4c. Re-time waypoints (graph maps) so every leg gets enough event-steps for its actual corridor
+  // length at WALK_SPEED. This is the core "supersonic" cure: a long route crammed into one step
+  // used to be traversed instantly; now each leg's step span is at least length/WALK_SPEED, so the
+  // dot moves at a constant, believable pace. Anchors only ever move LATER (so order is preserved),
+  // and a player whose timeline runs past round-end simply hasn't finished crossing — which is fine.
+  if (useGraph) {
+    for (const { p } of allPlayers) {
+      const wps = playerWaypoints.get(p.id)!;
+      if (wps.length < 2) continue;
+      const retimed: Waypoint[] = [wps[0]];
+      let prevStep = wps[0].step;
+      for (let k = 1; k < wps.length; k += 1) {
+        const legLen = polylineLength(graphRoute(wps[k - 1].pos, wps[k].pos));
+        const step = Math.max(wps[k].step, prevStep + legLen / WALK_SPEED);
+        retimed.push({ step, pos: wps[k].pos });
+        prevStep = step;
+      }
+      playerWaypoints.set(p.id, retimed);
+    }
   }
 
   // 5. Calculate final positions (+ facing) at current stepIndex

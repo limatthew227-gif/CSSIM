@@ -142,9 +142,23 @@ the `RoundState` the pathfinder weights with. `generateDynamicRound` re-plans on
 puts the bomb there. Utility events carry the thrower's position, and the radar renders **smoke clouds
 / molotov fire / flash / HE markers** at those spots.
 
-**Movement polish (done):** routes are Chaikin-smoothed so players glide through callouts instead of
-zig-zagging, and each player has a `yaw` (movement direction, falling back to facing their objective
-when holding) drawn as a facing tick on the radar.
+**Movement polish (done):** each player has a `yaw` (movement direction, falling back to facing their
+objective when holding) drawn as a facing tick on the radar. Routes are NOT Chaikin-smoothed — the
+any-angle corridor path is already corner-hugging and strictly on the floor, and smoothing shaved it
+back into walls (then snapping it out jittered).
+
+**Constant-speed movement (done):** the radar used to give every waypoint leg equal real time, so a
+long route crammed into one event-step rendered as a "supersonic" sprint, and the plant handler froze
+players at spawn (so some never moved). Now `simulateRadarPlayers` **re-times** each player's waypoints
+(step 4c) so every leg spans at least `corridorLength / WALK_SPEED` event-steps — the dot moves at a
+constant `WALK_SPEED` (15 radar-units/step), reaching its spot and holding when it has time to spare.
+The plant handler sends players to their pre-plant objective (not a spawn freeze), and the post-kill
+drift runs over the rest of the round instead of a one-step hop. Measured over 30 rounds: max speed
+126 → 15 u/step, supersonic samples 1127 → 0, stuck players 3 → 0.
+
+**Labels:** pixel-nav maps (mirage) render the real radar PNG, which carries its own callouts, so the
+overlaid callout labels (which didn't register to the image) are omitted there; vector-floor and
+legacy maps still draw theirs.
 
 **Corridor-snap (look fix, done):** so movement doesn't cut across buildings on the PNG, each
 callout→callout leg of a route is shaped to hug the real corridor via `pathfinder.corridorPath` —

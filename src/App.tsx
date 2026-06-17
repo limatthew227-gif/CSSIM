@@ -3068,8 +3068,10 @@ function MatchMapView({ match, you, opponent, speed = 1 }: { match: MatchState; 
           </svg>
         )}
 
-        {/* Callouts: from code geometry when available, else the legacy site/spawn tags */}
-        {geometry ? (
+        {/* Callouts: pixel-nav maps (mirage) use the real radar PNG, which carries its own labels —
+            our overlaid callouts don't line up with it, so we omit them. Vector-floor maps draw their
+            code-geometry labels; legacy maps fall back to the basic site/spawn tags. */}
+        {pixelNav ? null : geometry ? (
           geometry.labels.map((lb) => (
             <div
               key={`${lb.text}-${lb.at.x}-${lb.at.y}`}
