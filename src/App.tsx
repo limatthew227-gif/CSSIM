@@ -3007,6 +3007,11 @@ function MatchMapView({ match, you, opponent, speed = 1 }: { match: MatchState; 
 
   // Get simulated coordinates and state for all 10 players, and active firefight traces
   const { players: radarPlayers, traces: radarTraces, bomb } = simulateRadarPlayers(match, you, opponent, stepIndex);
+
+  // Utility thrown this round, placed at the thrower's graph position (smokes/mollies show an area).
+  const utilMarkers = roundEvents
+    .filter((e) => e.killerPos && (e.type === "smoke" || e.type === "molotov" || e.type === "he" || e.type === "flash"))
+    .slice(-6);
   const radarImage = radarImages[match.map];
 
   const currentStepDelay = getStepDelay(match, you, opponent, roundEvents.length, speed, "map");
@@ -3082,6 +3087,18 @@ function MatchMapView({ match, you, opponent, speed = 1 }: { match: MatchState; 
             <div className="radar-spawn ct-spawn-label" style={{ left: `${layout.ctSpawn.x}%`, top: `${layout.ctSpawn.y}%` }}>CT Spawn</div>
           </>
         )}
+
+        {/* Utility markers (smoke clouds / molotov fire / flash / HE) at where they were thrown */}
+        {utilMarkers.map((m, i) => (
+          <div
+            key={`util-${activeRound}-${i}-${m.killerPos!.x}`}
+            className={`radar-util radar-util-${m.type}`}
+            style={{ left: `${m.killerPos!.x}%`, top: `${m.killerPos!.y}%` }}
+          >
+            {(m.type === "smoke" || m.type === "molotov") && <span className="radar-util-area" />}
+            <img className="radar-util-icon" src={utilityIcons[m.type!]} alt={m.type} title={m.type} />
+          </div>
+        ))}
 
         {/* Bomb icon */}
         {bomb && (

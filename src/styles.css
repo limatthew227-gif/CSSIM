@@ -4484,6 +4484,39 @@ meter::-webkit-meter-optimum-value {
   color: #ffd23d;
 }
 
+/* Utility markers on the radar (thrown smokes / mollies / flashes / HE) */
+.radar-util {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  z-index: 3;
+}
+
+.radar-util-icon {
+  width: 13px;
+  height: 13px;
+  object-fit: contain;
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.6));
+}
+
+.radar-util-area {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 13%;
+  height: 13%;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+}
+
+.radar-util-smoke .radar-util-area {
+  background: radial-gradient(circle, rgba(190, 198, 206, 0.55), rgba(190, 198, 206, 0.12) 70%, transparent 72%);
+}
+
+.radar-util-molotov .radar-util-area {
+  background: radial-gradient(circle, rgba(255, 138, 61, 0.5), rgba(255, 90, 30, 0.15) 70%, transparent 72%);
+}
+
 .radar-map-label {
   position: absolute;
   top: 10px;

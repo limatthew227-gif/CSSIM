@@ -134,6 +134,13 @@ discount, saving) and `findRoute` (weighted Dijkstra), plus `worldToRadar`.
 **Tests:** `tests/mirageNav.test.ts` (graph connected, A/B routing, one-way palace, round-state cost),
 plus the sim's graph-contact engagement test.
 
-**Next (Phase 3):** `PlayerMovement` (smooth interp + yaw), `RoundAI` (executes / defaults / rotations
-/ saves / retakes / lurks driving route + `RoundState` choices), radar grenade/smoke markers; extend
-the graph to the other maps.
+**Phase 3 (RoundAI + markers):** `src/roundAI.ts` decides objectives by phase — pre-plant executes
+(T by strategy with a lurker taking an off-angle; CT default holds) and **post-plant retake/hold** (CT
+rotates to the planted site, T holds it, lurker watches the flank), plus a `saving` bias — and builds
+the `RoundState` the pathfinder weights with. `generateDynamicRound` re-plans on the plant event
+(re-routing alive players from where they are) and tags the plant with its site; `simulateRadarPlayers`
+puts the bomb there. Utility events carry the thrower's position, and the radar renders **smoke clouds
+/ molotov fire / flash / HE markers** at those spots.
+
+**Remaining Phase 3 polish:** player **yaw/facing** + finer movement smoothing (intermediate
+waypoints between callouts), economy-driven save decisions, and extending the graph to the other maps.

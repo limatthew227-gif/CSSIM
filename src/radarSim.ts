@@ -682,7 +682,8 @@ export function simulateRadarPlayers(
 
   let currentBombPos: Position | null = null;
   if (plantEventIndex !== -1 && stepIndex >= plantEventIndex) {
-    currentBombPos = plantSite === "A" ? layout.bombsiteA : layout.bombsiteB;
+    // Prefer the plant position the sim chose (matches the CT retake target); else fall back to the seed.
+    currentBombPos = allEvents[plantEventIndex].killerPos ?? (plantSite === "A" ? layout.bombsiteA : layout.bombsiteB);
   }
 
   return {

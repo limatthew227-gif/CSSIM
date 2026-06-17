@@ -11,8 +11,9 @@ import {
 import { hltvPlayerSplits2026 } from "./hltvPlayerSplits2026";
 import { hltvPlayerPlayoffs2026 } from "./hltvPlayerPlayoffs2026";
 import type { Vec } from "./mapGeometry";
-import { findRoute, pointAlongRoute, nodeIndexAt, type RoundState } from "./pathfinder";
-import { mirageStrategy, tacticalObjective, spawnNodeId, areConnected, type MapNode } from "./mirageNav";
+import { findRoute, pointAlongRoute, nodeIndexAt } from "./pathfinder";
+import { mirageStrategy, spawnNodeId, areConnected, getNode, type MapNode } from "./mirageNav";
+import { objectiveFor, roundStateFor, type Situation, type Site } from "./roundAI";
 
 export interface BonusLine {
   label: string;
@@ -1991,44 +1992,61 @@ export function generateDynamicRound(
   const WALK_SECONDS = 30; // ~time to reach the held objective
   let noLosStreak = 0;
   const routeOf = new Map<string, MapNode[]>();
+  const phaseStartOf = new Map<string, number>(); // elapsed (s into round) when the current route began
 
-  if (usePositions) {
-    const tName = side === "T" ? you.name : opponent.name;
-    const strategy = mirageStrategy(tName, round);
-    const youHasAwp = you.players.some((pl) => yourWeapons[pl.id] === "AWP");
-    const oppHasAwp = opponent.players.some((pl) => opponentWeapons[pl.id] === "AWP");
-    const stateFor = (utilCount: number, enemyAwp: boolean, isYou: boolean): RoundState => ({
-      enemyAwperPressure: enemyAwp ? 0.7 : 0.2,
-      hasUtility: utilCount > 4,
-      availableUtility: Math.min(1, utilCount / 12),
-      bombPlanted: false,
-      saving: isYou && tactic === "save",
-    });
-    const youState = stateFor(yourUtilCount, oppHasAwp, true);
-    const oppState = stateFor(opponentUtilCount, youHasAwp, false);
-    const assignTeam = (teamKey: "you" | "opponent", state: RoundState) => {
-      const players = teamKey === "you" ? you.players : opponent.players;
-      const teamSide: MatchSide = teamKey === tTeamKey ? "T" : "CT";
-      players.forEach((pl, idx) => {
-        const route = findRoute(spawnNodeId(teamSide), tacticalObjective(teamSide, idx, strategy), state);
-        routeOf.set(pl.id, route ? route.nodes : []);
-      });
+  const tName = side === "T" ? you.name : opponent.name;
+  const strategy = mirageStrategy(tName, round);
+  const youHasAwp = you.players.some((pl) => yourWeapons[pl.id] === "AWP");
+  const oppHasAwp = opponent.players.some((pl) => opponentWeapons[pl.id] === "AWP");
+  const sideOf = (teamKey: "you" | "opponent"): MatchSide => (teamKey === tTeamKey ? "T" : "CT");
+  const situationFor = (teamKey: "you" | "opponent", planted: boolean, plantSite?: Site): Situation => {
+    const util = teamKey === "you" ? yourUtilCount : opponentUtilCount;
+    return {
+      bombPlanted: planted,
+      plantSite,
+      enemyAwperPressure: (teamKey === "you" ? oppHasAwp : youHasAwp) ? 0.7 : 0.2,
+      hasUtility: util > 4,
+      availableUtility: Math.min(1, util / 12),
+      saving: teamKey === "you" && tactic === "save",
     };
-    assignTeam("you", youState);
-    assignTeam("opponent", oppState);
-  }
+  };
 
-  const progressAt = (elapsed: number) => Math.min(1, Math.max(0, elapsed / WALK_SECONDS));
+  const progressOf = (pl: Player, elapsed: number) =>
+    Math.min(1, Math.max(0, (elapsed - (phaseStartOf.get(pl.id) ?? 0)) / WALK_SECONDS));
   const posOf = (pl: Player, elapsed: number): Vec => {
     const route = routeOf.get(pl.id);
     if (!route || !route.length) return { x: 50, y: 50 };
-    return pointAlongRoute(route, progressAt(elapsed));
+    return pointAlongRoute(route, progressOf(pl, elapsed));
   };
   const nodeOf = (pl: Player, elapsed: number): MapNode | undefined => {
     const route = routeOf.get(pl.id);
     if (!route || !route.length) return undefined;
-    return route[nodeIndexAt(route, progressAt(elapsed))];
+    return route[nodeIndexAt(route, progressOf(pl, elapsed))];
   };
+
+  // Plan a team's routes (objectives + RoundState come from roundAI). fromCurrent re-routes alive
+  // players from where they are now (used for the post-plant retake/hold re-plan); otherwise from spawn.
+  const planTeam = (teamKey: "you" | "opponent", planted: boolean, plantSite: Site | undefined, fromCurrent: boolean, elapsed: number) => {
+    const players = teamKey === "you" ? you.players : opponent.players;
+    const teamSide = sideOf(teamKey);
+    const sit = situationFor(teamKey, planted, plantSite);
+    players.forEach((pl, idx) => {
+      const start = fromCurrent ? nodeOf(pl, elapsed)?.id ?? spawnNodeId(teamSide) : spawnNodeId(teamSide);
+      const route = findRoute(start, objectiveFor(teamSide, idx, strategy, sit), roundStateFor(sit));
+      routeOf.set(pl.id, route ? route.nodes : []);
+      phaseStartOf.set(pl.id, fromCurrent ? elapsed : 0);
+    });
+  };
+  const replanForPlant = (elapsed: number, plantSite: Site) => {
+    if (!usePositions) return;
+    planTeam("you", true, plantSite, true, elapsed);
+    planTeam("opponent", true, plantSite, true, elapsed);
+  };
+
+  if (usePositions) {
+    planTeam("you", false, undefined, false, 0);
+    planTeam("opponent", false, undefined, false, 0);
+  }
 
   function throwUtil(teamSide: "you" | "opponent", type: "smoke" | "flash" | "molotov" | "he"): boolean {
     if (utilLeft[teamSide] <= 0 || utilEventsThisRound >= MAX_UTIL_EVENTS) return false;
@@ -2037,7 +2055,8 @@ export function generateDynamicRound(
     utilLeft[teamSide] -= 1;
     utilEventsThisRound += 1;
     const thrower = squad[Math.floor(Math.random() * squad.length)];
-    feed.push({ round, killer: thrower.handle, killerId: "", victim: "", victimId: "", weapon: type, team: teamSide, first: false, type });
+    const at = usePositions ? posOf(thrower, 115 - timeRemaining) : undefined;
+    feed.push({ round, killer: thrower.handle, killerId: "", victim: "", victimId: "", weapon: type, team: teamSide, first: false, type, killerPos: at });
     return true;
   }
 
@@ -2195,9 +2214,12 @@ export function generateDynamicRound(
        bombTimer = 40;
        const tBoost = counts.ct > counts.t ? 0.85 : 0.45;
        logit += tTeamKey === "you" ? tBoost : -tBoost;
-       
+
        const planter = alive[tTeamKey][Math.floor(Math.random() * counts.t)];
-       feed.push({ round, killer: planter.handle, killerId: planter.id, victim: "Bomb Site", victimId: "", weapon: "bomb", team: tTeamKey, first: false, type: "plant", ctAlive: counts.ct, tAlive: counts.t });
+       const plantSite: Site = strategy === 2 ? "bsite" : strategy === 1 ? "asite" : Math.random() < 0.5 ? "asite" : "bsite";
+       const plantNode = usePositions ? getNode(plantSite) : undefined;
+       if (usePositions) replanForPlant(115 - timeRemaining, plantSite); // CTs rotate to retake, Ts hold
+       feed.push({ round, killer: planter.handle, killerId: planter.id, victim: "Bomb Site", victimId: "", weapon: "bomb", team: tTeamKey, first: false, type: "plant", ctAlive: counts.ct, tAlive: counts.t, killerPos: plantNode ? { x: plantNode.x, y: plantNode.y } : undefined });
        continue;
     }
 
