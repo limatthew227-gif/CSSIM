@@ -103,6 +103,24 @@ export function routePoints(route: Route): Array<{ x: number; y: number }> {
   return route.nodes.map((n) => ({ x: n.x, y: n.y }));
 }
 
+/** Index of the route node nearest fraction t (0..1) — the player's "current callout". */
+export function nodeIndexAt(nodes: MapNode[], t: number): number {
+  if (nodes.length <= 1) return 0;
+  return Math.max(0, Math.min(nodes.length - 1, Math.round(t * (nodes.length - 1))));
+}
+
+/** Interpolated radar point at fraction t (0..1) along a route's nodes (uniform per segment). */
+export function pointAlongRoute(nodes: MapNode[], t: number): { x: number; y: number } {
+  if (nodes.length === 0) return { x: 50, y: 50 };
+  if (nodes.length === 1) return { x: nodes[0].x, y: nodes[0].y };
+  const ct = Math.max(0, Math.min(1, t)) * (nodes.length - 1);
+  const i = Math.floor(ct);
+  const f = ct - i;
+  const a = nodes[i];
+  const b = nodes[Math.min(nodes.length - 1, i + 1)];
+  return { x: a.x + (b.x - a.x) * f, y: a.y + (b.y - a.y) * f };
+}
+
 /**
  * World (game) coordinate -> radar (image) coordinate, per the CS overview convention. Unused while
  * nodes are authored directly in radar space, but kept for when real .nav/world coords are wired in.

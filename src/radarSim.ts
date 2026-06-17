@@ -1,7 +1,7 @@
 import { MatchState, FieldTeam } from "./sim";
 import { MapId, Player } from "./gameData";
-import { getNavGrid, findPath } from "./mapGeometry";
-import type { NavGrid } from "./mapGeometry";
+import { findRoute } from "./pathfinder";
+import { nearestNode } from "./mirageNav";
 
 export interface Position {
   x: number;
@@ -31,8 +31,8 @@ export interface MapLayout {
 export const MAP_LAYOUTS: Record<MapId, MapLayout> = {
   mirage: {
     // Spawns/sites read from the radar image (A = triple-box upper-left, B = market bottom-centre,
-    // T = upper-right, CT = lower-left). Navigation uses the pixel-accurate baked grid, not the
-    // legacy node routes below.
+    // T = upper-right, CT = lower-left). Movement routes on the Mirage tactical graph (mirageNav.ts),
+    // not the radar pixels or the legacy node routes below.
     tSpawn: { x: 87, y: 37 },
     ctSpawn: { x: 28, y: 71 },
     bombsiteA: { x: 24, y: 28 },
@@ -388,26 +388,23 @@ interface Waypoint {
   pos: Position;
 }
 
-// Cache any-angle routes per nav grid + endpoint pair. getPlayerPositionAtStep runs every frame
-// for every player, so we memoize findPath by rounded endpoints (waypoints are stable nodes/dests).
-const navPathCache = new WeakMap<NavGrid, Map<string, Position[]>>();
+// Cache tactical-graph routes by rounded endpoints (getPlayerPositionAtStep runs every frame per
+// player; waypoints are stable nodes/dests so the cache is small).
+const graphRouteCache = new Map<string, Position[]>();
 
-function navRoute(grid: NavGrid, a: Position, b: Position): Position[] {
-  let cache = navPathCache.get(grid);
-  if (!cache) {
-    cache = new Map();
-    navPathCache.set(grid, cache);
-  }
+function graphRoute(a: Position, b: Position): Position[] {
   const key = `${a.x.toFixed(1)},${a.y.toFixed(1)}>${b.x.toFixed(1)},${b.y.toFixed(1)}`;
-  let route = cache.get(key);
+  let route = graphRouteCache.get(key);
   if (!route) {
-    route = findPath(grid, a, b) as Position[];
-    if (cache.size < 4000) cache.set(key, route);
+    const r = findRoute(nearestNode(a.x, a.y).id, nearestNode(b.x, b.y).id);
+    const mids = r ? r.nodes.map((n) => ({ x: n.x, y: n.y })) : [];
+    route = [a, ...mids, b]; // pin exact endpoints; callout node positions in between
+    if (graphRouteCache.size < 4000) graphRouteCache.set(key, route);
   }
   return route;
 }
 
-function getPlayerPositionAtStep(wps: Waypoint[], step: number, layout: MapLayout, isAlive: boolean = true, grid?: NavGrid | null): Position {
+function getPlayerPositionAtStep(wps: Waypoint[], step: number, layout: MapLayout, isAlive: boolean = true, useGraph = false): Position {
   if (wps.length === 0) return { x: 50, y: 50 };
   if (wps.length === 1) return wps[0].pos;
   if (step >= wps[wps.length - 1].step) return wps[wps.length - 1].pos;
@@ -426,9 +423,9 @@ function getPlayerPositionAtStep(wps: Waypoint[], step: number, layout: MapLayou
   const t_linear = denominator > 0 ? (step - w1.step) / denominator : 0;
 
   let cleaned: Position[];
-  if (grid) {
-    // Code-built map: route through real walkable space with any-angle pathfinding.
-    cleaned = cleanRoute(navRoute(grid, w1.pos, w2.pos));
+  if (useGraph) {
+    // Tactical graph: route callout-to-callout (elevation-aware), never off the radar image.
+    cleaned = cleanRoute(graphRoute(w1.pos, w2.pos));
   } else {
     // Legacy node-graph fallback for maps without code geometry yet.
     const n1 = getClosestNodeKey(w1.pos, layout);
@@ -486,7 +483,7 @@ export function simulateRadarPlayers(
 ): RadarSimulationResult {
   const mapId = match.map;
   const layout = MAP_LAYOUTS[mapId] || MAP_LAYOUTS.mirage;
-  const navGrid = getNavGrid(mapId); // null until a map has code geometry → legacy routing
+  const useGraph = mapId === "mirage"; // route on the tactical graph; legacy node routes elsewhere
   const yourSide = match.side;
   const opponentSide: "CT" | "T" = yourSide === "CT" ? "T" : "CT";
 
@@ -651,7 +648,7 @@ export function simulateRadarPlayers(
   const youSimulated = you.players.map((p) => {
     const wps = playerWaypoints.get(p.id) || [];
     const isAlive = !deadIds.has(p.id);
-    const pos = getPlayerPositionAtStep(wps, stepIndex, layout, isAlive, navGrid);
+    const pos = getPlayerPositionAtStep(wps, stepIndex, layout, isAlive, useGraph);
     return {
       ...p,
       x: pos.x,
@@ -665,7 +662,7 @@ export function simulateRadarPlayers(
   const opponentSimulated = opponent.players.map((p) => {
     const wps = playerWaypoints.get(p.id) || [];
     const isAlive = !deadIds.has(p.id);
-    const pos = getPlayerPositionAtStep(wps, stepIndex, layout, isAlive, navGrid);
+    const pos = getPlayerPositionAtStep(wps, stepIndex, layout, isAlive, useGraph);
     return {
       ...p,
       x: pos.x,

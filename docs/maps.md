@@ -1,5 +1,12 @@
 # Maps & navigation
 
+> **Update (current):** Mirage navigation now runs on a **tactical callout graph** (`src/mirageNav.ts`
+> + `src/pathfinder.ts`), NOT the radar pixels. A flat 2D grid can't represent Mirage's elevation
+> (palace over A, underpass under mid, ramps, connector), so the sim and radar route callout-to-callout
+> with weighted A*/Dijkstra; kills are gated to players in contact on the graph. The pixel grid below
+> is superseded for mirage (it still flags "render the real PNG"); the sections below describe the
+> earlier grid approach and remain accurate for non-graph maps. See **Tactical graph** at the bottom.
+
 ## Why this exists
 
 The radar used to position players over a stretched PNG and move them along ~10 hand-drawn polylines
@@ -102,4 +109,31 @@ without a baked grid keep the original position-agnostic kill logic untouched.
   per map and add their `MapGeometry` labels/spawns + `MAP_LAYOUTS` coords. Until then they fall back
   to legacy node routing + PNG automatically.
 - ⏳ Fine-tune mirage callout label positions if any read slightly off.
-- ⏳ (Future) in-match smokes/mollies driving `findPath`/`hasLineOfSight` during a round.
+- ⏳ (Future) in-match smokes/mollies.
+
+## Tactical graph (mirage — current nav)
+
+`src/mirageNav.ts` defines a hand-authored callout graph (informed by Source `.nav` concepts but
+simplified): **nodes** are the 18 key callouts (`x/y` radar coords, `z/floor` elevation metadata,
+`type`), **edges** are real connections with tactical data (`travelTime`, `exposure`, `noise`,
+`chokepoint`, `utilityValue`, one-way `drop`s like palace→A, `requires`, `tags`). `src/pathfinder.ts`
+provides `edgeCost(edge, roundState)` (exposure × AWP pressure, choke × utility, post-plant rotate
+discount, saving) and `findRoute` (weighted Dijkstra), plus `worldToRadar`.
+
+**Wired in (Phase 2):**
+- `generateDynamicRound` (sim): each player routes spawn→objective callout via `findRoute` with a
+  per-side `RoundState` (AWP pressure, utility, plant). Position interpolates along the route over the
+  round; **kills are gated to pairs `areConnected` on the graph** (same/adjacent callout — elevation
+  aware, no false 2D sightlines). OVR/role weighting still decides the winner. A no-contact cap/
+  cleanup fallback keeps rounds resolving. Kill positions are attached for the radar.
+- `simulateRadarPlayers` (radar): player movement routes on the graph (`graphRoute`), never on the
+  radar pixels. The PNG is background only.
+- The pixel grid (`navGrids.ts` / `getNavGrid` / Theta\*) is **no longer used for pathing** — it only
+  survives as the `hasPixelNav` flag that tells the renderer to show the real radar PNG.
+
+**Tests:** `tests/mirageNav.test.ts` (graph connected, A/B routing, one-way palace, round-state cost),
+plus the sim's graph-contact engagement test.
+
+**Next (Phase 3):** `PlayerMovement` (smooth interp + yaw), `RoundAI` (executes / defaults / rotations
+/ saves / retakes / lurks driving route + `RoundState` choices), radar grenade/smoke markers; extend
+the graph to the other maps.

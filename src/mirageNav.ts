@@ -150,3 +150,41 @@ export function nearestNode(x: number, y: number): MapNode {
   }
   return best;
 }
+
+// --- Round assignment helpers (shared by the sim and the radar so they agree on executes) ---
+
+function hashStr(str: string): number {
+  let hash = 0;
+  for (let i = 0; i < str.length; i += 1) {
+    hash = (hash << 5) - hash + str.charCodeAt(i);
+    hash |= 0;
+  }
+  return Math.abs(hash);
+}
+
+/** T-side execute for the round: 0 = split A/B, 1 = stack A, 2 = stack B. */
+export function mirageStrategy(tTeamName: string, round: number): number {
+  return (hashStr(tTeamName) + round) % 3;
+}
+
+/** Objective callout for a player given their side, roster index, and the T strategy. */
+export function tacticalObjective(side: "CT" | "T", idx: number, strategy: number): string {
+  if (side === "CT") return idx === 0 || idx === 3 ? "asite" : idx === 1 || idx === 4 ? "bsite" : "mid";
+  if (strategy === 1) return idx === 4 ? "mid" : "asite";
+  if (strategy === 2) return idx === 4 ? "mid" : "bsite";
+  return idx === 0 || idx === 1 ? "asite" : idx === 2 || idx === 3 ? "bsite" : "mid";
+}
+
+export function spawnNodeId(side: "CT" | "T"): string {
+  return side === "CT" ? "ctspawn" : "tspawn";
+}
+
+/**
+ * Two callouts are "in contact" if they're the same node or directly connected (share an edge). The
+ * graph encodes real, elevation-aware adjacency, so this never reports a false sightline (e.g. palace
+ * and mid sit close on the 2D radar but aren't connected, so players there can't trade).
+ */
+export function areConnected(aId: string, bId: string): boolean {
+  if (aId === bId) return true;
+  return neighbors(aId).some((edge) => edge.to === bId);
+}
