@@ -866,13 +866,13 @@ const feedSpeedDelays: Record<number, number> = {
   4: 400,
 };
 
-// Real radar-seconds (ms) per ROUND-second of the spatial timeline. The per-step delay is the gap to
-// the next event scaled by this, so the radar advances at a CONSTANT rate — movement speed no longer
-// lurches with how close together kills happen. Clamped so the opening walk fast-forwards a little
-// and a quick trade still reads.
-const MS_PER_SIM_SEC = 900;
-const STEP_MIN = 350;
-const STEP_MAX = 2800;
+// Mirage map-view pacing is by DISTANCE MOVED, not elapsed round-time: a step's real duration scales
+// with how far the busiest player travels in that interval. So actual movement plays at a constant
+// speed, while a post-kill hold (lots of round-time, little motion) is skipped quickly instead of
+// dwelling — which is what made it look like it "slowed down after every kill".
+const MS_PER_UNIT = 80; // real ms per radar-unit (0..100) of movement, at speed 1
+const STEP_MIN = 300; // a kill/hold step still shows for a beat
+const STEP_MAX = 4200; // cap so the longest single move can't drag
 
 export function getStepDelay(
   match: MatchState,
@@ -882,16 +882,24 @@ export function getStepDelay(
   speed: number,
   liveFeedView: "feed" | "map"
 ): number {
-  // Mirage map view plays the spatial timeline — pace by real round-time so movement is constant.
-  if (liveFeedView === "map" && match.map === "mirage" && match.roundTimeline) {
+  if (liveFeedView === "map" && match.map === "mirage" && match.roundTimeline && match.roundTimeline.length) {
     const active = match.pendingEvents?.[0]?.round ?? match.feed[0]?.round ?? match.round;
     const completed = match.feed.filter((e) => e.round === active);
     const remaining = (match.pendingEvents || []).filter((e) => e.round === active);
     const chron = [...[...completed].reverse(), ...remaining];
     const idx = completed.length; // the next event to reveal
     if (idx >= 1 && idx < chron.length) {
-      const gap = Math.max(0, (chron[idx].t ?? 0) - (chron[idx - 1].t ?? 0));
-      return Math.max(STEP_MIN, Math.min(STEP_MAX, (gap * MS_PER_SIM_SEC) / speed));
+      const tA = chron[idx - 1].t ?? 0;
+      const tB = chron[idx].t ?? 0;
+      const tl = match.roundTimeline;
+      const ids = tl[0]?.players.map((p) => p.id) ?? [];
+      let maxMove = 0;
+      for (const id of ids) {
+        const a = sampleTimeline(tl, tA, id);
+        const b = sampleTimeline(tl, tB, id);
+        if (a && b) maxMove = Math.max(maxMove, Math.hypot(b.x - a.x, b.y - a.y));
+      }
+      return Math.max(STEP_MIN, Math.min(STEP_MAX, (maxMove * MS_PER_UNIT) / speed));
     }
   }
   if (liveFeedView === "map") {

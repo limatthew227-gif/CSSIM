@@ -2103,11 +2103,12 @@ export function generateDynamicRound(
     feed.push(...ordered);
 
     const youWin = sim.youWin;
+    const endT = sim.timeline.length ? sim.timeline[sim.timeline.length - 1].t : undefined;
     feed.push({
       round, killer: "", killerId: "", victim: "", victimId: "", weapon: "", team: youWin ? "you" : "opponent", first: false, type: "round_over",
       tScore: side === "T" ? youScore + (youWin ? 1 : 0) : opponentScore + (youWin ? 0 : 1),
       ctScore: side === "CT" ? youScore + (youWin ? 1 : 0) : opponentScore + (youWin ? 0 : 1),
-      reason: sim.roundReason,
+      reason: sim.roundReason, t: endT,
     });
     return { feed, youWin, tPlantedBomb: sim.tPlantedBomb, bombOutcome: sim.bombOutcome, roundReason: sim.roundReason, timeline: sim.timeline };
   }
