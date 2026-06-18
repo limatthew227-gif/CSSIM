@@ -1,1 +1,5 @@
 node_modules/
+# CS2 demo files used for calibration are local-only (large, not app assets)
+*.dem
+scratch/*.dem
+data/demos/
