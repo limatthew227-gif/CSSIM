@@ -22,7 +22,7 @@ const GRID = getNavGrid("mirage");
 // --- Tunables (radar units are 0..100; seconds are round-time) ---
 const DT = 0.5; // simulation tick
 const ROUND_TIME = 115;
-const WALK_SPEED = 6.2; // units/sec — crossing the map takes ~12-18s, so first contact isn't instant
+const WALK_SPEED = 5.0; // radar units/sec — calibrated from a real CS2 demo (run ~4.8 u/s)
 const SIGHT_RANGE = 42; // farthest a duel sightline reaches
 const PLANT_TIME = 3.2;
 const DEFUSE_TIME = 9.0;
@@ -106,44 +106,25 @@ interface SimP {
 // mid->connector->A, mid->cat->short->B, apps, underpass lurk) instead of funnelling one choke. Each
 // step is a real graph edge; the final node is what they hold. idx 0-4 = roster slots.
 function tPlan(idx: number, strategy: number): string[] {
-  if (strategy === 1) {
-    // stack A
-    return [
-      ["tramp", "aramp", "asite"], // entry up ramp
-      ["tramp", "palace", "asite"], // palace
-      ["topmid", "mid", "connector", "asite"], // mid -> connector -> A
-      ["tramp", "aramp", "asite"], // ramp support
-      ["topmid", "mid", "connector"], // lurk mid/connector
-    ][idx];
-  }
-  if (strategy === 2) {
-    // stack B
-    return [
-      ["bapps", "bsite"], // apps
-      ["bapps", "bsite"], // apps
-      ["topmid", "mid", "catwalk", "bshort", "bsite"], // mid -> cat -> short -> B
-      ["topmid", "mid", "bshort", "bsite"], // mid -> short -> B
-      ["topmid", "mid", "underpass"], // lurk underpass (flank)
-    ][idx];
-  }
-  // split A/B
-  return [
-    ["tramp", "aramp", "asite"], // A ramp
-    ["tramp", "palace", "asite"], // A palace
-    ["bapps", "bsite"], // B apps
-    ["topmid", "mid", "catwalk", "bshort", "bsite"], // B through mid/cat/short
-    ["topmid", "mid", "connector"], // mid control / lurk
-  ][idx];
+  const A_PALACE = ["palace", "asite"]; // T spawn -> palace -> drop A
+  const A_MID = ["sidealley", "topmid", "mid", "connector", "asite"]; // mid -> connector -> A
+  const B_APPS = ["sidealley", "house", "backalley", "bapps", "van", "bsite"]; // apps -> van -> B
+  const B_MID = ["sidealley", "topmid", "mid", "underpass", "catwalk", "bsite"]; // mid -> cat -> B
+  const MID = ["sidealley", "topmid", "mid"]; // mid control / lurk
+  const MID_LURK = ["sidealley", "topmid", "mid", "underpass"]; // underpass flank
+  if (strategy === 1) return [A_PALACE, A_MID, A_PALACE, A_MID, MID][idx]; // stack A
+  if (strategy === 2) return [B_APPS, B_APPS, B_MID, B_MID, MID_LURK][idx]; // stack B
+  return [A_PALACE, A_MID, B_APPS, B_MID, MID][idx]; // split A/B
 }
 
-// CT objective per slot. `push` sends them out to an extremity (aggressive peek) rather than holding
-// their site — accessible CT pushes only (ramp from A, apps/short from B, top-mid through mid).
+// CT objective per slot. `push` sends them out toward the enemy (aggressive peek) instead of holding
+// their site — CT-reachable forward positions only.
 function ctObjective(idx: number, push: boolean): string {
-  if (idx === 0) return push ? "aramp" : "asite"; // A anchor / ramp push
+  if (idx === 0) return push ? "connector" : "asite"; // A anchor / push up connector
   if (idx === 3) return push ? "mid" : "jungle"; // A support: jungle hold / mid push
-  if (idx === 1) return push ? "bapps" : "bsite"; // B anchor / apps push
-  if (idx === 4) return push ? "bshort" : "market"; // B support: market hold / short push
-  return push ? "topmid" : "window"; // mid player: window hold / top-mid push
+  if (idx === 1) return push ? "catwalk" : "bsite"; // B anchor / push catwalk
+  if (idx === 4) return push ? "underpass" : "market"; // B support: market hold / underpass push
+  return push ? "topmid" : "window"; // mid player: snipers hold / top-mid push
 }
 
 // Route through a sequence of callouts (each leg via findRoute), corridor-snapped to the floor.

@@ -61,14 +61,14 @@ export interface MapLayout {
 
 export const MAP_LAYOUTS: Record<MapId, MapLayout> = {
   mirage: {
-    // Spawns/sites read from the radar image (A = triple-box upper-left, B = market bottom-centre,
-    // T = upper-right, CT = lower-left). Movement routes on the Mirage tactical graph (mirageNav.ts),
-    // not the radar pixels or the legacy node routes below.
-    tSpawn: { x: 87, y: 37 },
-    ctSpawn: { x: 28, y: 71 },
-    bombsiteA: { x: 24, y: 28 },
-    bombsiteB: { x: 54, y: 76 },
-    mid: { x: 44, y: 45 },
+    // Calibrated from a real CS2 demo (see scripts/calibrate-mirage.ts): B site upper-left, A site
+    // bottom-centre, T spawn right, CT spawn lower-left. Mirage actually plays from the spatial
+    // timeline (mirageRoundSim), so these only feed the bomb-icon fallback / legacy path.
+    tSpawn: { x: 86.7, y: 36.7 },
+    ctSpawn: { x: 32.4, y: 68.8 },
+    bombsiteA: { x: 54.4, y: 71.7 },
+    bombsiteB: { x: 23.4, y: 28.3 },
+    mid: { x: 51.2, y: 47.9 },
     chokePoints: {
       "A Ramp": { x: 65, y: 65 },
       "Palace": { x: 72, y: 52 },

@@ -113,9 +113,17 @@ without a baked grid keep the original position-agnostic kill logic untouched.
 
 ## Tactical graph (mirage — current nav)
 
-`src/mirageNav.ts` defines a hand-authored callout graph (informed by Source `.nav` concepts but
-simplified): **nodes** are the 18 key callouts (`x/y` radar coords, `z/floor` elevation metadata,
-`type`), **edges** are real connections with tactical data (`travelTime`, `exposure`, `noise`,
+> **Calibrated from a real CS2 demo (not eyeballed).** `scripts/calibrate-mirage.ts` parses a demo,
+> and because CS2 tags every player tick with its callout (`last_place_name`), each node's radar
+> coordinate is the **centroid of real positions** in that callout and each edge is a **real
+> player transition** between callouts. This corrected a hand-authored graph that was significantly
+> wrong — A/B were swapped and most callouts mirrored. True orientation: **B site upper-left, A site
+> bottom-centre, T spawn right, CT spawn lower-left**; the apartments take is `Side Alley → House →
+> Back Alley → Apartments → Van → B`. Walk speed (`WALK_SPEED` in `mirageRoundSim.ts`) is the demo's
+> measured ~5 radar-units/sec. To recalibrate: `npx tsx scripts/calibrate-mirage.ts <demo.dem>`.
+
+`src/mirageNav.ts` defines the callout graph: **nodes** are the key callouts (`x/y` radar coords,
+`z/floor` elevation metadata, `type`), **edges** are real connections with tactical data (`travelTime`, `exposure`, `noise`,
 `chokepoint`, `utilityValue`, one-way `drop`s like palace→A, `requires`, `tags`). `src/pathfinder.ts`
 provides `edgeCost(edge, roundState)` (exposure × AWP pressure, choke × utility, post-plant rotate
 discount, saving) and `findRoute` (weighted Dijkstra), plus `worldToRadar`.

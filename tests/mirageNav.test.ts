@@ -20,19 +20,19 @@ test("graph: every callout is reachable from both spawns", () => {
   }
 });
 
-test("routing: T Spawn -> A Site stays on the A side (ramp/palace), never through B", () => {
+test("routing: T Spawn -> A Site stays on the A side (palace/ramp/mid), never through B", () => {
   const route = ids(findRoute("tspawn", "asite"));
   assert.ok(route.length >= 2);
-  assert.ok(route.some((id) => ["tramp", "aramp", "palace"].includes(id)), `expected an A approach, got ${route}`);
-  for (const b of ["bsite", "market", "bapps", "bshort"]) {
+  assert.ok(route.some((id) => ["palace", "aramp", "connector"].includes(id)), `expected an A approach, got ${route}`);
+  for (const b of ["bsite", "van", "bapps", "market"]) {
     assert.ok(!route.includes(b), `A route should not detour through ${b}: ${route}`);
   }
 });
 
-test("routing: T Spawn -> B Site stays on the B side, never through A ramp/palace/ticket", () => {
+test("routing: T Spawn -> B Site stays on the B side, never through A palace/ramp", () => {
   const route = ids(findRoute("tspawn", "bsite"));
-  assert.ok(route.some((id) => ["bapps", "bshort", "market"].includes(id)), `expected a B approach, got ${route}`);
-  for (const a of ["aramp", "palace", "ticket"]) {
+  assert.ok(route.some((id) => ["bapps", "van", "catwalk"].includes(id)), `expected a B approach, got ${route}`);
+  for (const a of ["aramp", "palace", "scaffolding"]) {
     assert.ok(!route.includes(a), `B route should not detour through ${a}: ${route}`);
   }
 });
@@ -42,12 +42,12 @@ test("routing: CT Spawn can rotate to both bombsites", () => {
   assert.ok(findRoute("ctspawn", "bsite"), "CT must reach B");
 });
 
-test("routing: the palace drop is one-way (A -> Palace must go back around via T Ramp)", () => {
+test("routing: the palace drop is one-way (A -> Palace can't use the drop, goes around)", () => {
   const up = ids(findRoute("asite", "palace"));
-  assert.ok(up.length > 0, "palace should still be reachable from A the long way");
-  assert.ok(up.includes("tramp"), `A->Palace must climb around via T Ramp, got ${up}`);
-  // and the one-way edge exists only palace -> asite
+  assert.ok(up.length > 2, `palace should still be reachable from A the long way, got ${up}`);
+  // the one-way drop edge exists only palace -> asite (you can't climb back up it)
   assert.ok(edgeOf("palace", "asite").oneWay, "palace->A should be one-way");
+  assert.ok(!edgeOf("asite", "palace"), "there should be no direct asite->palace edge (it's a drop)");
 });
 
 test("edgeCost: a strong enemy AWP makes open angles (window) much costlier", () => {
@@ -57,8 +57,8 @@ test("edgeCost: a strong enemy AWP makes open angles (window) much costlier", ()
   assert.ok(edgeCost(window, awp) > edgeCost(window, calm) + 1, "AWP pressure should raise exposed-angle cost");
 });
 
-test("edgeCost: utility makes a major choke (B apps) much cheaper to take", () => {
-  const apps = edgeOf("bapps", "bsite");
+test("edgeCost: utility makes a major choke (B apps drop) much cheaper to take", () => {
+  const apps = edgeOf("bapps", "van");
   const dry: RoundState = { ...NEUTRAL_STATE, hasUtility: false };
   const nades: RoundState = { ...NEUTRAL_STATE, hasUtility: true, availableUtility: 1 };
   assert.ok(edgeCost(apps, nades) < edgeCost(apps, dry), "having utility should cut the choke cost");

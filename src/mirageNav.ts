@@ -1,14 +1,12 @@
 /**
- * Mirage tactical graph — a hand-authored callout network used for AI movement/routing, replacing
- * the flawed radar-pixel grid (a flat 2D image can't represent Mirage's elevation: palace over A,
- * underpass under mid, ramps, connector, apps, etc.).
+ * Mirage tactical graph — node positions and connectivity are DERIVED FROM A REAL CS2 DEMO, not
+ * eyeballed. Each callout's radar coordinate is the centroid of real player positions tagged with
+ * that callout (`last_place_name`), and edges are the callout-to-callout transitions players actually
+ * made. See scripts/calibrate-mirage.ts. Node ids keep the names the sim/AI code uses; the `callout`
+ * string is the in-game CS2 name. Radar coords are 0..100 and project straight onto the radar image.
  *
- * Informed by Source `.nav` concepts (areas -> nodes, connections -> edges, per-corner Z -> floor/
- * elevation), but deliberately simplified to ~the real callouts so the AI routes tactically rather
- * than micro-pathing. Node x/y are in radar (0..100) space so they project straight onto the radar
- * image; z/floor are connectivity metadata (e.g. palace is a floor above A and drops in one-way).
- *
- * The radar PNG is ONLY a background for rendering — nothing here is derived from its pixels.
+ * Orientation (verified against the Simple Radar PNG via the demo): B site upper-left, A site
+ * bottom-centre, T spawn right, CT spawn lower-left.
  */
 
 export type NodeType = "spawn" | "site" | "mid" | "choke" | "connector" | "rotate" | "lurker";
@@ -18,8 +16,8 @@ export interface MapNode {
   callout: string;
   x: number; // radar 0..100
   y: number; // radar 0..100
-  z: number; // relative elevation (for tagging, not projection)
-  floor: number; // integer level: 0 ground, +1 elevated (palace/apps/window), -1 below (underpass)
+  z: number; // relative elevation (tagging only)
+  floor: number; // 0 ground, +1 elevated (palace/apps), -1 below (underpass)
   type: NodeType;
 }
 
@@ -28,101 +26,106 @@ export type EdgeReq = "none" | "jump" | "drop" | "ladder" | "crouch";
 export interface MapEdge {
   from: string;
   to: string;
-  travelTime: number; // seconds-ish to traverse
-  exposure: number; // 0..1 how open/peekable the path is
-  noise: number; // 0..1 how loud (audible to enemies)
+  travelTime: number; // seconds-ish (auto: radar distance / walk speed)
+  exposure: number; // 0..1 how open/peekable
+  noise: number; // 0..1
   chokepoint: number; // 0..1 how pinch-y / utility-dependent
-  utilityValue: number; // 0..1 how much smokes/flashes/mollies help here
-  oneWay?: boolean; // e.g. palace -> A is a drop you can't climb back up
+  utilityValue: number; // 0..1 how much util helps here
+  oneWay?: boolean; // e.g. palace drop -> A (can't climb back)
   requires?: EdgeReq;
-  tags?: string[]; // tactical labels: "rotate", "mid-control", "awp-angle", "split-b", "lurk", ...
+  tags?: string[];
 }
 
-// ---------------------------------------------------------------------------
-// Nodes (the 18 key Mirage callouts) — radar coords match the Simple Radar image:
-// A upper-left, B bottom-centre, T spawn upper-right, CT spawn lower-left.
-// ---------------------------------------------------------------------------
-
+// --- Nodes: real callout centroids (radar 0..100) from the demo ---
 export const mirageNodes: MapNode[] = [
-  { id: "tspawn", callout: "T Spawn", x: 87, y: 37, z: 0, floor: 0, type: "spawn" },
-  { id: "ctspawn", callout: "CT Spawn", x: 28, y: 71, z: 0, floor: 0, type: "spawn" },
-  { id: "asite", callout: "A Site", x: 24, y: 28, z: 0, floor: 0, type: "site" },
-  { id: "bsite", callout: "B Site", x: 54, y: 76, z: 0, floor: 0, type: "site" },
-  { id: "mid", callout: "Mid", x: 46, y: 46, z: 0, floor: 0, type: "mid" },
-  { id: "topmid", callout: "Top Mid", x: 57, y: 30, z: 0, floor: 0, type: "mid" },
-  { id: "window", callout: "Window", x: 41, y: 38, z: 1, floor: 1, type: "choke" },
-  { id: "connector", callout: "Connector", x: 38, y: 43, z: 0, floor: 0, type: "connector" },
-  { id: "jungle", callout: "Jungle", x: 35, y: 37, z: 1, floor: 1, type: "connector" },
-  { id: "catwalk", callout: "Catwalk", x: 47, y: 39, z: 0, floor: 0, type: "connector" },
-  { id: "aramp", callout: "A Ramp", x: 40, y: 24, z: 0, floor: 0, type: "choke" },
-  { id: "palace", callout: "Palace", x: 32, y: 33, z: 1, floor: 1, type: "choke" },
-  { id: "tramp", callout: "T Ramp", x: 62, y: 25, z: 0, floor: 0, type: "connector" },
-  { id: "ticket", callout: "Ticket", x: 28, y: 23, z: 0, floor: 0, type: "site" },
-  { id: "underpass", callout: "Underpass", x: 47, y: 57, z: -1, floor: -1, type: "lurker" },
-  { id: "bapps", callout: "B Apps", x: 38, y: 62, z: 1, floor: 1, type: "choke" },
-  { id: "bshort", callout: "B Short", x: 51, y: 60, z: 0, floor: 0, type: "choke" },
-  { id: "market", callout: "Market", x: 42, y: 70, z: 0, floor: 0, type: "connector" },
+  { id: "tspawn", callout: "T Spawn", x: 86.7, y: 36.7, z: 0, floor: 0, type: "spawn" },
+  { id: "ctspawn", callout: "CT Spawn", x: 32.4, y: 68.8, z: 0, floor: 0, type: "spawn" },
+  { id: "asite", callout: "A Site", x: 54.4, y: 71.7, z: 0, floor: 0, type: "site" },
+  { id: "bsite", callout: "B Site", x: 23.4, y: 28.3, z: 0, floor: 0, type: "site" },
+  { id: "mid", callout: "Middle", x: 51.2, y: 47.9, z: 0, floor: 0, type: "mid" },
+  { id: "topmid", callout: "Top Mid", x: 69.1, y: 41.0, z: 0, floor: 0, type: "mid" },
+  { id: "window", callout: "Snipers Nest", x: 39.6, y: 47.4, z: 1, floor: 1, type: "choke" },
+  { id: "connector", callout: "Connector", x: 50.3, y: 54.5, z: 0, floor: 0, type: "connector" },
+  { id: "jungle", callout: "Jungle", x: 43.9, y: 60.6, z: 0, floor: 0, type: "connector" },
+  { id: "catwalk", callout: "Catwalk", x: 47.6, y: 35.5, z: 0, floor: 0, type: "connector" },
+  { id: "aramp", callout: "Stairs", x: 53.6, y: 62.2, z: 0, floor: 0, type: "choke" },
+  { id: "palace", callout: "Palace", x: 72.3, y: 72.1, z: 1, floor: 1, type: "choke" },
+  { id: "tramp", callout: "T Ramp", x: 70.6, y: 65.2, z: 0, floor: 0, type: "connector" },
+  { id: "palacealley", callout: "Palace Alley", x: 79.5, y: 58.5, z: 0, floor: 0, type: "connector" },
+  { id: "scaffolding", callout: "Scaffolding", x: 64.2, y: 72.1, z: 0, floor: 0, type: "connector" },
+  { id: "sidealley", callout: "Side Alley", x: 73.6, y: 25.9, z: 0, floor: 0, type: "connector" },
+  { id: "house", callout: "House", x: 68.9, y: 18.1, z: 0, floor: 0, type: "connector" },
+  { id: "backalley", callout: "Back Alley", x: 54.5, y: 21.4, z: 0, floor: 0, type: "connector" },
+  { id: "underpass", callout: "Underpass", x: 45.7, y: 31.3, z: -1, floor: -1, type: "lurker" },
+  { id: "bapps", callout: "Apartments", x: 33.2, y: 19.2, z: 1, floor: 1, type: "choke" },
+  { id: "van", callout: "Van", x: 21.1, y: 19.1, z: 0, floor: 0, type: "choke" },
+  { id: "market", callout: "Market", x: 24.8, y: 44.0, z: 0, floor: 0, type: "connector" },
 ];
-
-// ---------------------------------------------------------------------------
-// Edges (real connectivity + tactical weights). Authored once; `e()` adds both directions
-// unless oneWay. Tags drive utility-/state-aware routing (see pathfinder.edgeCost).
-// ---------------------------------------------------------------------------
-
-type EdgeSpec = Omit<MapEdge, "from" | "to">;
-function e(from: string, to: string, spec: EdgeSpec): MapEdge {
-  return { from, to, ...spec };
-}
-
-export const mirageEdges: MapEdge[] = [
-  // T side -> A (ramp / palace)
-  e("tspawn", "tramp", { travelTime: 4, exposure: 0.2, noise: 0.3, chokepoint: 0.2, utilityValue: 0.1 }),
-  e("tramp", "aramp", { travelTime: 3, exposure: 0.6, noise: 0.4, chokepoint: 0.7, utilityValue: 0.6, tags: ["a-execute"] }),
-  e("tramp", "palace", { travelTime: 3, exposure: 0.4, noise: 0.4, chokepoint: 0.5, utilityValue: 0.5, tags: ["a-execute"] }),
-  e("aramp", "asite", { travelTime: 2, exposure: 0.85, noise: 0.5, chokepoint: 0.8, utilityValue: 0.7, tags: ["a-execute", "dry-danger"] }),
-  e("palace", "asite", { travelTime: 2, exposure: 0.6, noise: 0.4, chokepoint: 0.5, utilityValue: 0.6, oneWay: true, requires: "drop", tags: ["a-execute"] }),
-  e("asite", "ticket", { travelTime: 1, exposure: 0.3, noise: 0.2, chokepoint: 0.2, utilityValue: 0.1 }),
-
-  // T side -> mid
-  e("tspawn", "topmid", { travelTime: 3, exposure: 0.3, noise: 0.3, chokepoint: 0.3, utilityValue: 0.2 }),
-  e("topmid", "mid", { travelTime: 3, exposure: 0.7, noise: 0.4, chokepoint: 0.5, utilityValue: 0.5, tags: ["mid-control"] }),
-  e("mid", "window", { travelTime: 2, exposure: 0.9, noise: 0.3, chokepoint: 0.4, utilityValue: 0.5, tags: ["awp-angle", "mid-control"] }),
-  e("mid", "connector", { travelTime: 2, exposure: 0.6, noise: 0.3, chokepoint: 0.5, utilityValue: 0.5, tags: ["mid-control"] }),
-  e("mid", "catwalk", { travelTime: 2, exposure: 0.5, noise: 0.3, chokepoint: 0.4, utilityValue: 0.4 }),
-  e("mid", "bshort", { travelTime: 3, exposure: 0.5, noise: 0.3, chokepoint: 0.4, utilityValue: 0.4 }),
-  e("mid", "underpass", { travelTime: 2, exposure: 0.3, noise: 0.2, chokepoint: 0.3, utilityValue: 0.3, tags: ["lurk"] }),
-
-  // connector / jungle / catwalk -> A
-  e("connector", "jungle", { travelTime: 2, exposure: 0.4, noise: 0.3, chokepoint: 0.4, utilityValue: 0.4 }),
-  e("jungle", "asite", { travelTime: 2, exposure: 0.5, noise: 0.3, chokepoint: 0.5, utilityValue: 0.5 }),
-  e("connector", "asite", { travelTime: 3, exposure: 0.5, noise: 0.3, chokepoint: 0.5, utilityValue: 0.5 }),
-  e("catwalk", "asite", { travelTime: 2, exposure: 0.6, noise: 0.4, chokepoint: 0.5, utilityValue: 0.5 }),
-  e("window", "jungle", { travelTime: 2, exposure: 0.5, noise: 0.2, chokepoint: 0.3, utilityValue: 0.3 }),
-
-  // B side
-  e("tspawn", "bapps", { travelTime: 5, exposure: 0.3, noise: 0.3, chokepoint: 0.4, utilityValue: 0.3 }),
-  e("underpass", "bapps", { travelTime: 2, exposure: 0.3, noise: 0.3, chokepoint: 0.4, utilityValue: 0.3, tags: ["lurk"] }),
-  e("bapps", "bsite", { travelTime: 3, exposure: 0.8, noise: 0.5, chokepoint: 0.9, utilityValue: 0.8, tags: ["b-execute", "major-choke", "dry-danger"] }),
-  e("catwalk", "bshort", { travelTime: 2, exposure: 0.4, noise: 0.3, chokepoint: 0.4, utilityValue: 0.4, tags: ["split-b"] }),
-  e("bshort", "bsite", { travelTime: 2, exposure: 0.6, noise: 0.4, chokepoint: 0.6, utilityValue: 0.5, tags: ["split-b"] }),
-  e("market", "bsite", { travelTime: 2, exposure: 0.5, noise: 0.4, chokepoint: 0.5, utilityValue: 0.4, tags: ["retake", "hold"] }),
-  e("market", "bshort", { travelTime: 2, exposure: 0.3, noise: 0.3, chokepoint: 0.3, utilityValue: 0.3 }),
-
-  // CT rotations from spawn
-  e("ctspawn", "market", { travelTime: 3, exposure: 0.2, noise: 0.3, chokepoint: 0.3, utilityValue: 0.2, tags: ["rotate"] }),
-  e("ctspawn", "connector", { travelTime: 4, exposure: 0.3, noise: 0.3, chokepoint: 0.3, utilityValue: 0.3, tags: ["rotate"] }),
-  e("ctspawn", "jungle", { travelTime: 4, exposure: 0.3, noise: 0.3, chokepoint: 0.3, utilityValue: 0.3, tags: ["rotate"] }),
-  e("ctspawn", "window", { travelTime: 3, exposure: 0.4, noise: 0.3, chokepoint: 0.3, utilityValue: 0.3, tags: ["rotate"] }),
-];
-
-// ---------------------------------------------------------------------------
-// Adjacency + lookups
-// ---------------------------------------------------------------------------
 
 const nodeById = new Map(mirageNodes.map((n) => [n.id, n]));
 export function getNode(id: string): MapNode | undefined {
   return nodeById.get(id);
 }
+
+// --- Edges: real callout adjacency (player transitions). travelTime auto from radar distance. ---
+type EdgeTac = Partial<Omit<MapEdge, "from" | "to" | "travelTime">>;
+const WALK = 5; // radar units/sec (calibrated from the demo)
+function e(from: string, to: string, tac: EdgeTac = {}): MapEdge {
+  const a = nodeById.get(from)!;
+  const b = nodeById.get(to)!;
+  const d = Math.hypot(a.x - b.x, a.y - b.y);
+  return {
+    from,
+    to,
+    travelTime: Math.max(0.5, d / WALK),
+    exposure: tac.exposure ?? 0.3,
+    noise: tac.noise ?? 0.3,
+    chokepoint: tac.chokepoint ?? 0.2,
+    utilityValue: tac.utilityValue ?? 0.2,
+    oneWay: tac.oneWay,
+    requires: tac.requires,
+    tags: tac.tags,
+  };
+}
+
+export const mirageEdges: MapEdge[] = [
+  // T spawn out
+  e("tspawn", "sidealley", { exposure: 0.3, tags: ["t-exit"] }),
+  e("tspawn", "palacealley", { exposure: 0.4, tags: ["t-exit", "a-execute"] }),
+  e("tspawn", "palace", { exposure: 0.4, chokepoint: 0.4, utilityValue: 0.4, tags: ["a-execute"] }),
+  // A side (palace / ramp)
+  e("palace", "asite", { exposure: 0.6, chokepoint: 0.5, utilityValue: 0.6, oneWay: true, requires: "drop", tags: ["a-execute"] }),
+  e("palace", "tramp", { exposure: 0.3 }),
+  e("palace", "scaffolding", { exposure: 0.4 }),
+  e("palacealley", "tramp", { exposure: 0.3 }),
+  e("asite", "aramp", { exposure: 0.6, chokepoint: 0.5, tags: ["a-execute"] }),
+  e("asite", "scaffolding", { exposure: 0.4 }),
+  e("asite", "connector", { exposure: 0.5, chokepoint: 0.4, tags: ["mid-to-a"] }),
+  e("asite", "jungle", { exposure: 0.5, chokepoint: 0.4 }),
+  // mid
+  e("sidealley", "topmid", { exposure: 0.6, tags: ["mid-control"] }),
+  e("topmid", "mid", { exposure: 0.8, chokepoint: 0.4, utilityValue: 0.5, tags: ["mid-control", "awp-angle"] }),
+  e("mid", "connector", { exposure: 0.6, tags: ["mid-to-a", "mid-control"] }),
+  e("mid", "window", { exposure: 0.9, chokepoint: 0.4, utilityValue: 0.5, tags: ["awp-angle", "mid-control"] }),
+  e("mid", "underpass", { exposure: 0.3, chokepoint: 0.3, tags: ["mid-to-b", "lurk"] }),
+  e("connector", "jungle", { exposure: 0.4 }),
+  // B side (apartments / van / market / catwalk)
+  e("sidealley", "house", { exposure: 0.3, tags: ["b-execute"] }),
+  e("house", "backalley", { exposure: 0.3, tags: ["b-execute"] }),
+  e("backalley", "bapps", { exposure: 0.4, chokepoint: 0.5, utilityValue: 0.5, tags: ["b-execute"] }),
+  e("backalley", "underpass", { exposure: 0.3 }),
+  e("bapps", "van", { exposure: 0.6, chokepoint: 0.6, utilityValue: 0.6, requires: "drop", tags: ["b-execute"] }),
+  e("van", "bsite", { exposure: 0.6, chokepoint: 0.5, utilityValue: 0.5, tags: ["b-execute"] }),
+  e("underpass", "catwalk", { exposure: 0.5, chokepoint: 0.4, tags: ["mid-to-b"] }),
+  e("catwalk", "bsite", { exposure: 0.6, chokepoint: 0.5, utilityValue: 0.5, tags: ["mid-to-b", "split-b"] }),
+  e("bsite", "market", { exposure: 0.4, tags: ["retake", "hold"] }),
+  // CT rotations from spawn
+  e("ctspawn", "asite", { exposure: 0.3, tags: ["rotate"] }),
+  e("ctspawn", "market", { exposure: 0.3, tags: ["rotate"] }),
+  e("ctspawn", "jungle", { exposure: 0.3, tags: ["rotate"] }),
+  e("ctspawn", "window", { exposure: 0.4, tags: ["rotate"] }),
+  e("ctspawn", "mid", { exposure: 0.4, tags: ["rotate"] }),
+];
 
 // Outgoing edges per node (bidirectional unless oneWay).
 const adjacency = new Map<string, MapEdge[]>();
@@ -137,7 +140,7 @@ export function neighbors(id: string): MapEdge[] {
   return adjacency.get(id) ?? [];
 }
 
-/** Nearest graph node to a radar (0..100) point — for snapping arbitrary positions onto the graph. */
+/** Nearest graph node to a radar (0..100) point. */
 export function nearestNode(x: number, y: number): MapNode {
   let best = mirageNodes[0];
   let bestD = Infinity;
@@ -150,8 +153,6 @@ export function nearestNode(x: number, y: number): MapNode {
   }
   return best;
 }
-
-// --- Round assignment helpers (shared by the sim and the radar so they agree on executes) ---
 
 function hashStr(str: string): number {
   let hash = 0;
@@ -181,8 +182,7 @@ export function spawnNodeId(side: "CT" | "T"): string {
 
 /**
  * Two callouts are "in contact" if they're the same node or directly connected (share an edge). The
- * graph encodes real, elevation-aware adjacency, so this never reports a false sightline (e.g. palace
- * and mid sit close on the 2D radar but aren't connected, so players there can't trade).
+ * graph encodes real, elevation-aware adjacency, so this never reports a false sightline.
  */
 export function areConnected(aId: string, bId: string): boolean {
   if (aId === bId) return true;
