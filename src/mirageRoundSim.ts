@@ -49,6 +49,7 @@ export interface MirageSimInput {
   awp: Set<string>; // playerIds holding an AWP
   weapons: Record<string, string>; // playerId -> weapon name (for the feed)
   teamBias: number; // -0.5..0.5: >0 favours "you" per duel (from team-strength probability)
+  tactic?: string; // "aggressive" makes CTs more likely to push out to the extremities
 }
 interface Team {
   players: Player[];
@@ -101,6 +102,71 @@ interface SimP {
   hasBomb: boolean;
 }
 
+// T-side approach plans — distinct routes per player so a take spreads across the map (ramp, palace,
+// mid->connector->A, mid->cat->short->B, apps, underpass lurk) instead of funnelling one choke. Each
+// step is a real graph edge; the final node is what they hold. idx 0-4 = roster slots.
+function tPlan(idx: number, strategy: number): string[] {
+  if (strategy === 1) {
+    // stack A
+    return [
+      ["tramp", "aramp", "asite"], // entry up ramp
+      ["tramp", "palace", "asite"], // palace
+      ["topmid", "mid", "connector", "asite"], // mid -> connector -> A
+      ["tramp", "aramp", "asite"], // ramp support
+      ["topmid", "mid", "connector"], // lurk mid/connector
+    ][idx];
+  }
+  if (strategy === 2) {
+    // stack B
+    return [
+      ["bapps", "bsite"], // apps
+      ["bapps", "bsite"], // apps
+      ["topmid", "mid", "catwalk", "bshort", "bsite"], // mid -> cat -> short -> B
+      ["topmid", "mid", "bshort", "bsite"], // mid -> short -> B
+      ["topmid", "mid", "underpass"], // lurk underpass (flank)
+    ][idx];
+  }
+  // split A/B
+  return [
+    ["tramp", "aramp", "asite"], // A ramp
+    ["tramp", "palace", "asite"], // A palace
+    ["bapps", "bsite"], // B apps
+    ["topmid", "mid", "catwalk", "bshort", "bsite"], // B through mid/cat/short
+    ["topmid", "mid", "connector"], // mid control / lurk
+  ][idx];
+}
+
+// CT objective per slot. `push` sends them out to an extremity (aggressive peek) rather than holding
+// their site — accessible CT pushes only (ramp from A, apps/short from B, top-mid through mid).
+function ctObjective(idx: number, push: boolean): string {
+  if (idx === 0) return push ? "aramp" : "asite"; // A anchor / ramp push
+  if (idx === 3) return push ? "mid" : "jungle"; // A support: jungle hold / mid push
+  if (idx === 1) return push ? "bapps" : "bsite"; // B anchor / apps push
+  if (idx === 4) return push ? "bshort" : "market"; // B support: market hold / short push
+  return push ? "topmid" : "window"; // mid player: window hold / top-mid push
+}
+
+// Route through a sequence of callouts (each leg via findRoute), corridor-snapped to the floor.
+function buildPlanRoute(startId: string, plan: string[], sit: Situation): { pts: Vec[]; cum: number[]; len: number; lastNode: string } {
+  const nodeSeq: string[] = [startId];
+  let from = startId;
+  for (const to of plan) {
+    const r = findRoute(from, to, roundStateFor(sit));
+    const legNodes = r ? r.nodes.map((n) => n.id) : [to];
+    for (let i = 1; i < legNodes.length; i += 1) nodeSeq.push(legNodes[i]); // skip the shared join node
+    from = to;
+  }
+  const raw = nodeSeq.map((id) => getNode(id)).filter(Boolean).map((n) => ({ x: n!.x, y: n!.y }));
+  const pts = (corridorPath("mirage", raw) || raw).map((p) => (GRID ? snapToWalkable(GRID, p) : p));
+  const cum = [0];
+  let len = 0;
+  for (let i = 1; i < pts.length; i += 1) {
+    len += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
+    cum.push(len);
+  }
+  return { pts: pts.length ? pts : [{ x: 50, y: 50 }], cum, len, lastNode: plan[plan.length - 1] ?? startId };
+}
+
 function buildRoute(fromId: string, toId: string, sit: Situation): { pts: Vec[]; cum: number[]; len: number } {
   const r = findRoute(fromId, toId, roundStateFor(sit));
   const nodes = r ? r.nodes : [getNode(fromId)!].filter(Boolean);
@@ -148,11 +214,30 @@ export function simulateMirageRound(input: MirageSimInput): MirageSimResult {
     availableUtility: 0,
     saving: false,
   };
-  const make = (team: TeamKey, players: Player[]): SimP[] =>
-    players.map((ref, idx) => {
-      const pside = sideOf(team);
-      const objective = objectiveFor(pside, idx, strategy, sit0);
-      const route = buildRoute(pside === "CT" ? "ctspawn" : "tspawn", objective, sit0);
+  const aggressiveRound = input.tactic === "aggressive";
+  const make = (team: TeamKey, players: Player[]): SimP[] => {
+    const pside = sideOf(team);
+    // Decide which CTs push out (cap 2 so the site isn't abandoned). Aggressive-style riflers push,
+    // an "aggressive" round call pushes more, plus a small baseline peek chance.
+    const ctPush: boolean[] = players.map((ref) =>
+      pside === "CT" &&
+      (ref.style === "Aggressive" || (aggressiveRound && Math.random() < 0.7) || Math.random() < 0.1),
+    );
+    let pushBudget = 2;
+    return players.map((ref, idx) => {
+      let route: { pts: Vec[]; cum: number[]; len: number };
+      let objective: string;
+      if (pside === "T") {
+        const plan = tPlan(idx, strategy);
+        const r = buildPlanRoute("tspawn", plan, sit0);
+        route = { pts: r.pts, cum: r.cum, len: r.len };
+        objective = r.lastNode;
+      } else {
+        const push = ctPush[idx] && pushBudget > 0;
+        if (push) pushBudget -= 1;
+        objective = ctObjective(idx, push);
+        route = buildRoute("ctspawn", objective, sit0);
+      }
       return {
         ref,
         team,
@@ -172,6 +257,7 @@ export function simulateMirageRound(input: MirageSimInput): MirageSimResult {
         hasBomb: false,
       };
     });
+  };
   const ps: SimP[] = [...make("you", input.you.players), ...make("opponent", input.opponent.players)];
   const byId = new Map(ps.map((p) => [p.ref.id, p]));
   // bomb carrier: the lowest-idx T whose objective is the bomb site

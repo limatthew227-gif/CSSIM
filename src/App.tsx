@@ -2978,6 +2978,13 @@ function MatchMapView({ match, you, opponent, speed = 1 }: { match: MatchState; 
   const [fraction, setFraction] = React.useState(1);
   const prevStepRef = React.useRef(roundEvents.length);
 
+  // Reset the tween to 0 synchronously (pre-paint) whenever a new event arrives. Without this the
+  // stale fraction (left at 1 by the previous step) makes stepIndex overshoot to the next position
+  // for one frame and then snap back — the "teleport twitch" the dots showed.
+  React.useLayoutEffect(() => {
+    setFraction(0);
+  }, [roundEvents.length]);
+
   React.useEffect(() => {
     const currentStep = roundEvents.length;
     if (currentStep !== prevStepRef.current) {

@@ -866,14 +866,34 @@ const feedSpeedDelays: Record<number, number> = {
   4: 400,
 };
 
+// Real radar-seconds (ms) per ROUND-second of the spatial timeline. The per-step delay is the gap to
+// the next event scaled by this, so the radar advances at a CONSTANT rate — movement speed no longer
+// lurches with how close together kills happen. Clamped so the opening walk fast-forwards a little
+// and a quick trade still reads.
+const MS_PER_SIM_SEC = 900;
+const STEP_MIN = 350;
+const STEP_MAX = 2800;
+
 export function getStepDelay(
-  _match: MatchState,
+  match: MatchState,
   _you: FieldTeam,
   _opponent: FieldTeam,
   _stepIndex: number,
   speed: number,
   liveFeedView: "feed" | "map"
 ): number {
+  // Mirage map view plays the spatial timeline — pace by real round-time so movement is constant.
+  if (liveFeedView === "map" && match.map === "mirage" && match.roundTimeline) {
+    const active = match.pendingEvents?.[0]?.round ?? match.feed[0]?.round ?? match.round;
+    const completed = match.feed.filter((e) => e.round === active);
+    const remaining = (match.pendingEvents || []).filter((e) => e.round === active);
+    const chron = [...[...completed].reverse(), ...remaining];
+    const idx = completed.length; // the next event to reveal
+    if (idx >= 1 && idx < chron.length) {
+      const gap = Math.max(0, (chron[idx].t ?? 0) - (chron[idx - 1].t ?? 0));
+      return Math.max(STEP_MIN, Math.min(STEP_MAX, (gap * MS_PER_SIM_SEC) / speed));
+    }
+  }
   if (liveFeedView === "map") {
     return mapSpeedDelays[speed] ?? 3200;
   }

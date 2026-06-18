@@ -216,6 +216,18 @@ Measured (real weights): even teams ~51% round win; 5-OVR gap ~79% match, 8-OVR 
 happen; ~6.8 kills/round; first death ~7.6s; T/CT ~54/46; **0% through-wall kills**. Tunables live at
 the top of `mirageRoundSim.ts` (`WALK_SPEED`, `SIGHT_RANGE`, `TTK_BASE`, `SKILL_W`, `TEAM_W`, …).
 
+**AI variety + aggression.** T takes spread across distinct approaches via per-slot route plans
+(`tPlan`): ramp, palace, mid→connector→A, mid→cat→short→B, apps, underpass lurk — not one choke. CTs
+spread to hold their site/mid (`ctObjective`) and some PUSH out to an extremity (ramp / apps / top-mid)
+— aggressive-style riflers always, more of them on an `"aggressive"` round call (`tactic`), capped at
+2 so the site isn't abandoned.
+
+**Radar playback pacing.** The map view plays the timeline at a CONSTANT real rate: `getStepDelay`
+scales each step by the sim-time gap to the next event (`MS_PER_SIM_SEC`, clamped), so movement no
+longer lurches faster/slower with how close kills are. The animation `fraction` is reset synchronously
+(`useLayoutEffect`) when a new event lands, killing the one-frame "teleport twitch" where a dot
+overshot and snapped back.
+
 > Note: the legacy mirage graph-gating inside `generateDynamicRound` (`routeOf`/`posOf`/`areConnected`
 > kill-gating) is now **superseded and unreachable** for mirage (the spatial branch returns first); it
 > remains only as dead code pending cleanup. Non-mirage maps never used it.

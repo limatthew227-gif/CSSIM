@@ -2032,7 +2032,7 @@ export function generateDynamicRound(
     fillSkill(opponent.players, opponentWeapons, you.rank);
     const teamBias = clamp(initialProbability, 0.01, 0.99) - 0.5; // team strength still tilts duels
 
-    const sim = simulateMirageRound({ you, opponent, side, strategy, skill, awp: awpSet, weapons: weaponsAll, teamBias });
+    const sim = simulateMirageRound({ you, opponent, side, strategy, skill, awp: awpSet, weapons: weaponsAll, teamBias, tactic });
 
     const idMap = new Map<string, Player>([...you.players, ...opponent.players].map((pl) => [pl.id, pl] as const));
     const deathTimeOf = new Map<string, number>();
