@@ -3,6 +3,7 @@ import { MapId, Player } from "./gameData";
 import { findRoute, corridorPath } from "./pathfinder";
 import { nearestNode } from "./mirageNav";
 import { getNavGrid, snapToWalkable, hasLineOfSight } from "./mapGeometry";
+import type { TimelineFrame } from "./mirageRoundSim";
 
 // Walkable mask for the graph map, memoized once (getNavGrid is itself memoized).
 const MIRAGE_GRID = getNavGrid("mirage");
@@ -521,6 +522,29 @@ export interface RadarSimulationResult {
   bomb: Position | null;
 }
 
+// Interpolate a player's position/yaw from the spatial timeline at round-time `time` (seconds).
+// Dead players' frames are frozen at their death spot by the engine, so this naturally stops them.
+function sampleTimeline(tl: TimelineFrame[], time: number, id: string): { x: number; y: number; yaw: number } | null {
+  if (!tl.length) return null;
+  if (time <= tl[0].t) {
+    const p = tl[0].players.find((q) => q.id === id);
+    return p ? { x: p.x, y: p.y, yaw: p.yaw } : null;
+  }
+  for (let i = 1; i < tl.length; i += 1) {
+    if (tl[i].t >= time) {
+      const a = tl[i - 1];
+      const b = tl[i];
+      const f = b.t > a.t ? (time - a.t) / (b.t - a.t) : 0;
+      const pa = a.players.find((q) => q.id === id);
+      const pb = b.players.find((q) => q.id === id);
+      if (!pa || !pb) return pa ?? pb ? { x: (pa ?? pb)!.x, y: (pa ?? pb)!.y, yaw: (pa ?? pb)!.yaw } : null;
+      return { x: pa.x + (pb.x - pa.x) * f, y: pa.y + (pb.y - pa.y) * f, yaw: pa.yaw };
+    }
+  }
+  const last = tl[tl.length - 1].players.find((q) => q.id === id);
+  return last ? { x: last.x, y: last.y, yaw: last.yaw } : null;
+}
+
 export function simulateRadarPlayers(
   match: MatchState,
   you: FieldTeam,
@@ -550,6 +574,38 @@ export function simulateRadarPlayers(
         deadIds.add(event.victimId);
       }
     }
+  }
+
+  // === Mirage spatial replay: play the engine's real per-player trajectories (set by playRound). ===
+  // This is the authoritative movement now — players spread across approaches and only meet where the
+  // duels actually happened, so no funnel/teleport and traces are real sightlines.
+  if (useGraph && match.roundTimeline && match.roundTimelineRound === activeRound && match.roundTimeline.length) {
+    const tl = match.roundTimeline;
+    // map the event-step clock onto round-time via each event's timestamp
+    const eventT: number[] = allEvents.map((e) => e.t ?? NaN);
+    for (let i = 0; i < eventT.length; i += 1) if (Number.isNaN(eventT[i])) eventT[i] = i > 0 ? eventT[i - 1] : 0;
+    const si = Math.max(0, Math.min(totalSteps, stepIndex));
+    const lo = Math.min(eventT.length - 1, Math.floor(si));
+    const hi = Math.min(eventT.length - 1, lo + 1);
+    const curT = (eventT[lo] ?? 0) + ((eventT[hi] ?? eventT[lo] ?? 0) - (eventT[lo] ?? 0)) * (si - lo);
+
+    const mk = (players: Player[], side: "CT" | "T", team: "you" | "opponent"): SimulatedRadarPlayer[] =>
+      players.map((p) => {
+        const s = sampleTimeline(tl, curT, p.id);
+        return { ...p, x: s?.x ?? 50, y: s?.y ?? 50, yaw: s?.yaw ?? 0, alive: !deadIds.has(p.id), side, team };
+      });
+    const players = [...mk(you.players, yourSide, "you"), ...mk(opponent.players, opponentSide, "opponent")];
+
+    const traces: RadarTrace[] = [];
+    for (let i = 0; i < allEvents.length && i < stepIndex; i += 1) {
+      const e = allEvents[i];
+      if ((!e.type || e.type === "kill") && e.killerId && e.victimId && e.killerPos && e.victimPos) {
+        traces.push({ round: activeRound, killerId: e.killerId, victimId: e.victimId, killerPos: e.killerPos, victimPos: e.victimPos, side: e.team === "you" ? yourSide : opponentSide });
+      }
+    }
+    const pe = allEvents.findIndex((e) => e.type === "plant");
+    const bomb = pe !== -1 && stepIndex > pe ? allEvents[pe].killerPos ?? null : null;
+    return { players, traces: traces.slice(-6), bomb };
   }
 
   // Find plant event details

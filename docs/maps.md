@@ -190,3 +190,32 @@ duplicate-step waypoints (latest wins) — **0 teleport jumps** over the same sa
 
 **Remaining:** economy-driven saves, and extending the graph to the other maps (they still use the
 legacy straight-line node paths).
+
+## Mirage: real spatial round (`src/mirageRoundSim.ts`)
+
+The biggest change: on **mirage the round outcome EMERGES from the map**, instead of being a
+probability that kills are narrated onto. `simulateMirageRound` runs a time-stepped sim (0.5s ticks,
+115s):
+
+- **Navigation + roles.** 10 players route from spawn to role-based objectives (`roundAI.objectiveFor`
+  — entry/support/AWP push the execute, the lurker takes an off-angle, CTs spread across sites + mid)
+  along corridor-snapped graph routes. They spread across approaches — no funnelling through one choke.
+- **LOS duels DRIVE the result.** A kill only happens when two enemies are within range AND have real
+  `hasLineOfSight` on the nav grid. A contact starts a duel with a reaction timer (so deaths are paced,
+  not instant), then one dies. **Who wins** is skill-weighted (killWeight/deathWeight ratio, compressed
+  so a small OVR gap doesn't snowball over a match), plus holder/AWP/crossfire factors and a
+  team-strength bias (`initialProbability`) so aggregate win rates still track team strength.
+- **Bomb.** A T carrier plants when on-site and uncontested; post-plant everyone re-plans (CT retake /
+  T hold / lurker flank). Round ends by elimination, explode, defuse, or time.
+- **Output.** The same `FeedLine[]` (economy/stats unchanged) — each kill carries its real
+  `killerPos`/`victimPos`/`t` — PLUS a per-player **position timeline**. `playRound` stores the timeline
+  on `MatchState.roundTimeline`; `simulateRadarPlayers` plays it back so the radar shows the engine's
+  ACTUAL movement and duels (no reconstruction, no funnel/teleport). Non-mirage maps are unchanged.
+
+Measured (real weights): even teams ~51% round win; 5-OVR gap ~79% match, 8-OVR ~92%, upsets still
+happen; ~6.8 kills/round; first death ~7.6s; T/CT ~54/46; **0% through-wall kills**. Tunables live at
+the top of `mirageRoundSim.ts` (`WALK_SPEED`, `SIGHT_RANGE`, `TTK_BASE`, `SKILL_W`, `TEAM_W`, …).
+
+> Note: the legacy mirage graph-gating inside `generateDynamicRound` (`routeOf`/`posOf`/`areConnected`
+> kill-gating) is now **superseded and unreachable** for mirage (the spatial branch returns first); it
+> remains only as dead code pending cleanup. Non-mirage maps never used it.

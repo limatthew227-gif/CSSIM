@@ -14,6 +14,7 @@ import type { Vec } from "./mapGeometry";
 import { findRoute, pointAlongRoute, nodeIndexAt, corridorPath } from "./pathfinder";
 import { mirageStrategy, spawnNodeId, areConnected, getNode, type MapNode } from "./mirageNav";
 import { objectiveFor, roundStateFor, type Situation, type Site } from "./roundAI";
+import { simulateMirageRound, type TimelineFrame } from "./mirageRoundSim";
 
 export interface BonusLine {
   label: string;
@@ -101,6 +102,7 @@ export interface FeedLine {
   killerPos?: { x: number; y: number };
   victimPos?: { x: number; y: number };
   engage?: { from: string; to: string }; // callouts the duel was resolved between (graph nav)
+  t?: number; // round-time (seconds) this event happened — maps the radar onto the spatial timeline
   assistant?: string;
   assistantId?: string;
   killerDamage?: number;
@@ -123,6 +125,10 @@ export interface MatchState {
   economy: "ECO" | "FORCE" | "FULL";
   opponentEconomy: "ECO" | "FORCE" | "FULL";
   feed: FeedLine[];
+  // Mirage spatial replay: per-player position frames for the active round, so the radar plays the
+  // engine's REAL trajectories (not a reconstruction). roundTimelineRound says which round it covers.
+  roundTimeline?: TimelineFrame[];
+  roundTimelineRound?: number;
   yourStats: Record<string, PlayerLine>;
   opponentStats: Record<string, PlayerLine>;
   yourSideStats: SideStats;
@@ -1650,6 +1656,7 @@ export function playRound(
   const tPlantedBomb = dynamicResult.tPlantedBomb;
   const bombOutcome = dynamicResult.bombOutcome;
   const feed = dynamicResult.feed;
+  const roundTimeline = dynamicResult.timeline; // mirage spatial replay (undefined on other maps)
 
   const winningTeamId: "you" | "opponent" = youWin ? "you" : "opponent";
   const losingTeamId: "you" | "opponent" = youWin ? "opponent" : "you";
@@ -1834,6 +1841,8 @@ export function playRound(
       opponentEconomy: nextOpponentEconomyState,
       side: nextSide,
       feed: [...[...feed].reverse(), ...state.feed].slice(0, 60),
+      roundTimeline,
+      roundTimelineRound: state.round,
       yourStats: finalYourStats,
       opponentStats: finalOpponentStats,
       yourSideStats: finalYourSideStats,
@@ -1862,6 +1871,8 @@ export function playRound(
     opponentWeapons,
     yourArmor,
     opponentArmor,
+    roundTimeline,
+    roundTimelineRound: state.round,
     pendingEvents: feed,
     pendingRoundWinner: winningTeamId,
     pendingRoundReason: roundReason,
@@ -1998,6 +2009,108 @@ export function generateDynamicRound(
 
   const tName = side === "T" ? you.name : opponent.name;
   const strategy = mirageStrategy(tName, round);
+
+  // === Mirage: real spatial round (navigation + line-of-sight DUELS drive the outcome) ===
+  // Replaces the logit-narration model below. Players route to role-based objectives and only trade
+  // when they actually see each other; the round result emerges from those duels. Economy/stats are
+  // unchanged (they consume the feed this builds). See mirageRoundSim.ts.
+  if (usePositions) {
+    const skill = new Map<string, number>();
+    const awpSet = new Set<string>();
+    const weaponsAll: Record<string, string> = {};
+    const fillSkill = (players: Player[], weapons: Record<string, string>, oppRank: number | undefined) => {
+      for (const pl of players) {
+        const wpn = weapons[pl.id] ?? "";
+        const kw = killWeightFn(pl, context, oppRank, wpn);
+        const dw = Math.max(0.2, deathWeightFn(pl, context, oppRank, wpn));
+        skill.set(pl.id, Math.max(0.1, kw / dw)); // strong duelists: high kill weight, low death weight
+        if (wpn.toUpperCase().includes("AWP")) awpSet.add(pl.id);
+        weaponsAll[pl.id] = wpn;
+      }
+    };
+    fillSkill(you.players, yourWeapons, opponent.rank);
+    fillSkill(opponent.players, opponentWeapons, you.rank);
+    const teamBias = clamp(initialProbability, 0.01, 0.99) - 0.5; // team strength still tilts duels
+
+    const sim = simulateMirageRound({ you, opponent, side, strategy, skill, awp: awpSet, weapons: weaponsAll, teamBias });
+
+    const idMap = new Map<string, Player>([...you.players, ...opponent.players].map((pl) => [pl.id, pl] as const));
+    const deathTimeOf = new Map<string, number>();
+    for (const ev of sim.events) if (ev.type === "kill" && ev.victimId) deathTimeOf.set(ev.victimId, ev.t);
+    const aliveAt = (teamKey: "you" | "opponent", atT: number) =>
+      (teamKey === "you" ? you.players : opponent.players).filter((pl) => {
+        const d = deathTimeOf.get(pl.id);
+        return d === undefined || d > atT;
+      });
+    const countsAt = (atT: number) => ({ ct: aliveAt(ctTeamKey, atT).length, t: aliveAt(tTeamKey, atT).length });
+
+    // Cosmetic utility, gated by nades actually bought (never mints kills). Spread through the round.
+    const utilBudget: Record<"you" | "opponent", number> = { you: yourUtilCount, opponent: opponentUtilCount };
+    const utilLines: FeedLine[] = [];
+    for (let k = 0; k < MAX_UTIL_EVENTS && utilLines.length < MAX_UTIL_EVENTS; k += 1) {
+      const teamKey = k % 2 === 0 ? tTeamKey : ctTeamKey;
+      if (utilBudget[teamKey] <= 0) continue;
+      utilBudget[teamKey] -= 1;
+      const type: "smoke" | "flash" | "molotov" | "he" =
+        teamKey === tTeamKey ? (Math.random() < 0.6 ? "smoke" : "flash") : Math.random() < 0.5 ? "molotov" : "he";
+      const squad = teamKey === "you" ? you.players : opponent.players;
+      const thrower = squad[Math.floor(Math.random() * squad.length)];
+      const node = getNode(strategy === 2 ? "bsite" : "asite");
+      utilLines.push({ round, killer: thrower.handle, killerId: "", victim: "", victimId: "", weapon: type, team: teamKey, first: false, type, killerPos: node ? { x: node.x, y: node.y } : undefined, t: 3 + k * 3 + Math.random() * 2 });
+    }
+
+    // Translate engine events -> feed lines (with timestamps so the radar plays the timeline).
+    const eventLines: FeedLine[] = [];
+    let killSeen = 0;
+    for (const ev of sim.events) {
+      if (ev.type === "kill" && ev.killerId && ev.victimId) {
+        const killer = idMap.get(ev.killerId)!;
+        const victim = idMap.get(ev.victimId)!;
+        const isFirst = killSeen === 0;
+        killSeen += 1;
+        // assist: a living teammate of the killer at that moment (cosmetic), ~36% of kills
+        let assistant: Player | undefined;
+        let assistantDmg = 0;
+        let killerDmg: number;
+        if (Math.random() < 0.36) {
+          const mates = aliveAt(ev.side, ev.t).filter((pl) => pl.id !== killer.id);
+          if (mates.length) {
+            assistant = mates[Math.floor(Math.random() * mates.length)];
+            assistantDmg = Math.floor(25 + Math.random() * 30);
+          }
+        }
+        killerDmg = assistantDmg > 0 ? Math.max(30, 100 - assistantDmg) : Math.floor(65 + Math.random() * 35);
+        eventLines.push({
+          round, killer: killer.handle, killerId: killer.id, victim: victim.handle, victimId: victim.id,
+          weapon: weaponsAll[killer.id] || "Pistol", team: ev.side, first: isFirst,
+          assistant: assistant?.handle, assistantId: assistant?.id, killerDamage: killerDmg, assistantDamage: assistantDmg,
+          isHeadshot: !!ev.headshot, flashAssist: Math.random() < 0.25, killerPos: ev.killerPos, victimPos: ev.victimPos, engage: ev.engage, t: ev.t,
+        });
+      } else if (ev.type === "plant") {
+        const c = countsAt(ev.t);
+        const planter = ev.killerId ? idMap.get(ev.killerId) : undefined;
+        eventLines.push({ round, killer: planter?.handle ?? "", killerId: ev.killerId ?? "", victim: "Bomb Site", victimId: "", weapon: "bomb", team: tTeamKey, first: false, type: "plant", ctAlive: c.ct, tAlive: c.t, killerPos: ev.killerPos, t: ev.t });
+      } else if (ev.type === "defuse") {
+        const c = countsAt(ev.t);
+        const defuser = ev.killerId ? idMap.get(ev.killerId) : undefined;
+        eventLines.push({ round, killer: defuser?.handle ?? "", killerId: ev.killerId ?? "", victim: "Bomb", victimId: "", weapon: "defuse_kit", team: ctTeamKey, first: false, type: "defuse", ctAlive: c.ct, tAlive: c.t, t: ev.t });
+      } else if (ev.type === "explode") {
+        eventLines.push({ round, killer: "Bomb", killerId: "", victim: "", victimId: "", weapon: "bomb", team: "neutral", first: false, type: "explode", killerPos: ev.killerPos, t: ev.t });
+      }
+    }
+
+    const ordered = [...eventLines, ...utilLines].sort((a, b) => (a.t ?? 0) - (b.t ?? 0));
+    feed.push(...ordered);
+
+    const youWin = sim.youWin;
+    feed.push({
+      round, killer: "", killerId: "", victim: "", victimId: "", weapon: "", team: youWin ? "you" : "opponent", first: false, type: "round_over",
+      tScore: side === "T" ? youScore + (youWin ? 1 : 0) : opponentScore + (youWin ? 0 : 1),
+      ctScore: side === "CT" ? youScore + (youWin ? 1 : 0) : opponentScore + (youWin ? 0 : 1),
+      reason: sim.roundReason,
+    });
+    return { feed, youWin, tPlantedBomb: sim.tPlantedBomb, bombOutcome: sim.bombOutcome, roundReason: sim.roundReason, timeline: sim.timeline };
+  }
   const youHasAwp = you.players.some((pl) => yourWeapons[pl.id] === "AWP");
   const oppHasAwp = opponent.players.some((pl) => opponentWeapons[pl.id] === "AWP");
   const sideOf = (teamKey: "you" | "opponent"): MatchSide => (teamKey === tTeamKey ? "T" : "CT");
@@ -2390,7 +2503,7 @@ export function generateDynamicRound(
     reason: finalReason
   });
 
-  return { feed, youWin, tPlantedBomb, bombOutcome, roundReason: finalReason };
+  return { feed, youWin, tPlantedBomb, bombOutcome, roundReason: finalReason, timeline: undefined as TimelineFrame[] | undefined };
 }
 
 function weightedCount(values: number[]) {

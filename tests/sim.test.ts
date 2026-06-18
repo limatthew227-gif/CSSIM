@@ -39,7 +39,7 @@ import {
   utilFactor,
 } from "../src/sim";
 import type { FieldTeam } from "../src/sim";
-import { areConnected } from "../src/mirageNav";
+import { getNavGrid, hasLineOfSight } from "../src/mapGeometry";
 
 // ---------------------------------------------------------------------------
 // Seeded RNG
@@ -338,7 +338,7 @@ test("generateDynamicRound: utility events appear only when nades were bought, a
   );
 });
 
-test("generateDynamicRound on mirage: kills happen between players in contact on the tactical graph", () => {
+test("mirage spatial round: every kill happens on a real line-of-sight (no through-wall shots)", () => {
   const you = makeTeam("you", 85);
   const opp = makeTeam("opp", 85);
   const armed = (t: FieldTeam) => t.players.reduce((a, p) => ((a[p.id] = "AK-47"), a), {} as Record<string, string>);
@@ -347,24 +347,24 @@ test("generateDynamicRound on mirage: kills happen between players in contact on
   const money = (t: FieldTeam) => t.players.reduce((a, p) => ((a[p.id] = 4000), a), {} as Record<string, number>);
   const ctx = { map: "mirage", stage: "swiss" } as const;
   const w = () => 1;
+  const grid = getNavGrid("mirage")!;
 
   let positioned = 0;
-  let inContact = 0;
+  let withLos = 0;
   for (let seed = 1; seed <= 40; seed += 1) {
     const r = withSeed(seed, () =>
       generateDynamicRound(8, you, opp, armed(you), armed(opp), "standard", "FULL", "FULL", "CT", 6, 6, ctx, 0, 0, money(you), money(opp), helm(you), helm(opp), 0.5, w, w, 0, 0),
     );
     for (const e of r.feed) {
-      if ((!e.type || e.type === "kill") && e.engage) {
+      if ((!e.type || e.type === "kill") && e.killerPos && e.victimPos) {
         positioned += 1;
-        // The duel's two callouts must be the same or directly connected on the graph.
-        if (areConnected(e.engage.from, e.engage.to)) inContact += 1;
+        // The spatial engine only resolves a duel when the two players actually see each other.
+        if (hasLineOfSight(grid, e.killerPos, e.victimPos)) withLos += 1;
       }
     }
   }
   assert.ok(positioned > 30, `expected many positioned kills on mirage, got ${positioned}`);
-  // The remainder are the push/rotation fallback that keeps rounds resolving when nobody has contact.
-  assert.ok(inContact / positioned >= 0.75, `most kills should be between connected callouts, got ${inContact}/${positioned}`);
+  assert.ok(withLos / positioned >= 0.97, `kills must be on a real sightline, got ${withLos}/${positioned}`);
 });
 
 // ===========================================================================
