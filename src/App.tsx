@@ -3013,7 +3013,7 @@ function MatchMapView({ match, you, opponent, speed = 1 }: { match: MatchState; 
     : roundEvents.length;
 
   // Get simulated coordinates and state for all 10 players, and active firefight traces
-  const { players: radarPlayers, traces: radarTraces, bomb } = simulateRadarPlayers(match, you, opponent, stepIndex);
+  const { players: radarPlayers, traces: radarTraces, bomb, flashed } = simulateRadarPlayers(match, you, opponent, stepIndex);
 
   // Utility thrown this round, placed at the thrower's graph position (smokes/mollies show an area).
   const utilMarkers = roundEvents
@@ -3097,17 +3097,35 @@ function MatchMapView({ match, you, opponent, speed = 1 }: { match: MatchState; 
           </>
         )}
 
-        {/* Utility markers (smoke clouds / molotov fire / flash / HE) at where they were thrown */}
-        {utilMarkers.map((m, i) => (
-          <div
-            key={`util-${activeRound}-${i}-${m.killerPos!.x}`}
-            className={`radar-util radar-util-${m.type}`}
-            style={{ left: `${m.killerPos!.x}%`, top: `${m.killerPos!.y}%` }}
-          >
-            {(m.type === "smoke" || m.type === "molotov") && <span className="radar-util-area" />}
-            <img className="radar-util-icon" src={utilityIcons[m.type!]} alt={m.type} title={m.type} />
-          </div>
-        ))}
+        {/* Grenade throw arcs (from thrower -> landing) */}
+        <svg className="radar-util-arcs" viewBox="0 0 100 100" preserveAspectRatio="none">
+          {utilMarkers.map((m, i) =>
+            m.killerPos && m.targetPos ? (
+              <line
+                key={`utilarc-${activeRound}-${i}`}
+                className={`radar-util-arc radar-util-arc-${m.type}`}
+                x1={m.killerPos.x}
+                y1={m.killerPos.y}
+                x2={m.targetPos.x}
+                y2={m.targetPos.y}
+              />
+            ) : null,
+          )}
+        </svg>
+        {/* Utility effects (smoke clouds / molotov fire / flash / HE) where they LAND */}
+        {utilMarkers.map((m, i) => {
+          const at = m.targetPos ?? m.killerPos!;
+          return (
+            <div
+              key={`util-${activeRound}-${i}-${at.x}`}
+              className={`radar-util radar-util-${m.type}`}
+              style={{ left: `${at.x}%`, top: `${at.y}%` }}
+            >
+              {(m.type === "smoke" || m.type === "molotov") && <span className="radar-util-area" />}
+              <img className="radar-util-icon" src={utilityIcons[m.type!]} alt={m.type} title={m.type} />
+            </div>
+          );
+        })}
 
         {/* Bomb icon */}
         {bomb && (
@@ -3152,6 +3170,7 @@ function MatchMapView({ match, you, opponent, speed = 1 }: { match: MatchState; 
         })}
         {radarPlayers.map((simPlayer, index) => {
           const { id, handle, side, team, alive, x, y, yaw } = simPlayer;
+          const blind = alive ? flashed[id] ?? 0 : 0;
           return (
             <div
               className={`radar-player ${side.toLowerCase()} ${team} ${alive ? "alive" : "dead"}`}
@@ -3165,6 +3184,8 @@ function MatchMapView({ match, you, opponent, speed = 1 }: { match: MatchState; 
               }
             >
               {alive && <i className="radar-facing" aria-hidden="true" />}
+              {!alive && <i className="radar-death-x" aria-hidden="true" />}
+              {blind > 0 && <i className="radar-flash-blind" style={{ opacity: blind } as React.CSSProperties} aria-hidden="true" />}
               <span>{handle.slice(0, 2).toUpperCase()}</span>
               <small>{handle}</small>
             </div>

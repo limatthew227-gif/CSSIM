@@ -101,6 +101,7 @@ export interface FeedLine {
   flashAssist?: boolean;
   killerPos?: { x: number; y: number };
   victimPos?: { x: number; y: number };
+  targetPos?: { x: number; y: number }; // where a thrown grenade lands (killerPos = where it's thrown from)
   engage?: { from: string; to: string }; // callouts the duel was resolved between (graph nav)
   t?: number; // round-time (seconds) this event happened — maps the radar onto the spatial timeline
   assistant?: string;
@@ -2044,7 +2045,10 @@ export function generateDynamicRound(
       });
     const countsAt = (atT: number) => ({ ct: aliveAt(ctTeamKey, atT).length, t: aliveAt(tTeamKey, atT).length });
 
-    // Cosmetic utility, gated by nades actually bought (never mints kills). Spread through the round.
+    // Cosmetic utility, gated by nades actually bought (never mints kills). Thrown FROM the thrower's
+    // real position (sampled off the timeline) TOWARD a target (the execute site / contested mid), so
+    // the radar can draw the throw arc + where it lands. Spread through the round.
+    const frameAt = (atT: number) => sim.timeline.reduce((best, f) => (Math.abs(f.t - atT) < Math.abs(best.t - atT) ? f : best), sim.timeline[0]);
     const utilBudget: Record<"you" | "opponent", number> = { you: yourUtilCount, opponent: opponentUtilCount };
     const utilLines: FeedLine[] = [];
     for (let k = 0; k < MAX_UTIL_EVENTS && utilLines.length < MAX_UTIL_EVENTS; k += 1) {
@@ -2055,8 +2059,13 @@ export function generateDynamicRound(
         teamKey === tTeamKey ? (Math.random() < 0.6 ? "smoke" : "flash") : Math.random() < 0.5 ? "molotov" : "he";
       const squad = teamKey === "you" ? you.players : opponent.players;
       const thrower = squad[Math.floor(Math.random() * squad.length)];
-      const node = getNode(strategy === 2 ? "bsite" : "asite");
-      utilLines.push({ round, killer: thrower.handle, killerId: "", victim: "", victimId: "", weapon: type, team: teamKey, first: false, type, killerPos: node ? { x: node.x, y: node.y } : undefined, t: 3 + k * 3 + Math.random() * 2 });
+      const ut = 3 + k * 3 + Math.random() * 2;
+      const fr = sim.timeline.length ? frameAt(ut).players.find((p) => p.id === thrower.id) : undefined;
+      const from = fr ? { x: fr.x, y: fr.y } : undefined;
+      // T util lands on the site being hit; CT util contests mid / the choke.
+      const targetNode = getNode(teamKey === tTeamKey ? (strategy === 2 ? "bsite" : "asite") : "mid");
+      const targetPos = targetNode ? { x: targetNode.x, y: targetNode.y } : undefined;
+      utilLines.push({ round, killer: thrower.handle, killerId: "", victim: "", victimId: "", weapon: type, team: teamKey, first: false, type, killerPos: from ?? targetPos, targetPos, t: ut });
     }
 
     // Translate engine events -> feed lines (with timestamps so the radar plays the timeline).

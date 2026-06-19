@@ -4517,6 +4517,83 @@ meter::-webkit-meter-optimum-value {
   background: radial-gradient(circle, rgba(255, 138, 61, 0.5), rgba(255, 90, 30, 0.15) 70%, transparent 72%);
 }
 
+/* Grenade throw arcs (thrower -> landing) */
+.radar-util-arcs {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.radar-util-arc {
+  fill: none;
+  stroke-width: 0.35;
+  stroke-linecap: round;
+  stroke-dasharray: 1.5 2;
+  opacity: 0.5;
+  stroke: rgba(220, 226, 232, 0.8);
+  animation: radarTrace 0.9s ease-out both;
+}
+
+.radar-util-arc-molotov {
+  stroke: rgba(255, 138, 61, 0.85);
+}
+
+.radar-util-arc-flash {
+  stroke: rgba(255, 255, 255, 0.9);
+}
+
+.radar-util-arc-he {
+  stroke: rgba(255, 120, 90, 0.85);
+}
+
+/* Death marker: a small X where a player fell */
+.radar-death-x {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 9px;
+  height: 9px;
+  transform: translate(-50%, -50%);
+  opacity: 0.75;
+}
+
+.radar-death-x::before,
+.radar-death-x::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 11px;
+  height: 1.6px;
+  background: currentColor;
+  border-radius: 1px;
+}
+
+.radar-death-x::before {
+  transform: translate(-50%, -50%) rotate(45deg);
+}
+
+.radar-death-x::after {
+  transform: translate(-50%, -50%) rotate(-45deg);
+}
+
+/* Flash blind: a white bloom over a flashed player, opacity set inline by intensity */
+.radar-flash-blind {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 16px;
+  height: 16px;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.95), rgba(255, 255, 255, 0.4) 60%, transparent 75%);
+  pointer-events: none;
+  z-index: 6;
+}
+
 .radar-map-label {
   position: absolute;
   top: 10px;

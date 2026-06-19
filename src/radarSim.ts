@@ -520,6 +520,7 @@ export interface RadarSimulationResult {
   players: SimulatedRadarPlayer[];
   traces: RadarTrace[];
   bomb: Position | null;
+  flashed: Record<string, number>; // playerId -> blind intensity 0..1 (for the flash-fade overlay)
 }
 
 // Shortest-path angle interpolation (degrees) — turns the short way, never spins 359° around 0.
@@ -612,7 +613,24 @@ export function simulateRadarPlayers(
     }
     const pe = allEvents.findIndex((e) => e.type === "plant");
     const bomb = pe !== -1 && stepIndex > pe ? allEvents[pe].killerPos ?? null : null;
-    return { players, traces: traces.slice(-6), bomb };
+
+    // Flash-fade: a flash blinds enemies near where it lands, fading over ~1.4s of round-time.
+    const FLASH_DUR = 1.4;
+    const FLASH_R = 18;
+    const flashed: Record<string, number> = {};
+    for (const ev of allEvents) {
+      if (ev.type !== "flash" || !ev.targetPos || ev.t == null) continue;
+      const dt = curT - ev.t;
+      if (dt < 0 || dt > FLASH_DUR) continue;
+      const enemyTeam = ev.team === "you" ? "opponent" : "you";
+      const fade = 1 - dt / FLASH_DUR;
+      for (const p of players) {
+        if (p.team !== enemyTeam || !p.alive) continue;
+        const d = Math.hypot(p.x - ev.targetPos.x, p.y - ev.targetPos.y);
+        if (d < FLASH_R) flashed[p.id] = Math.max(flashed[p.id] ?? 0, fade * (1 - d / FLASH_R));
+      }
+    }
+    return { players, traces: traces.slice(-6), bomb, flashed };
   }
 
   // Find plant event details
@@ -855,6 +873,7 @@ export function simulateRadarPlayers(
     players: [...youSimulated, ...opponentSimulated],
     traces: activeTraces,
     bomb: currentBombPos,
+    flashed: {},
   };
 }
 
