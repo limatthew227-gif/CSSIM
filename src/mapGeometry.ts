@@ -408,9 +408,9 @@ const mirage: MapGeometry = {
   id: "mirage",
   walkable: [],
   walls: [],
-  spawns: { ct: { x: 28, y: 71 }, t: { x: 87, y: 37 } },
-  sites: { a: { x: 24, y: 28 }, b: { x: 54, y: 76 } },
-  mid: { x: 44, y: 45 },
+  spawns: { ct: { x: 31.9, y: 68.7 }, t: { x: 86.5, y: 36.6 } },
+  sites: { a: { x: 54.4, y: 70.4 }, b: { x: 25.0, y: 28.2 } },
+  mid: { x: 51.2, y: 48.0 },
   regions: [
     { name: "A", poly: rect(16, 22, 30, 34) },
     { name: "B", poly: rect(47, 71, 62, 82) },
@@ -441,17 +441,20 @@ export const mapGeometries: Partial<Record<MapId, MapGeometry>> = {
 };
 
 /** Decode a base64 bit-packed blocked mask (baked from a radar PNG) into a NavGrid. */
-function decodeBakedGrid(res: number, bits: string): NavGrid {
+function unpackBits(res: number, bits: string): Uint8Array {
   const bin = typeof atob === "function" ? atob(bits) : Buffer.from(bits, "base64").toString("binary");
   const n = res * res;
-  const move = new Uint8Array(n);
-  const vision = new Uint8Array(n);
-  for (let i = 0; i < n; i += 1) {
-    const bit = (bin.charCodeAt(i >> 3) >> (7 - (i & 7))) & 1;
-    move[i] = bit;
-    vision[i] = bit;
-  }
-  return { res, blockedMove: move, blockedVision: vision };
+  const out = new Uint8Array(n);
+  for (let i = 0; i < n; i += 1) out[i] = (bin.charCodeAt(i >> 3) >> (7 - (i & 7))) & 1;
+  return out;
+}
+
+// `moveBits` = blocked-movement mask. `visionBits` (optional) = a separate, looser blocked-vision
+// mask (solid walls only); when absent, walls block both (older single-mask grids).
+function decodeBakedGrid(res: number, moveBits: string, visionBits?: string): NavGrid {
+  const blockedMove = unpackBits(res, moveBits);
+  const blockedVision = visionBits ? unpackBits(res, visionBits) : blockedMove;
+  return { res, blockedMove, blockedVision };
 }
 
 const gridCache = new Map<MapId, NavGrid>();
@@ -484,7 +487,7 @@ export function getNavGrid(id: MapId): NavGrid | null {
   if (grid) return grid;
   const baked = navGrids[id];
   if (baked) {
-    grid = decodeBakedGrid(baked.res, baked.bits);
+    grid = decodeBakedGrid(baked.res, baked.move, baked.vision);
   } else {
     const geo = mapGeometries[id];
     if (!geo) return null;

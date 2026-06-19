@@ -97,7 +97,7 @@ test("baked mirage grid: derived from the radar — spawns/sites on the floor, T
   assert.ok(hasPixelNav("mirage"), "mirage uses a pixel-accurate baked grid");
   const grid = getNavGrid("mirage");
   assert.ok(grid, "mirage nav grid is present");
-  assert.equal(grid!.res, 128);
+  assert.equal(grid!.res, 160); // derived from the real .nav walkable mesh
 
   const m = mapGeometries.mirage as MapGeometry;
   const blockedAt = (p: Vec) =>

@@ -23,7 +23,8 @@ const GRID = getNavGrid("mirage");
 const DT = 0.5; // simulation tick
 const ROUND_TIME = 115;
 const WALK_SPEED = 5.0; // radar units/sec — calibrated from a real CS2 demo (run ~4.8 u/s)
-const SIGHT_RANGE = 34; // farthest a duel reaches — calibrated to real kills (demo p98 ~32, max 37)
+const SIGHT_RANGE = 44; // farthest a duel reaches. Safe to be generous now that the nav-mesh grid
+// blocks real walls — long range only enables genuinely CLEAR sightlines, not through-wall shots.
 const PLANT_TIME = 3.2;
 const DEFUSE_TIME = 9.0;
 const BOMB_TIME = 40;
