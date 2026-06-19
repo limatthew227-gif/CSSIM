@@ -125,9 +125,9 @@ function tPlan(idx: number, strategy: number): string[] {
   const A_PALACE = ["palace", "asite"]; // T spawn -> palace -> drop A
   const A_MID = ["sidealley", "topmid", "mid", "connector", "asite"]; // mid -> connector -> A
   const B_APPS = ["sidealley", "house", "backalley", "bapps", "van", "bsite"]; // apps -> van -> B
-  const B_MID = ["sidealley", "topmid", "mid", "underpass", "catwalk", "bsite"]; // mid -> cat -> B
+  const B_MID = ["sidealley", "topmid", "mid", "catwalk", "bsite"]; // mid -> short (catwalk) -> B
   const MID = ["sidealley", "topmid", "mid"]; // mid control / lurk
-  const MID_LURK = ["sidealley", "topmid", "mid", "underpass"]; // underpass flank
+  const MID_LURK = ["sidealley", "topmid", "mid", "underpass", "backalley", "bapps"]; // underpass UP to apps
   if (strategy === 1) return [A_PALACE, A_MID, A_PALACE, A_MID, MID][idx]; // stack A
   if (strategy === 2) return [B_APPS, B_APPS, B_MID, B_MID, MID_LURK][idx]; // stack B
   return [A_PALACE, A_MID, B_APPS, B_MID, MID][idx]; // split A/B

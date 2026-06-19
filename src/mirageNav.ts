@@ -113,10 +113,12 @@ export const mirageEdges: MapEdge[] = [
   e("sidealley", "house", { exposure: 0.3, tags: ["b-execute"] }),
   e("house", "backalley", { exposure: 0.3, tags: ["b-execute"] }),
   e("backalley", "bapps", { exposure: 0.4, chokepoint: 0.5, utilityValue: 0.5, tags: ["b-execute"] }),
-  e("backalley", "underpass", { exposure: 0.3 }),
+  e("backalley", "underpass", { exposure: 0.3 }), // underpass -> back alley = the stairs UP to apartments
   e("bapps", "van", { exposure: 0.6, chokepoint: 0.6, utilityValue: 0.6, requires: "drop", tags: ["b-execute"] }),
   e("van", "bsite", { exposure: 0.6, chokepoint: 0.5, utilityValue: 0.5, tags: ["b-execute"] }),
-  e("underpass", "catwalk", { exposure: 0.5, chokepoint: 0.4, tags: ["mid-to-b"] }),
+  // mid -> short (catwalk) -> B. Catwalk is the raised short to B, reached from mid — NOT from the
+  // underpass (the underpass instead goes UP the stairs to apartments via back alley).
+  e("mid", "catwalk", { exposure: 0.5, chokepoint: 0.4, tags: ["mid-to-b", "split-b"] }),
   e("catwalk", "bsite", { exposure: 0.6, chokepoint: 0.5, utilityValue: 0.5, tags: ["mid-to-b", "split-b"] }),
   e("bsite", "market", { exposure: 0.4, tags: ["retake", "hold"] }),
   // CT rotations from spawn
