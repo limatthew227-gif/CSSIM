@@ -517,6 +517,7 @@ function App() {
   const [pickems, setPickems] = useState<Record<string, string>>({});
   const [pickemScore, setPickemScore] = useState(0);
   const [lastPickemDelta, setLastPickemDelta] = useState(0);
+  const [viewedSwissRound, setViewedSwissRound] = useState<number | null>(null); // null = live current round
   const [achievements, setAchievements] = useState<string[]>([]);
   const [playerForm, setPlayerForm] = useState<Record<string, number>>({});
   const [veto, setVeto] = useState<VetoState>(createVeto());
@@ -559,6 +560,26 @@ function App() {
     () => (swissUserFinished ? buildRemainingSwissPairs(swissField, swissRecords, record.wins + record.losses + 1) : swissPairs),
     [record, swissField, swissPairs, swissRecords, swissUserFinished],
   );
+  // Swiss round navigation: the live round (the one being picked/played) plus every past round that
+  // has saved results, so you can flip back through the clean pick'em list to review any round.
+  const swissLiveRound = swissUserFinished ? null : record.wins + record.losses + 1;
+  const swissPastRounds = useMemo(() => {
+    const rounds = new Set<number>();
+    matchResults.forEach((r) => {
+      if (r.stage === "swiss" && (swissLiveRound === null || r.round < swissLiveRound)) rounds.add(r.round);
+    });
+    return Array.from(rounds).sort((a, b) => a - b);
+  }, [matchResults, swissLiveRound]);
+  const swissHasLive = swissDisplayPairs.length > 0;
+  const swissViewingPast = viewedSwissRound != null && swissPastRounds.includes(viewedSwissRound);
+  const swissPastResults = useMemo(() => {
+    if (viewedSwissRound == null) return [] as SwissResult[];
+    const byPair = new Map<string, SwissResult>();
+    matchResults
+      .filter((r) => r.stage === "swiss" && r.round === viewedSwissRound)
+      .forEach((r) => byPair.set(r.pairId, r)); // keep the latest result per pairing
+    return Array.from(byPair.values());
+  }, [matchResults, viewedSwissRound]);
   const playerDatabase = useMemo(() => buildPlayerDatabase(matchResults), [matchResults]);
   const selectedResult = useMemo(
     () => matchResults.find((result) => result.id === selectedResultId) ?? matchResults[matchResults.length - 1],
@@ -828,6 +849,7 @@ function App() {
 
   function startVeto() {
     if (runDone || swissUserFinished) return;
+    setViewedSwissRound(null); // snap back to the live round when starting a match
     setVeto(createVeto(currentBestOf));
     setScreen("veto");
   }
@@ -1020,6 +1042,7 @@ function App() {
   }
 
   function simRemainingSwissGames() {
+    setViewedSwissRound(null); // snap back to the live round when simming
     let nextSwissRecords = { ...swissRecords };
     const simulatedResults: SwissResult[] = [];
     let nextRound = Math.min(record.wins + record.losses + 1, 5);
@@ -1580,12 +1603,55 @@ function App() {
             <div className="pickem-strip">
               <div className="pickem-title">
                 <Target size={17} />
-                <span>Pick'Em: bet on the winners of the other series and rack up points</span>
+                <span>
+                  {swissViewingPast
+                    ? `Swiss round ${viewedSwissRound} results — click a series to open the match`
+                    : "Pick'Em: bet on the winners of the other series and rack up points"}
+                </span>
                 <b>{pickemScore} pts</b>
                 {lastPickemDelta > 0 && <em>+{lastPickemDelta}</em>}
               </div>
+              {swissPastRounds.length > 0 && (
+                <div className="swiss-round-tabs">
+                  {swissPastRounds.map((rn) => (
+                    <button
+                      key={rn}
+                      className={viewedSwissRound === rn ? "active" : ""}
+                      onClick={() => setViewedSwissRound(rn)}
+                    >
+                      Round {rn}
+                    </button>
+                  ))}
+                  {swissHasLive && (
+                    <button
+                      className={!swissViewingPast ? "active" : ""}
+                      onClick={() => setViewedSwissRound(null)}
+                    >
+                      {swissLiveRound ? `Round ${swissLiveRound}` : "Current"}
+                    </button>
+                  )}
+                </div>
+              )}
               <div className="swiss-match-list">
-                {swissDisplayPairs.length ? (
+                {swissViewingPast ? (
+                  swissPastResults.length ? (
+                    swissPastResults.map((res) => (
+                      <SwissMatchRow
+                        key={res.id}
+                        pair={{ id: res.pairId, left: res.left, right: res.right }}
+                        record={record}
+                        teamRecords={swissRecords}
+                        result={res}
+                        locked
+                        bestOf={res.bestOf}
+                        onPick={() => undefined}
+                        onOpenResult={openSeriesResult}
+                      />
+                    ))
+                  ) : (
+                    <div className="swiss-empty-row">No results saved for this round.</div>
+                  )
+                ) : swissDisplayPairs.length ? (
                   swissDisplayPairs.map((pair) => (
                     <SwissMatchRow
                       key={pair.id}

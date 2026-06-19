@@ -787,7 +787,7 @@ const hltvTeams: HltvTeamSeed[] = [
     mapBias: { dust2: 3, mirage: 2, nuke: 1, ancient: 2 },
     players: [
       { handle: "sh1ro", realName: "Dmitry Sokolov", country: "RU", role: "AWP", style: "Passive", hltvRating: 1.18 },
-      { handle: "magixx", realName: "Boris Vorobiev", country: "RU", role: "Support", style: "Balanced", hltvRating: 1.01 },
+      { handle: "magixx", realName: "Boris Vorobiev", country: "RU", role: "Support", secondaryRole: "IGL", style: "Balanced", hltvRating: 1.01 },
       { handle: "tN1R", realName: "Andrey Tatarinovich", country: "BY", role: "Rifler", style: "Aggressive", hltvRating: 1.09 },
       { handle: "zont1x", realName: "Myroslav Plakhotia", country: "UA", role: "Support", style: "Passive", hltvRating: 1.03 },
       // HLTV #1 of 2024 (top-2 of 2025) with monster big-event numbers — belongs at the OVR ceiling.

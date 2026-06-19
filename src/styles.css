@@ -1612,6 +1612,37 @@ meter::-webkit-meter-optimum-value {
   font-style: normal;
 }
 
+.swiss-round-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0 12px 8px;
+}
+
+.swiss-round-tabs button {
+  padding: 3px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #20262e;
+  color: var(--muted);
+  font-weight: 800;
+  font-size: 11px;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+
+.swiss-round-tabs button:hover {
+  color: var(--text);
+  border-color: rgba(255, 255, 255, 0.25);
+}
+
+.swiss-round-tabs button.active {
+  background: var(--gold);
+  border-color: var(--gold);
+  color: #181818;
+}
+
 .swiss-match-list {
   display: grid;
 }
