@@ -31,7 +31,7 @@ const BOMB_TIME = 40;
 const TTK_BASE = 0.7; // seconds from "we see each other" to someone dying — paces deaths
 const HOLDER_EDGE = 1.45; // a player holding their angle beats a peeker, all else equal
 const AWP_EDGE = 1.7; // AWP first-shot advantage
-const CROSSFIRE = 0.55; // each extra enemy with LOS on you cuts your odds
+const CROSSFIRE = 1.1; // each extra enemy with LOS on you sharply cuts your odds (1vN is a near-loss)
 // Aggregate-balance knobs. Per-duel edges COMPOUND over a ~16-round match, so individual OVR skill is
 // compressed (SKILL_W) and team strength (the [0.16,0.84]-style probability) is the primary, bounded
 // driver (TEAM_W). The per-duel clamp keeps even mismatches from being a sure thing (preserves upsets).
@@ -357,10 +357,13 @@ export function simulateMirageRound(input: MirageSimInput): MirageSimResult {
   // (the bounded [0.16,0.84]-style probability) while individual skill adds a compressed edge (so a
   // star carries but small OVR gaps don't snowball to ~100% over a match) plus situational factors.
   const winProbA = (a: SimP, b: SimP): number => {
-    // 1. individual OVR/role skill, compressed toward 50/50
+    // CORE = individual skill (compressed) + team-strength bias. This is the balanced driver and is
+    // clamped so a 1v1 / team duel is never a sure thing.
     const rawSkill = a.skill / (a.skill + b.skill);
-    let p = 0.5 + (rawSkill - 0.5) * SKILL_W;
-    // 2. situational multipliers (holder / AWP / crossfire) applied in odds space
+    let core = 0.5 + (rawSkill - 0.5) * SKILL_W + (a.team === "you" ? teamBias : -teamBias) * TEAM_W;
+    core = Math.max(DUEL_CLAMP, Math.min(1 - DUEL_CLAMP, core));
+    // SITUATIONAL = holder / AWP / crossfire, applied AFTER the clamp so being outnumbered CAN make a
+    // duel a near-loss — a lone player peeking into several enemies should rarely win (no 0.28 floor).
     const holdA = a.dist >= a.len ? HOLDER_EDGE : 1;
     const holdB = b.dist >= b.len ? HOLDER_EDGE : 1;
     const awpA = a.awp ? AWP_EDGE : 1;
@@ -368,11 +371,8 @@ export function simulateMirageRound(input: MirageSimInput): MirageSimResult {
     const xfA = 1 + CROSSFIRE * (enemiesOf(a).filter((e) => hasLos(a, e)).length - 1);
     const xfB = 1 + CROSSFIRE * (enemiesOf(b).filter((e) => hasLos(b, e)).length - 1);
     const mult = (holdA * awpA) / Math.max(1, xfA) / ((holdB * awpB) / Math.max(1, xfB));
-    const odds = (p / (1 - p)) * mult;
-    p = odds / (1 + odds);
-    // 3. team-strength bias (the primary aggregate driver)
-    p += (a.team === "you" ? teamBias : -teamBias) * TEAM_W;
-    return Math.max(DUEL_CLAMP, Math.min(1 - DUEL_CLAMP, p));
+    const odds = (core / (1 - core)) * mult;
+    return Math.max(0.03, Math.min(0.97, odds / (1 + odds)));
   };
 
   const kill = (killer: SimP, victim: SimP) => {
@@ -475,7 +475,13 @@ export function simulateMirageRound(input: MirageSimInput): MirageSimResult {
         }
       }
       if (nearest) {
-        const timer = TTK_BASE * (0.5 + Math.random()) * (p.awp || nearest.awp ? 0.7 : 1);
+        // Outnumbered contact resolves faster (several guns on one player = quick death, not a clean
+        // walk-in): scale the reaction time down by how lopsided the LOS count is here.
+        const losMax = Math.max(
+          enemiesOf(p).filter((e) => hasLos(p, e)).length,
+          enemiesOf(nearest).filter((e) => hasLos(nearest, e)).length,
+        );
+        const timer = (TTK_BASE * (0.5 + Math.random()) * (p.awp || nearest.awp ? 0.7 : 1)) / (1 + 0.5 * (losMax - 1));
         p.fightTarget = nearest.ref.id;
         p.fightTimer = timer;
         nearest.fightTarget = p.ref.id;
