@@ -35,16 +35,18 @@ const CROSSFIRE = 0.55; // each extra enemy with LOS on you cuts your odds
 // Aggregate-balance knobs. Per-duel edges COMPOUND over a ~16-round match, so individual OVR skill is
 // compressed (SKILL_W) and team strength (the [0.16,0.84]-style probability) is the primary, bounded
 // driver (TEAM_W). The per-duel clamp keeps even mismatches from being a sure thing (preserves upsets).
-// Real spawn pads per side (radar coords, from a CS2 demo) — players start spread out, not stacked.
-const SPAWN_PADS: Record<"T" | "CT", Vec[]> = {
-  T: [{ x: 86.8, y: 39.5 }, { x: 88.4, y: 40.3 }, { x: 88.4, y: 32.8 }, { x: 86.8, y: 33.8 }, { x: 86.8, y: 37.6 }],
-  CT: [{ x: 30.7, y: 68.6 }, { x: 30.7, y: 72.1 }, { x: 29.5, y: 70.5 }, { x: 28.4, y: 68.6 }, { x: 28.4, y: 72.1 }],
-};
+// Spawn placement: 5 pads in a pentagon around the (demo-calibrated) spawn centre, so the dots are
+// clearly separated (real pads are too tight and overlap on the radar). Snapped to the floor.
+const SPAWN_CENTER: Record<"T" | "CT", Vec> = { T: { x: 86.5, y: 36.6 }, CT: { x: 31.9, y: 68.7 } };
+const SPAWN_R: Record<"T" | "CT", number> = { T: 3.4, CT: 2.8 };
 // Repositioning: once holding, players don't freeze — they shuffle between nearby angles every few
 // seconds (peek / re-angle / hold a different spot), so CTs and held Ts play dynamically.
 const REPO_MIN = 3.0; // seconds
 const REPO_VAR = 5.0;
 const REPO_AGGRO = 1.6; // a player repositions sooner right after winning a duel (re-aggress/relocate)
+const ROTATE_CHANCE = 0.6; // chance a dead player's teammate swings toward the fight (trade / retake)
+const LANE_W = 1.9; // per-player radial offset (radar units) so teammates never render as one stacked
+// dot (each sits at a fixed angle around its true position). Visual only — duels use true positions.
 
 const SKILL_W = 0.28; // how much the raw OVR/role skill ratio sways one duel
 const TEAM_W = 0.36; // how much team-strength bias sways one duel
@@ -176,8 +178,11 @@ function buildRoute(fromId: string, toId: string, sit: Situation): { pts: Vec[];
   return { pts: pts.length ? pts : [{ x: 50, y: 50 }], cum, len };
 }
 // Prepend a starting position (e.g. a spawn pad, or current pos when repositioning) to a route.
-function withStart(route: { pts: Vec[]; cum: number[]; len: number }, start: Vec): { pts: Vec[]; cum: number[]; len: number } {
-  const pts = Math.hypot(route.pts[0].x - start.x, route.pts[0].y - start.y) < 0.5 ? route.pts.slice() : [start, ...route.pts];
+// `replaceFirst` drops the route's first node (the spawn node) so players head from their pad
+// straight toward the objective instead of funnelling back to the single spawn node and stacking.
+function withStart(route: { pts: Vec[]; cum: number[]; len: number }, start: Vec, replaceFirst = false): { pts: Vec[]; cum: number[]; len: number } {
+  const base = replaceFirst && route.pts.length > 1 ? route.pts.slice(1) : route.pts;
+  const pts = Math.hypot(base[0].x - start.x, base[0].y - start.y) < 0.5 ? base.slice() : [start, ...base];
   const cum = [0];
   let len = 0;
   for (let i = 1; i < pts.length; i += 1) { len += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y); cum.push(len); }
@@ -241,8 +246,13 @@ export function simulateMirageRound(input: MirageSimInput): MirageSimResult {
         objective = ctObjective(idx, push);
         route = buildRoute("ctspawn", objective, sit0);
       }
-      const pad = SPAWN_PADS[pside][idx % 5]; // start spread out on a real spawn pad
-      route = withStart(route, pad);
+      // start spread in a pentagon around the spawn centre so the 5 dots don't stack. Not snapped to
+      // the mesh (the strict spawn floor is tiny and would collapse them) — it's just the visual start
+      // inside the spawn box; the route corridor-snaps from the first node onward.
+      const c = SPAWN_CENTER[pside];
+      const ang = ((idx % 5) * 72 + 18) * (Math.PI / 180);
+      const pad: Vec = { x: c.x + Math.cos(ang) * SPAWN_R[pside], y: c.y + Math.sin(ang) * SPAWN_R[pside] };
+      route = withStart(route, pad, true); // straight from pad toward objective (no spawn-node funnel)
       return {
         ref,
         team,
@@ -274,6 +284,15 @@ export function simulateMirageRound(input: MirageSimInput): MirageSimResult {
 
   const aliveOf = (s: "CT" | "T") => ps.filter((p) => p.alive && p.side === s);
   const enemiesOf = (p: SimP) => ps.filter((q) => q.alive && q.side !== p.side);
+
+  // Timeline players with a fixed per-player radial offset (a tiny pentagon) so teammates never
+  // render as one stacked dot — even bunched on a corridor they read as 5 distinct markers. Sim/duel
+  // positions (p.pos) are untouched, so this is purely visual.
+  const framePlayers = () =>
+    ps.map((p) => {
+      const a = p.idx * ((2 * Math.PI) / 5);
+      return { id: p.ref.id, x: p.pos.x + Math.cos(a) * LANE_W, y: p.pos.y + Math.sin(a) * LANE_W, alive: p.alive, yaw: p.yaw };
+    });
 
   const events: SimEvent[] = [];
   const timeline: TimelineFrame[] = [];
@@ -376,6 +395,18 @@ export function simulateMirageRound(input: MirageSimInput): MirageSimResult {
       headshot: Math.random() < 0.4,
       weapon: input.weapons[killer.ref.id] ?? "Rifle",
     });
+    // Reactive rotation / trade: a free teammate of the player who just died swings toward the
+    // fight to trade the killer or retake the area — so kills pull players in, like real CS.
+    const mates = aliveOf(victim.side).filter((q) => q !== victim && q !== killer && !q.fightTarget);
+    if (mates.length && Math.random() < ROTATE_CHANCE) {
+      let best: SimP | null = null;
+      let bd = Infinity;
+      for (const m of mates) {
+        const d = Math.hypot(m.pos.x - victim.pos.x, m.pos.y - victim.pos.y);
+        if (d > 10 && d < bd) { bd = d; best = m; } // must actually travel (not already there)
+      }
+      if (best) { repositionTo(best, victim.nodeId); best.repoTimer = REPO_MIN + Math.random() * REPO_VAR; }
+    }
     if (victim.hasBomb && victim.side === "T") {
       // drop the bomb to a nearby living T (simplified pickup)
       victim.hasBomb = false;
@@ -383,6 +414,9 @@ export function simulateMirageRound(input: MirageSimInput): MirageSimResult {
       if (heir) heir.hasBomb = true;
     }
   };
+
+  // initial frame at t=0 so the radar shows players spread on their spawn pads before they move
+  timeline.push({ t: 0, players: framePlayers() });
 
   while (t < ROUND_TIME && !winner) {
     t = Math.round((t + DT) * 100) / 100;
@@ -518,10 +552,7 @@ export function simulateMirageRound(input: MirageSimInput): MirageSimResult {
     // 5. Timeline frame (~1s cadence keeps it small)
     if (t - lastFrameT >= 1 - 1e-6) {
       lastFrameT = t;
-      timeline.push({
-        t,
-        players: ps.map((p) => ({ id: p.ref.id, x: p.pos.x, y: p.pos.y, alive: p.alive, yaw: p.yaw })),
-      });
+      timeline.push({ t, players: framePlayers() });
     }
   }
 
@@ -538,10 +569,7 @@ export function simulateMirageRound(input: MirageSimInput): MirageSimResult {
     }
   }
   // final frame
-  timeline.push({
-    t,
-    players: ps.map((p) => ({ id: p.ref.id, x: p.pos.x, y: p.pos.y, alive: p.alive, yaw: p.yaw })),
-  });
+  timeline.push({ t, players: framePlayers() });
 
   return {
     events,

@@ -4771,27 +4771,39 @@ meter::-webkit-meter-optimum-value {
 .radar-player span {
   display: grid;
   place-items: center;
-  width: 14px;
-  height: 14px;
+  width: 11px;
+  height: 11px;
   border: 1.5px solid rgba(255, 255, 255, 0.72);
   border-radius: 50%;
   color: #fff;
-  font-size: 8px;
+  font-size: 7px;
   font-weight: 950;
-  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 3px 7px rgba(0, 0, 0, 0.4);
 }
 
+/* Floating name labels clutter the radar and overlap badly when players are close — the 2-letter
+   circle identifies each player. Show the name only when hovering a dot. */
 .radar-player small {
-  max-width: 65px;
+  display: none;
+  position: absolute;
+  top: 13px;
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: 70px;
   overflow: hidden;
   border-radius: 999px;
   padding: 1px 4px;
   color: var(--text);
-  background: rgba(8, 10, 13, 0.62);
+  background: rgba(8, 10, 13, 0.82);
   font-size: 8px;
   font-weight: 900;
   text-overflow: ellipsis;
   white-space: nowrap;
+  z-index: 8;
+}
+
+.radar-player:hover small {
+  display: block;
 }
 
 .radar-player.ct span {
@@ -4816,27 +4828,32 @@ meter::-webkit-meter-optimum-value {
   border-color: rgba(255, 255, 255, 0.25);
 }
 
-.radar-event-stack {
-  position: absolute;
-  right: 10px;
-  bottom: 10px;
-  z-index: 7;
-  display: grid;
+/* Recent events as a compact strip BELOW the radar (was overlaid on the bottom-right of the map). */
+.radar-feed-strip {
+  margin-top: 6px;
+  display: flex;
+  flex-wrap: wrap;
   gap: 4px;
-  width: min(330px, 48%);
+  align-content: flex-start;
+  min-height: 24px;
 }
 
-.radar-event-stack span {
+.radar-feed-strip span {
   overflow: hidden;
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 999px;
-  padding: 5px 9px;
+  padding: 4px 9px;
   color: var(--text);
-  background: rgba(11, 14, 18, 0.74);
+  background: rgba(11, 14, 18, 0.7);
   font-size: 10px;
   font-weight: 850;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.radar-feed-strip .radar-feed-idle {
+  opacity: 0.55;
+  font-weight: 600;
 }
 
 .radar-legend {

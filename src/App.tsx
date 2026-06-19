@@ -3151,6 +3151,7 @@ function MatchMapView({ match, you, opponent, speed = 1 }: { match: MatchState; 
               <line
                 key={`${trace.round}-${trace.killerId}-${trace.victimId}-${index}`}
                 className={`radar-trace ${trace.side.toLowerCase()}`}
+                style={{ opacity: trace.opacity }}
                 x1={trace.killerPos.x}
                 y1={trace.killerPos.y}
                 x2={trace.victimPos.x}
@@ -3164,7 +3165,7 @@ function MatchMapView({ match, you, opponent, speed = 1 }: { match: MatchState; 
             <span
               className={`radar-ping ${trace.side.toLowerCase()}`}
               key={`${trace.round}-${trace.victimId}-ping-${index}`}
-              style={{ left: `${trace.victimPos.x}%`, top: `${trace.victimPos.y}%`, "--ping-delay": `${index * 90}ms` } as React.CSSProperties}
+              style={{ left: `${trace.victimPos.x}%`, top: `${trace.victimPos.y}%`, opacity: trace.opacity, "--ping-delay": `${index * 90}ms` } as React.CSSProperties}
             />
           );
         })}
@@ -3191,19 +3192,20 @@ function MatchMapView({ match, you, opponent, speed = 1 }: { match: MatchState; 
             </div>
           );
         })}
-        <div className="radar-event-stack">
-          {displayEvents.length ? (
-            displayEvents.map((event, index) => (
-              <span key={`${event.round}-radar-event-${index}`}>{radarEventText(event, yourSide)}</span>
-            ))
-          ) : (
-            <span>Waiting for contact...</span>
-          )}
-        </div>
         <div className="radar-legend">
           <span className="ct-team">CT</span>
           <span className="t-team">T</span>
         </div>
+      </div>
+      {/* recent events as a compact strip BELOW the map, so nothing overlaps the radar */}
+      <div className="radar-feed-strip">
+        {displayEvents.length ? (
+          displayEvents.map((event, index) => (
+            <span key={`${event.round}-radar-event-${index}`}>{radarEventText(event, yourSide)}</span>
+          ))
+        ) : (
+          <span className="radar-feed-idle">Waiting for contact…</span>
+        )}
       </div>
     </div>
   );

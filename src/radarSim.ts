@@ -514,6 +514,7 @@ export interface RadarTrace {
   killerPos: Position;
   victimPos: Position;
   side: "CT" | "T" | "neutral";
+  opacity: number; // fades 1 -> 0 over TRACE_LINGER seconds so old kill lines don't clutter the map
 }
 
 export interface RadarSimulationResult {
@@ -604,11 +605,16 @@ export function simulateRadarPlayers(
       });
     const players = [...mk(you.players, yourSide, "you"), ...mk(opponent.players, opponentSide, "opponent")];
 
+    // Kill lines fade out over TRACE_LINGER round-seconds, so only recent kills are drawn (not every
+    // kill of the round lingering across the map).
+    const TRACE_LINGER = 4;
     const traces: RadarTrace[] = [];
     for (let i = 0; i < allEvents.length && i < stepIndex; i += 1) {
       const e = allEvents[i];
       if ((!e.type || e.type === "kill") && e.killerId && e.victimId && e.killerPos && e.victimPos) {
-        traces.push({ round: activeRound, killerId: e.killerId, victimId: e.victimId, killerPos: e.killerPos, victimPos: e.victimPos, side: e.team === "you" ? yourSide : opponentSide });
+        const age = e.t != null ? curT - e.t : 0;
+        if (age < 0 || age > TRACE_LINGER) continue;
+        traces.push({ round: activeRound, killerId: e.killerId, victimId: e.victimId, killerPos: e.killerPos, victimPos: e.victimPos, side: e.team === "you" ? yourSide : opponentSide, opacity: Math.max(0.05, 1 - age / TRACE_LINGER) });
       }
     }
     const pe = allEvents.findIndex((e) => e.type === "plant");
@@ -759,7 +765,8 @@ export function simulateRadarPlayers(
             victimId,
             killerPos: killerFightPos,
             victimPos: victimDestination,
-            side: traceSide
+            side: traceSide,
+            opacity: 1,
           });
         }
       }
