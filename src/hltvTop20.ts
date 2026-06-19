@@ -25,6 +25,7 @@ interface HltvPlayerSeed {
   realName: string;
   country: string;
   role: Role;
+  secondaryRole?: Role; // a second job (e.g. AWP who also IGLs) — counts for composition, not fragging
   style: Style;
   hltvRating: number;
   statOverrides?: Partial<PlayerStats>;
@@ -360,6 +361,7 @@ function makeRoster(team: HltvTeamSeed): Roster {
         realName: player.realName,
         country: player.country,
         role: player.role,
+        secondaryRole: player.secondaryRole,
         style: player.style,
         traits: traitsFor(player, stats, team),
         stats,
@@ -712,6 +714,7 @@ const hltvTeams: HltvTeamSeed[] = [
         realName: "Gabriel Toledo",
         country: "BR",
         role: "AWP",
+        secondaryRole: "IGL", // the Professor: primary AWP (keeps AWP duel profile, no IGL frag debuff)
         style: "Balanced",
         hltvRating: 1.14,
         statOverrides: { igl: 88 },

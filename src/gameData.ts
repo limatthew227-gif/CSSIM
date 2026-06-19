@@ -34,6 +34,10 @@ export interface Player {
   realName: string;
   country: string;
   role: Role;
+  // A second job the player also does (e.g. an AWP who also IGLs, like FalleN). It counts toward team
+  // composition / role coverage, but NOT the fragging weights — so a star AWP-IGL keeps his AWP duel
+  // profile and does NOT take the IGL fragging debuff.
+  secondaryRole?: Role;
   style: Style;
   traits: string[];
   stats: PlayerStats;

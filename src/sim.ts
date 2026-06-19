@@ -232,8 +232,18 @@ export function averageOvr(players: Player[]) {
   return players.reduce((sum, player) => sum + player.ovr, 0) / players.length;
 }
 
+// True if the player does this job as either their primary or secondary role. Used for "does the team
+// have an IGL/AWP?" coverage — NOT for fragging weights (those stay keyed to the primary role).
+export function playerCoversRole(player: Player, role: Role): boolean {
+  return player.role === role || player.secondaryRole === role;
+}
+
 export function composition(players: Player[], settings: CustomSettings, isUserTeam = false): BonusLine[] {
-  const roles = new Set(players.map((player) => player.role));
+  const roles = new Set<Role>();
+  players.forEach((player) => {
+    roles.add(player.role);
+    if (player.secondaryRole) roles.add(player.secondaryRole);
+  });
   const bonuses: BonusLine[] = [];
 
   requiredRoles.forEach((role) => {
@@ -328,7 +338,7 @@ export function utilityRating(team: FieldTeam): number {
   const players = team.players;
   if (!players.length) return 0;
   const supportCount = players.filter((p) => p.role === "Support").length;
-  const igl = players.find((p) => p.role === "IGL");
+  const igl = players.find((p) => playerCoversRole(p, "IGL")); // an AWP-IGL (secondary role) counts
   const avgConsistency = players.reduce((sum, p) => sum + p.stats.consistency, 0) / players.length;
 
   let rating = (avgConsistency - 75) * 0.05; // disciplined teams throw better util
