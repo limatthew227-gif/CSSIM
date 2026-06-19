@@ -790,7 +790,9 @@ const hltvTeams: HltvTeamSeed[] = [
       { handle: "magixx", realName: "Boris Vorobiev", country: "RU", role: "Support", style: "Balanced", hltvRating: 1.01 },
       { handle: "tN1R", realName: "Andrey Tatarinovich", country: "BY", role: "Rifler", style: "Aggressive", hltvRating: 1.09 },
       { handle: "zont1x", realName: "Myroslav Plakhotia", country: "UA", role: "Support", style: "Passive", hltvRating: 1.03 },
-      { handle: "donk", realName: "Danil Kryshkovets", country: "RU", role: "Entry", style: "Aggressive", hltvRating: 1.4 },
+      // HLTV #1 of 2024 (top-2 of 2025) with monster big-event numbers — belongs at the OVR ceiling.
+      // Stat overrides reflect his all-round dominance incl. genuine hybrid AWP use.
+      { handle: "donk", realName: "Danil Kryshkovets", country: "RU", role: "Entry", style: "Aggressive", hltvRating: 1.45, statOverrides: { aim: 99, clutch: 99, consistency: 99, awp: 92, igl: 82 } },
     ],
   },
   {
