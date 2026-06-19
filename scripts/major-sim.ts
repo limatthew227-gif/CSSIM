@@ -78,7 +78,7 @@ function major(): FieldTeam {
   return (playSeries(sf[0].team, sf[1].team, 3, "playoff") === sf[0].team ? sf[0] : sf[1]).team;
 }
 
-const N = 100;
+const N = Number((typeof process !== "undefined" && process.env.MAJORS) || 100);
 const champions: Record<string, number> = {};
 const orig = Math.random;
 for (let i = 0; i < N; i += 1) {

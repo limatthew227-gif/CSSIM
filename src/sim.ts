@@ -51,6 +51,24 @@ export interface MatchContext {
   stage?: MatchStageContext;
   peakingPlayers?: string[];
   coldPlayers?: string[];
+  yourForm?: number; // per-MATCH team form (strength delta) — drives day-to-day upsets
+  opponentForm?: number;
+}
+
+// Per-match "form" (a team's day): a strength delta in OVR units, rolled once per map. Independent
+// per team, so sometimes the underdog is hot and the favourite cold -> a real chance of an upset
+// even in a mismatch. ~sum of 3 uniforms => mean 0, ~bell-shaped, range ±1.5*FORM_SD.
+const envNum = (k: string, d: number) => (typeof process !== "undefined" && process.env && process.env[k] ? Number(process.env[k]) : d);
+export const FORM_SD = envNum("FORM_SD", 14);
+// Per-round win-prob clamp. The ceiling caps how dominant a favourite can be in a single round; a
+// lower ceiling stops big-gap matchups from compounding to ~100% maps, which is what made the strongest
+// team win ~60% of majors. Symmetric so neither side is structurally favoured. Tuned with FORM_SD via
+// scripts/major-sim.ts: even teams ~50%, a +5-OVR side ~70% of a BO3, the best team ~50% of majors
+// (was ~62%) with 6+ different champions. (Env-overridable for re-calibration; defaults in production.)
+export const ROUND_CLAMP_HI = envNum("CLAMP_HI", 0.78);
+export const ROUND_CLAMP_LO = envNum("CLAMP_LO", 0.22);
+export function rollForm(): number {
+  return (Math.random() + Math.random() + Math.random() - 1.5) * FORM_SD;
 }
 
 export interface VetoState {
@@ -576,7 +594,7 @@ export function initMatch(map: MapId, you: FieldTeam, opponent: FieldTeam, conte
 
   return {
     map,
-    context: { ...context, map, peakingPlayers, coldPlayers },
+    context: { ...context, map, peakingPlayers, coldPlayers, yourForm: rollForm(), opponentForm: rollForm() },
     round: 1,
     you: 0,
     opponent: 0,
@@ -1527,14 +1545,14 @@ export function playRound(
   let endOfRoundYourMoney = { ...updatedYourMoney };
   let endOfRoundOpponentMoney = { ...updatedOpponentMoney };
 
-  let yourStrength = teamStrength(you, settings) + mapEdge(you, opponent, state.map, settings);
+  let yourStrength = teamStrength(you, settings) + mapEdge(you, opponent, state.map, settings) + (state.context.yourForm ?? 0);
   you.players.forEach((p) => {
     if (p.role === "AWP" && yourWeapons[p.id] === "AWP") {
       yourStrength += (p.ovr * 0.15) / 5;
     }
   });
 
-  let opponentStrength = teamStrength(opponent, settings, difficulty, true);
+  let opponentStrength = teamStrength(opponent, settings, difficulty, true) + (state.context.opponentForm ?? 0);
   opponent.players.forEach((p) => {
     if (p.role === "AWP" && opponentWeapons[p.id] === "AWP") {
       opponentStrength += (p.ovr * 0.15) / 5;
@@ -1599,7 +1617,9 @@ export function playRound(
   const yourLoadout = loadoutProfile(you.players, currentEconomy, yourWeapons, yourArmor);
   const opponentLoadout = loadoutProfile(opponent.players, currentOpponentEconomy, opponentWeapons, opponentArmor);
   const economyMod = economyValue(currentEconomy) - economyValue(currentOpponentEconomy);
-  const sideMod = state.side === "CT" ? 0.015 : -0.005;
+  // Symmetric so the CT side's edge is zero-sum — it no longer favours whoever STARTS CT over a match
+  // (both teams play equal CT/T halves). Was 0.015/-0.005, which handed the CT-starting team ~5% extra.
+  const sideMod = state.side === "CT" ? 0.01 : -0.01;
   const tacticMod =
     tactic === "aggressive"
       ? 0.025
@@ -1624,7 +1644,7 @@ export function playRound(
   const utilEdge = utilityRating(you) * utilFactor(yourUtilCount) - utilityRating(opponent) * utilFactor(opponentUtilCount);
   const utilMod = clamp(utilEdge * 0.012, -0.04, 0.04);
 
-  const baseProbability = clamp(0.5 + (yourStrength - opponentStrength) / 58 + economyMod + sideMod + tacticMod + timeoutBoost + utilMod + luck, 0.16, 0.84);
+  const baseProbability = clamp(0.5 + (yourStrength - opponentStrength) / 58 + economyMod + sideMod + tacticMod + timeoutBoost + utilMod + luck, ROUND_CLAMP_LO, ROUND_CLAMP_HI);
   const probability = applyEcoUpsetCaps(baseProbability, yourLoadout, opponentLoadout, yourStrength, opponentStrength);
 
   const dynamicResult = generateDynamicRound(
