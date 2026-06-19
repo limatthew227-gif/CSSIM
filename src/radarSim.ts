@@ -522,6 +522,12 @@ export interface RadarSimulationResult {
   bomb: Position | null;
 }
 
+// Shortest-path angle interpolation (degrees) — turns the short way, never spins 359° around 0.
+function angleLerp(a: number, b: number, t: number): number {
+  const delta = ((b - a + 540) % 360) - 180;
+  return a + delta * t;
+}
+
 // Interpolate a player's position/yaw from the spatial timeline at round-time `time` (seconds).
 // Dead players' frames are frozen at their death spot by the engine, so this naturally stops them.
 function sampleTimeline(tl: TimelineFrame[], time: number, id: string): { x: number; y: number; yaw: number } | null {
@@ -538,7 +544,8 @@ function sampleTimeline(tl: TimelineFrame[], time: number, id: string): { x: num
       const pa = a.players.find((q) => q.id === id);
       const pb = b.players.find((q) => q.id === id);
       if (!pa || !pb) return pa ?? pb ? { x: (pa ?? pb)!.x, y: (pa ?? pb)!.y, yaw: (pa ?? pb)!.yaw } : null;
-      return { x: pa.x + (pb.x - pa.x) * f, y: pa.y + (pb.y - pa.y) * f, yaw: pa.yaw };
+      // interpolate facing the short way so the direction tick rotates smoothly between frames
+      return { x: pa.x + (pb.x - pa.x) * f, y: pa.y + (pb.y - pa.y) * f, yaw: angleLerp(pa.yaw, pb.yaw, f) };
     }
   }
   const last = tl[tl.length - 1].players.find((q) => q.id === id);
