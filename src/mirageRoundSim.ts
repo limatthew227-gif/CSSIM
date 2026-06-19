@@ -13,7 +13,7 @@
 import type { Player } from "./gameData";
 import type { Vec } from "./mapGeometry";
 import { getNavGrid, hasLineOfSight, snapToWalkable } from "./mapGeometry";
-import { getNode, nearestNode } from "./mirageNav";
+import { getNode, nearestNode, neighbors, spawnNodeId } from "./mirageNav";
 import { findRoute, corridorPath } from "./pathfinder";
 import { objectiveFor, roundStateFor, type Situation, type Site } from "./roundAI";
 
@@ -35,6 +35,17 @@ const CROSSFIRE = 0.55; // each extra enemy with LOS on you cuts your odds
 // Aggregate-balance knobs. Per-duel edges COMPOUND over a ~16-round match, so individual OVR skill is
 // compressed (SKILL_W) and team strength (the [0.16,0.84]-style probability) is the primary, bounded
 // driver (TEAM_W). The per-duel clamp keeps even mismatches from being a sure thing (preserves upsets).
+// Real spawn pads per side (radar coords, from a CS2 demo) — players start spread out, not stacked.
+const SPAWN_PADS: Record<"T" | "CT", Vec[]> = {
+  T: [{ x: 86.8, y: 39.5 }, { x: 88.4, y: 40.3 }, { x: 88.4, y: 32.8 }, { x: 86.8, y: 33.8 }, { x: 86.8, y: 37.6 }],
+  CT: [{ x: 30.7, y: 68.6 }, { x: 30.7, y: 72.1 }, { x: 29.5, y: 70.5 }, { x: 28.4, y: 68.6 }, { x: 28.4, y: 72.1 }],
+};
+// Repositioning: once holding, players don't freeze — they shuffle between nearby angles every few
+// seconds (peek / re-angle / hold a different spot), so CTs and held Ts play dynamically.
+const REPO_MIN = 3.0; // seconds
+const REPO_VAR = 5.0;
+const REPO_AGGRO = 1.6; // a player repositions sooner right after winning a duel (re-aggress/relocate)
+
 const SKILL_W = 0.28; // how much the raw OVR/role skill ratio sways one duel
 const TEAM_W = 0.36; // how much team-strength bias sways one duel
 const DUEL_CLAMP = 0.28; // per-duel win prob is clamped to [DUEL_CLAMP, 1 - DUEL_CLAMP]
@@ -101,6 +112,8 @@ interface SimP {
   fightTimer: number;
   fightTarget: string | null;
   hasBomb: boolean;
+  home: string; // the callout this player is anchored to (repositions around it)
+  repoTimer: number; // seconds until the next reposition while holding
 }
 
 // T-side approach plans — distinct routes per player so a take spreads across the map (ramp, palace,
@@ -162,6 +175,14 @@ function buildRoute(fromId: string, toId: string, sit: Situation): { pts: Vec[];
   }
   return { pts: pts.length ? pts : [{ x: 50, y: 50 }], cum, len };
 }
+// Prepend a starting position (e.g. a spawn pad, or current pos when repositioning) to a route.
+function withStart(route: { pts: Vec[]; cum: number[]; len: number }, start: Vec): { pts: Vec[]; cum: number[]; len: number } {
+  const pts = Math.hypot(route.pts[0].x - start.x, route.pts[0].y - start.y) < 0.5 ? route.pts.slice() : [start, ...route.pts];
+  const cum = [0];
+  let len = 0;
+  for (let i = 1; i < pts.length; i += 1) { len += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y); cum.push(len); }
+  return { pts, cum, len };
+}
 function posAtDist(p: SimP): Vec {
   if (p.pts.length <= 1) return p.pts[0] ?? { x: 50, y: 50 };
   const d = Math.max(0, Math.min(p.len, p.dist));
@@ -220,6 +241,8 @@ export function simulateMirageRound(input: MirageSimInput): MirageSimResult {
         objective = ctObjective(idx, push);
         route = buildRoute("ctspawn", objective, sit0);
       }
+      const pad = SPAWN_PADS[pside][idx % 5]; // start spread out on a real spawn pad
+      route = withStart(route, pad);
       return {
         ref,
         team,
@@ -227,7 +250,7 @@ export function simulateMirageRound(input: MirageSimInput): MirageSimResult {
         idx,
         ...route,
         dist: 0,
-        pos: route.pts[0],
+        pos: pad,
         nodeId: pside === "CT" ? "ctspawn" : "tspawn",
         objective,
         alive: true,
@@ -237,6 +260,8 @@ export function simulateMirageRound(input: MirageSimInput): MirageSimResult {
         fightTimer: 0,
         fightTarget: null,
         hasBomb: false,
+        home: objective,
+        repoTimer: REPO_MIN + Math.random() * REPO_VAR,
       };
     });
   };
@@ -263,21 +288,43 @@ export function simulateMirageRound(input: MirageSimInput): MirageSimResult {
   let reason = "";
   let lastFrameT = -1;
 
+  let plantedSite: Site | null = null;
   const replan = (plantSite: Site) => {
+    plantedSite = plantSite;
     const sit: Situation = { ...sit0, bombPlanted: true, plantSite };
     for (const p of ps) {
       if (!p.alive) continue;
-      const fromNode = p.nodeId;
       const obj = objectiveFor(p.side, p.idx, strategy, sit);
-      const route = buildRoute(fromNode, obj, sit);
+      const route = withStart(buildRoute(p.nodeId, obj, sit), p.pos);
       p.pts = route.pts;
       p.cum = route.cum;
       p.len = route.len;
       p.dist = 0;
       p.objective = obj;
+      p.home = obj;
       p.fightTarget = null;
       p.fightTimer = 0;
+      p.repoTimer = REPO_MIN + Math.random() * REPO_VAR;
     }
+  };
+
+  // Reposition a player from where they are to a new callout (peek/re-angle/rotate) — keeps play dynamic.
+  const sitNow = (): Situation => (plantedSite ? { ...sit0, bombPlanted: true, plantSite: plantedSite } : sit0);
+  const repositionTo = (p: SimP, toNodeId: string) => {
+    const fromNode = nearestNode(p.pos.x, p.pos.y).id;
+    const route = withStart(buildRoute(fromNode, toNodeId, sitNow()), p.pos);
+    p.pts = route.pts;
+    p.cum = route.cum;
+    p.len = route.len;
+    p.dist = 0;
+    p.objective = toNodeId;
+  };
+  // Pick where to reposition: the player's home callout or an adjacent angle — never retreat to a
+  // spawn or wander to the far site, so they hold/peek their assigned area dynamically.
+  const repositionTarget = (p: SimP): string => {
+    const banned = new Set([spawnNodeId("CT"), spawnNodeId("T")]);
+    const opts = [p.home, p.home, ...neighbors(p.home).map((e) => e.to)].filter((id) => !banned.has(id));
+    return opts.length ? opts[Math.floor(Math.random() * opts.length)] : p.home;
   };
 
   const hasLos = (a: SimP, b: SimP): boolean => {
@@ -314,6 +361,7 @@ export function simulateMirageRound(input: MirageSimInput): MirageSimResult {
     victim.fightTarget = null;
     killer.fightTarget = null;
     killer.fightTimer = 0;
+    killer.repoTimer = Math.min(killer.repoTimer, REPO_AGGRO); // re-aggress / relocate soon after a kill
     const kn = getNode(killer.nodeId);
     const vn = getNode(victim.nodeId);
     events.push({
@@ -339,7 +387,7 @@ export function simulateMirageRound(input: MirageSimInput): MirageSimResult {
   while (t < ROUND_TIME && !winner) {
     t = Math.round((t + DT) * 100) / 100;
 
-    // 1. Movement — advance toward objective; holders stay put.
+    // 1. Movement — advance toward objective; once arrived, periodically reposition (don't freeze).
     for (const p of ps) {
       if (!p.alive) continue;
       if (p.dist < p.len) {
@@ -350,6 +398,13 @@ export function simulateMirageRound(input: MirageSimInput): MirageSimResult {
         const dy = p.pos.y - prev.y;
         if (dx * dx + dy * dy > 0.02) p.yaw = (Math.atan2(dy, dx) * 180) / Math.PI;
         p.nodeId = nearestNode(p.pos.x, p.pos.y).id; // current callout for engage/LOS gating
+      } else if (!p.fightTarget) {
+        // holding: shuffle to a nearby angle every few seconds so play stays dynamic
+        p.repoTimer -= DT;
+        if (p.repoTimer <= 0) {
+          repositionTo(p, repositionTarget(p));
+          p.repoTimer = REPO_MIN + Math.random() * REPO_VAR;
+        }
       }
     }
 
