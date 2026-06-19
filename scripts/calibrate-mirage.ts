@@ -15,43 +15,45 @@ import { mirageNodes } from "../src/mirageNav";
 const MIRAGE = { posX: -3230, posY: 1713, scale: 5.0, size: 1024 };
 const toRadar = (x: number, y: number) => ({ x: ((x - MIRAGE.posX) / MIRAGE.scale / MIRAGE.size) * 100, y: ((MIRAGE.posY - y) / MIRAGE.scale / MIRAGE.size) * 100 });
 
-const demoPath = process.argv[2];
-if (!demoPath) { console.error("usage: npx tsx scripts/calibrate-mirage.ts <path-to.dem>"); process.exit(1); }
-
-const starts = parseEvents(demoPath, ["round_start"]).map((e: any) => e.tick).sort((a: number, b: number) => a - b);
-const ticks: number[] = [];
-for (let ri = 0; ri < starts.length; ri += 1) {
-  const a = starts[ri], b = starts[ri + 1] ?? a + 64 * 80;
-  for (let t = a; t < b; t += 16) ticks.push(t);
-}
-const rows: any[] = parseTicks(demoPath, ["X", "Y", "last_place_name", "is_alive"], ticks);
+const demoPaths = process.argv.slice(2);
+if (!demoPaths.length) { console.error("usage: npx tsx scripts/calibrate-mirage.ts <demo1.dem> [demo2.dem ...]"); process.exit(1); }
 
 const acc = new Map<string, { x: number; y: number; n: number; xs: number[]; ys: number[] }>();
-for (const r of rows) {
-  if (r.X == null || !r.last_place_name || r.is_alive === false) continue;
-  const p = toRadar(r.X, r.Y);
-  const k = r.last_place_name as string;
-  if (!acc.has(k)) acc.set(k, { x: 0, y: 0, n: 0, xs: [], ys: [] });
-  const a = acc.get(k)!;
-  a.x += p.x; a.y += p.y; a.n += 1; a.xs.push(p.x); a.ys.push(p.y);
-}
-// Real adjacency: count direct callout->callout transitions (consecutive samples, same player/round).
-const byPlayer = new Map<string, any[]>();
-for (const r of rows) {
-  if (!r.last_place_name) continue;
-  const k = String(r.steamid ?? r.name);
-  if (!byPlayer.has(k)) byPlayer.set(k, []);
-  byPlayer.get(k)!.push(r);
-}
 const trans = new Map<string, number>();
-for (const rs of byPlayer.values()) {
-  rs.sort((a, b) => a.tick - b.tick);
-  for (let i = 1; i < rs.length; i += 1) {
-    if (rs[i].tick - rs[i - 1].tick > 48) continue; // skip round gaps / respawns
-    const a = rs[i - 1].last_place_name, b = rs[i].last_place_name;
-    if (!a || !b || a === b) continue;
-    const key = a < b ? `${a}|${b}` : `${b}|${a}`; // undirected
-    trans.set(key, (trans.get(key) ?? 0) + 1);
+for (const demoPath of demoPaths) {
+  const starts = parseEvents(demoPath, ["round_start"]).map((e: any) => e.tick).sort((a: number, b: number) => a - b);
+  const ticks: number[] = [];
+  for (let ri = 0; ri < starts.length; ri += 1) {
+    const a = starts[ri], b = starts[ri + 1] ?? a + 64 * 80;
+    for (let t = a; t < b; t += 16) ticks.push(t);
+  }
+  const rows: any[] = parseTicks(demoPath, ["X", "Y", "last_place_name", "is_alive"], ticks);
+  console.error(`  ${demoPath.split("/").pop()}: ${rows.length} samples`);
+  for (const r of rows) {
+    if (r.X == null || !r.last_place_name || r.is_alive === false) continue;
+    const p = toRadar(r.X, r.Y);
+    const k = r.last_place_name as string;
+    if (!acc.has(k)) acc.set(k, { x: 0, y: 0, n: 0, xs: [], ys: [] });
+    const a = acc.get(k)!;
+    a.x += p.x; a.y += p.y; a.n += 1; a.xs.push(p.x); a.ys.push(p.y);
+  }
+  // adjacency: direct callout->callout transitions (consecutive samples, same player), per demo
+  const byPlayer = new Map<string, any[]>();
+  for (const r of rows) {
+    if (!r.last_place_name) continue;
+    const k = String(r.steamid ?? r.name);
+    if (!byPlayer.has(k)) byPlayer.set(k, []);
+    byPlayer.get(k)!.push(r);
+  }
+  for (const rs of byPlayer.values()) {
+    rs.sort((a, b) => a.tick - b.tick);
+    for (let i = 1; i < rs.length; i += 1) {
+      if (rs[i].tick - rs[i - 1].tick > 48) continue;
+      const a = rs[i - 1].last_place_name, b = rs[i].last_place_name;
+      if (!a || !b || a === b) continue;
+      const key = a < b ? `${a}|${b}` : `${b}|${a}`;
+      trans.set(key, (trans.get(key) ?? 0) + 1);
+    }
   }
 }
 

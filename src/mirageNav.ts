@@ -36,30 +36,30 @@ export interface MapEdge {
   tags?: string[];
 }
 
-// --- Nodes: real callout centroids (radar 0..100) from the demo ---
+// --- Nodes: real callout centroids (radar 0..100), averaged over 4 pro CS2 demos (~374k samples) ---
 export const mirageNodes: MapNode[] = [
-  { id: "tspawn", callout: "T Spawn", x: 86.7, y: 36.7, z: 0, floor: 0, type: "spawn" },
-  { id: "ctspawn", callout: "CT Spawn", x: 32.4, y: 68.8, z: 0, floor: 0, type: "spawn" },
-  { id: "asite", callout: "A Site", x: 54.4, y: 71.7, z: 0, floor: 0, type: "site" },
-  { id: "bsite", callout: "B Site", x: 23.4, y: 28.3, z: 0, floor: 0, type: "site" },
-  { id: "mid", callout: "Middle", x: 51.2, y: 47.9, z: 0, floor: 0, type: "mid" },
-  { id: "topmid", callout: "Top Mid", x: 69.1, y: 41.0, z: 0, floor: 0, type: "mid" },
-  { id: "window", callout: "Snipers Nest", x: 39.6, y: 47.4, z: 1, floor: 1, type: "choke" },
-  { id: "connector", callout: "Connector", x: 50.3, y: 54.5, z: 0, floor: 0, type: "connector" },
-  { id: "jungle", callout: "Jungle", x: 43.9, y: 60.6, z: 0, floor: 0, type: "connector" },
-  { id: "catwalk", callout: "Catwalk", x: 47.6, y: 35.5, z: 0, floor: 0, type: "connector" },
-  { id: "aramp", callout: "Stairs", x: 53.6, y: 62.2, z: 0, floor: 0, type: "choke" },
-  { id: "palace", callout: "Palace", x: 72.3, y: 72.1, z: 1, floor: 1, type: "choke" },
-  { id: "tramp", callout: "T Ramp", x: 70.6, y: 65.2, z: 0, floor: 0, type: "connector" },
-  { id: "palacealley", callout: "Palace Alley", x: 79.5, y: 58.5, z: 0, floor: 0, type: "connector" },
-  { id: "scaffolding", callout: "Scaffolding", x: 64.2, y: 72.1, z: 0, floor: 0, type: "connector" },
-  { id: "sidealley", callout: "Side Alley", x: 73.6, y: 25.9, z: 0, floor: 0, type: "connector" },
-  { id: "house", callout: "House", x: 68.9, y: 18.1, z: 0, floor: 0, type: "connector" },
-  { id: "backalley", callout: "Back Alley", x: 54.5, y: 21.4, z: 0, floor: 0, type: "connector" },
-  { id: "underpass", callout: "Underpass", x: 45.7, y: 31.3, z: -1, floor: -1, type: "lurker" },
-  { id: "bapps", callout: "Apartments", x: 33.2, y: 19.2, z: 1, floor: 1, type: "choke" },
-  { id: "van", callout: "Van", x: 21.1, y: 19.1, z: 0, floor: 0, type: "choke" },
-  { id: "market", callout: "Market", x: 24.8, y: 44.0, z: 0, floor: 0, type: "connector" },
+  { id: "tspawn", callout: "T Spawn", x: 86.5, y: 36.6, z: 0, floor: 0, type: "spawn" },
+  { id: "ctspawn", callout: "CT Spawn", x: 31.9, y: 68.7, z: 0, floor: 0, type: "spawn" },
+  { id: "asite", callout: "A Site", x: 54.4, y: 70.4, z: 0, floor: 0, type: "site" },
+  { id: "bsite", callout: "B Site", x: 25.0, y: 28.2, z: 0, floor: 0, type: "site" },
+  { id: "mid", callout: "Middle", x: 51.2, y: 48.0, z: 0, floor: 0, type: "mid" },
+  { id: "topmid", callout: "Top Mid", x: 68.8, y: 41.3, z: 0, floor: 0, type: "mid" },
+  { id: "window", callout: "Snipers Nest", x: 39.9, y: 47.9, z: 1, floor: 1, type: "choke" },
+  { id: "connector", callout: "Connector", x: 50.3, y: 54.9, z: 0, floor: 0, type: "connector" },
+  { id: "jungle", callout: "Jungle", x: 43.9, y: 60.9, z: 0, floor: 0, type: "connector" },
+  { id: "catwalk", callout: "Catwalk", x: 47.8, y: 36.0, z: 0, floor: 0, type: "connector" },
+  { id: "aramp", callout: "Stairs", x: 53.4, y: 61.6, z: 0, floor: 0, type: "choke" },
+  { id: "palace", callout: "Palace", x: 71.0, y: 73.0, z: 1, floor: 1, type: "choke" },
+  { id: "tramp", callout: "T Ramp", x: 70.4, y: 65.2, z: 0, floor: 0, type: "connector" },
+  { id: "palacealley", callout: "Palace Alley", x: 78.5, y: 59.1, z: 0, floor: 0, type: "connector" },
+  { id: "scaffolding", callout: "Scaffolding", x: 62.9, y: 73.3, z: 0, floor: 0, type: "connector" },
+  { id: "sidealley", callout: "Side Alley", x: 73.5, y: 26.2, z: 0, floor: 0, type: "connector" },
+  { id: "house", callout: "House", x: 69.2, y: 18.3, z: 0, floor: 0, type: "connector" },
+  { id: "backalley", callout: "Back Alley", x: 53.2, y: 21.9, z: 0, floor: 0, type: "connector" },
+  { id: "underpass", callout: "Underpass", x: 45.4, y: 31.8, z: -1, floor: -1, type: "lurker" },
+  { id: "bapps", callout: "Apartments", x: 32.4, y: 19.5, z: 1, floor: 1, type: "choke" },
+  { id: "van", callout: "Van", x: 20.4, y: 19.1, z: 0, floor: 0, type: "choke" },
+  { id: "market", callout: "Market", x: 25.4, y: 43.9, z: 0, floor: 0, type: "connector" },
 ];
 
 const nodeById = new Map(mirageNodes.map((n) => [n.id, n]));

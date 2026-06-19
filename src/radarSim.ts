@@ -64,11 +64,11 @@ export const MAP_LAYOUTS: Record<MapId, MapLayout> = {
     // Calibrated from a real CS2 demo (see scripts/calibrate-mirage.ts): B site upper-left, A site
     // bottom-centre, T spawn right, CT spawn lower-left. Mirage actually plays from the spatial
     // timeline (mirageRoundSim), so these only feed the bomb-icon fallback / legacy path.
-    tSpawn: { x: 86.7, y: 36.7 },
-    ctSpawn: { x: 32.4, y: 68.8 },
-    bombsiteA: { x: 54.4, y: 71.7 },
-    bombsiteB: { x: 23.4, y: 28.3 },
-    mid: { x: 51.2, y: 47.9 },
+    tSpawn: { x: 86.5, y: 36.6 },
+    ctSpawn: { x: 31.9, y: 68.7 },
+    bombsiteA: { x: 54.4, y: 70.4 },
+    bombsiteB: { x: 25.0, y: 28.2 },
+    mid: { x: 51.2, y: 48.0 },
     chokePoints: {
       "A Ramp": { x: 65, y: 65 },
       "Palace": { x: 72, y: 52 },
