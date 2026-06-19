@@ -31,6 +31,7 @@ const BOMB_TIME = 40;
 const TTK_BASE = 0.7; // seconds from "we see each other" to someone dying — paces deaths
 const HOLDER_EDGE = 1.45; // a player holding their angle beats a peeker, all else equal
 const AWP_EDGE = 1.7; // AWP first-shot advantage
+const DEFUSE_EXPOSE = 1.5; // a CT caught defusing is exposed — a T who re-peeks (flash out) is favoured
 const CROSSFIRE = 1.1; // each extra enemy with LOS on you sharply cuts your odds (1vN is a near-loss)
 // Aggregate-balance knobs. Per-duel edges COMPOUND over a ~16-round match, so individual OVR skill is
 // compressed (SKILL_W) and team strength (the [0.16,0.84]-style probability) is the primary, bounded
@@ -302,6 +303,8 @@ export function simulateMirageRound(input: MirageSimInput): MirageSimResult {
   let bombTimer = BOMB_TIME;
   let plantProgress = 0;
   let defuseProgress = 0;
+  let defusingId: string | null = null; // a CT mid-defuse (exposed); cleared after a short grace
+  let defuseGrace = 0;
   let bombOutcome: "none" | "defused" | "exploded" = "none";
   let winner: TeamKey | null = null;
   let reason = "";
@@ -370,7 +373,10 @@ export function simulateMirageRound(input: MirageSimInput): MirageSimResult {
     const awpB = b.awp ? AWP_EDGE : 1;
     const xfA = 1 + CROSSFIRE * (enemiesOf(a).filter((e) => hasLos(a, e)).length - 1);
     const xfB = 1 + CROSSFIRE * (enemiesOf(b).filter((e) => hasLos(b, e)).length - 1);
-    const mult = (holdA * awpA) / Math.max(1, xfA) / ((holdB * awpB) / Math.max(1, xfB));
+    // a CT caught mid-defuse can't fight back — whoever peeks them is hugely favoured
+    const defA = a.ref.id === defusingId ? 1 / DEFUSE_EXPOSE : 1;
+    const defB = b.ref.id === defusingId ? 1 / DEFUSE_EXPOSE : 1;
+    const mult = (holdA * awpA * defA) / Math.max(1, xfA) / ((holdB * awpB * defB) / Math.max(1, xfB));
     const odds = (core / (1 - core)) * mult;
     return Math.max(0.03, Math.min(0.97, odds / (1 + odds)));
   };
@@ -516,11 +522,20 @@ export function simulateMirageRound(input: MirageSimInput): MirageSimResult {
         break;
       }
       // defuse: a CT at the site with no T holding LOS on the site
-      const ctAtSite = ctAlive.find((ct) => Math.hypot(ct.pos.x - siteNode(bombSite).x, ct.pos.y - siteNode(bombSite).y) < 8);
-      const tWatching = tAlive.some((tp) => Math.hypot(tp.pos.x - siteNode(bombSite).x, tp.pos.y - siteNode(bombSite).y) < SIGHT_RANGE
-        && GRID && hasLineOfSight(GRID, tp.pos, siteNode(bombSite)));
+      const site = siteNode(bombSite);
+      defuseGrace = Math.max(0, defuseGrace - DT);
+      if (defuseGrace === 0) defusingId = null;
+      const ctAtSite = ctAlive.find((ct) => Math.hypot(ct.pos.x - site.x, ct.pos.y - site.y) < 8);
+      const tWatching = tAlive.some((tp) => Math.hypot(tp.pos.x - site.x, tp.pos.y - site.y) < SIGHT_RANGE && GRID && hasLineOfSight(GRID, tp.pos, site));
       if (ctAtSite && !tWatching) {
         defuseProgress += DT;
+        defusingId = ctAtSite.ref.id; // flag the defuser as exposed (stays briefly via the grace)
+        defuseGrace = 1.2;
+        // Ts never give up the bomb: pull the nearest free T back to contest the defuse (re-peek).
+        const helpers = tAlive.filter((tp) => !tp.fightTarget);
+        helpers.sort((a, b2) => Math.hypot(a.pos.x - site.x, a.pos.y - site.y) - Math.hypot(b2.pos.x - site.x, b2.pos.y - site.y));
+        const help = helpers[0];
+        if (help && Math.hypot(help.pos.x - site.x, help.pos.y - site.y) > 6 && help.objective !== bombSite) repositionTo(help, bombSite);
         if (defuseProgress >= DEFUSE_TIME) {
           bombOutcome = "defused";
           winner = ctKey;
