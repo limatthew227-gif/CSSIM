@@ -4280,6 +4280,155 @@ button.team-stats-row {
   color: var(--red);
 }
 
+.veto-coach-card {
+  display: grid;
+  gap: 10px;
+  margin: 12px 0;
+  padding: 12px;
+  border: 1px solid color-mix(in srgb, var(--accent), var(--line) 65%);
+  border-radius: 8px;
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--accent), transparent 84%), transparent 48%),
+    #181d24;
+}
+
+.veto-coach-card.ban {
+  border-color: rgba(236, 106, 106, 0.42);
+}
+
+.veto-coach-card.pick {
+  border-color: rgba(99, 210, 141, 0.42);
+}
+
+.veto-coach-head,
+.veto-coach-main,
+.veto-coach-records,
+.veto-coach-actions,
+.veto-coach-alt {
+  display: flex;
+  align-items: center;
+}
+
+.veto-coach-head {
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.veto-coach-head > span {
+  margin-right: auto;
+}
+
+.veto-coach-head b {
+  padding: 3px 7px;
+  border: 1px solid rgba(109, 130, 157, 0.45);
+  border-radius: 999px;
+  color: var(--text);
+  background: rgba(38, 44, 54, 0.72);
+}
+
+.veto-coach-main {
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+}
+
+.veto-coach-main span {
+  color: var(--gold);
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.veto-coach-main strong {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 24px;
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.veto-coach-main em {
+  color: var(--muted);
+  font-style: normal;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.veto-coach-records {
+  gap: 6px;
+}
+
+.veto-coach-records span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 22px;
+  padding: 2px 8px 2px 4px;
+  border: 1px solid rgba(109, 130, 157, 0.45);
+  border-radius: 999px;
+  color: #eef4fb;
+  font-size: 11px;
+  font-weight: 900;
+  background: #202733;
+}
+
+.veto-coach-records span.winning {
+  border-color: rgba(117, 214, 146, 0.52);
+  background: linear-gradient(180deg, rgba(44, 78, 59, 0.9), rgba(28, 48, 39, 0.9));
+}
+
+.veto-coach-records span.losing {
+  border-color: rgba(255, 123, 123, 0.48);
+  background: linear-gradient(180deg, rgba(83, 48, 55, 0.9), rgba(50, 35, 42, 0.9));
+}
+
+.veto-coach-card ul {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  padding-left: 16px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.25;
+}
+
+.veto-coach-actions {
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.veto-coach-actions button {
+  min-height: 34px;
+  padding: 0 11px;
+  font-size: 12px;
+}
+
+.veto-coach-alt {
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.veto-coach-alt span {
+  padding: 3px 6px;
+  border-radius: 999px;
+  background: rgba(38, 44, 54, 0.8);
+}
+
+.veto-coach-card.idle p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .map-edges,
 .bonus-list {
   display: grid;

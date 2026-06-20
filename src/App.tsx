@@ -262,6 +262,18 @@ interface ScoutAuditFlag {
   severity: ScoutAuditSeverity;
 }
 
+interface VetoRecommendation {
+  action: "ban" | "pick";
+  map: MapId;
+  score: number;
+  edge: number;
+  yourRecord: SwissRecord;
+  opponentRecord: SwissRecord;
+  confidence: "low" | "medium" | "high";
+  reasons: string[];
+  alternatives: Array<{ map: MapId; score: number; edge: number }>;
+}
+
 const speedDelays: Record<number, number> = {
   0.5: 3500,
   1: 2200,
@@ -2073,6 +2085,13 @@ function App() {
               yourBreakdown={strengthBreakdown}
               opponentBreakdown={opponentStrengthBreakdown}
               edge={paperEdge}
+            />
+            <VetoCoachCard
+              recommendation={buildVetoRecommendation(veto, yourTeam, opponent, settings, matchResults)}
+              you={yourTeam}
+              opponent={opponent}
+              disabled={Boolean(veto.ready || veto.pendingOpponent)}
+              onApply={(map) => ban(map)}
             />
             <div className="map-edges">
               {mapPool
@@ -3890,6 +3909,75 @@ function PaperStrengthCard({
   );
 }
 
+function VetoCoachCard({
+  recommendation,
+  you,
+  opponent,
+  disabled,
+  onApply,
+}: {
+  recommendation?: VetoRecommendation;
+  you: FieldTeam;
+  opponent: FieldTeam;
+  disabled: boolean;
+  onApply: (map: MapId) => void;
+}) {
+  if (!recommendation) {
+    return (
+      <div className="veto-coach-card idle">
+        <div className="veto-coach-head">
+          <Shield size={16} />
+          <span>Veto coach</span>
+        </div>
+        <p>The map set is locked. Review the edge table before starting.</p>
+      </div>
+    );
+  }
+
+  const verb = recommendation.action === "pick" ? "Pick" : "Ban";
+  return (
+    <div className={`veto-coach-card ${recommendation.action}`}>
+      <div className="veto-coach-head">
+        <Shield size={16} />
+        <span>Veto coach</span>
+        <b>{recommendation.confidence}</b>
+      </div>
+      <div className="veto-coach-main">
+        <span>{verb}</span>
+        <strong>{mapName(recommendation.map)}</strong>
+        <em>{recommendation.edge > 0 ? "+" : ""}{recommendation.edge.toFixed(1)} edge</em>
+      </div>
+      <div className="veto-coach-records">
+        <span className={mapRecordTone(recommendation.yourRecord)}>
+          <TeamLogo team={you} small />
+          {formatMapRecord(recommendation.yourRecord)}
+        </span>
+        <span className={mapRecordTone(recommendation.opponentRecord)}>
+          <TeamLogo team={opponent} small />
+          {formatMapRecord(recommendation.opponentRecord)}
+        </span>
+      </div>
+      <ul>
+        {recommendation.reasons.map((reason) => (
+          <li key={reason}>{reason}</li>
+        ))}
+      </ul>
+      <div className="veto-coach-actions">
+        <button className="secondary" type="button" disabled={disabled} onClick={() => onApply(recommendation.map)}>
+          {verb} {mapName(recommendation.map)}
+        </button>
+        <div className="veto-coach-alt">
+          {recommendation.alternatives.slice(1, 3).map((item) => (
+            <span key={item.map}>
+              {mapName(item.map)} <b>{item.edge > 0 ? "+" : ""}{item.edge.toFixed(1)}</b>
+            </span>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function BonusList({ title, bonuses }: { title: string; bonuses: ReturnType<typeof composition> }) {
   return (
     <div className="bonus-list">
@@ -3931,6 +4019,81 @@ function vetoEdgeStatus(veto: VetoState, map: MapId, opponentTag: string) {
   if (pick === "opponent") return `${opponentTag} pick`;
   if (pick === "decider") return "decider";
   return "";
+}
+
+function buildVetoRecommendation(
+  veto: VetoState,
+  you: FieldTeam,
+  opponent: FieldTeam,
+  settings: CustomSettings,
+  results: SwissResult[],
+): VetoRecommendation | undefined {
+  if (veto.ready || veto.pendingOpponent || !veto.available.length) return undefined;
+
+  const action: VetoRecommendation["action"] = veto.prompt.toLowerCase().includes("pick") ? "pick" : "ban";
+  const candidates = mapPool
+    .filter((map) => veto.available.includes(map.id))
+    .map((map) => {
+      const edge = mapEdge(you, opponent, map.id, settings);
+      const yourRecord = mapRecordForTeam(results, you.id, map.id);
+      const opponentRecord = mapRecordForTeam(results, opponent.id, map.id);
+      const yourRecordScore = yourRecord.wins - yourRecord.losses;
+      const opponentRecordScore = opponentRecord.wins - opponentRecord.losses;
+      const score =
+        action === "pick"
+          ? edge + (yourRecordScore - opponentRecordScore) * 0.45
+          : -edge + (opponentRecordScore - yourRecordScore) * 0.45;
+
+      return { map: map.id, score, edge, yourRecord, opponentRecord };
+    })
+    .sort((a, b) => b.score - a.score);
+
+  const best = candidates[0];
+  if (!best) return undefined;
+
+  const nextBest = candidates[1];
+  const gap = nextBest ? best.score - nextBest.score : 2;
+  const confidence: VetoRecommendation["confidence"] = gap >= 1.4 ? "high" : gap >= 0.65 ? "medium" : "low";
+  const reasons: string[] = [];
+  const totalYourMaps = best.yourRecord.wins + best.yourRecord.losses;
+  const totalOpponentMaps = best.opponentRecord.wins + best.opponentRecord.losses;
+
+  if (action === "pick") {
+    reasons.push(
+      best.edge >= 0
+        ? `Best remaining paper edge at ${signedValue(best.edge)}.`
+        : `Least damaging pick at ${signedValue(best.edge)}.`,
+    );
+  } else {
+    reasons.push(
+      best.edge < 0
+        ? `Biggest danger map at ${signedValue(best.edge)}.`
+        : `Lowest-value open map at ${signedValue(best.edge)}.`,
+    );
+  }
+
+  if (totalYourMaps > 0) reasons.push(`${you.tag} are ${formatMapRecord(best.yourRecord)} on it this run.`);
+  if (totalOpponentMaps > 0) reasons.push(`${opponent.tag} are ${formatMapRecord(best.opponentRecord)} on it this run.`);
+  if (veto.available.length === 1) reasons.push("Only map left in the veto.");
+  if (reasons.length < 2) {
+    reasons.push(
+      action === "pick"
+        ? "Keeps the series on your strongest remaining lane."
+        : "Protects the series from the worst remaining lane.",
+    );
+  }
+
+  return {
+    action,
+    map: best.map,
+    score: best.score,
+    edge: best.edge,
+    yourRecord: best.yourRecord,
+    opponentRecord: best.opponentRecord,
+    confidence,
+    reasons: reasons.slice(0, 3),
+    alternatives: candidates.slice(0, 3).map(({ map, score, edge }) => ({ map, score, edge })),
+  };
 }
 
 function SwissPath({ record }: { record: SwissRecord }) {
