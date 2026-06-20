@@ -2866,9 +2866,12 @@ export function recalculateHltvStyleRating(line: PlayerLine) {
 
   line.adr = Number(adr.toFixed(1));
   line.impact = Number(impact.toFixed(2));
-  // HLTV effectively floors bad games (a 0-kill map still shows ~0.1, not ~0), and the raw 2.0 formula
-  // dips below that on heavy losses — so floor at 0.1 to match what HLTV actually displays.
-  line.rating = Number(clamp(rating, 0.1, 2.8).toFixed(2));
+  // Soften the very top end (diminishing returns above 1.75): the raw model lets stars post 2.0+ maps
+  // ~21% of the time, but even the world #1 (donk 2026 ~12%, s1mple 2018 ~3%) does so far less. HLTV
+  // also floors bad games (~0.1, not 0). Display-only — kills/outcomes are untouched.
+  let r = rating;
+  if (r > 1.75) r = 1.75 + (r - 1.75) * 0.72;
+  line.rating = Number(clamp(r, 0.1, 2.8).toFixed(2));
 }
 
 export function resultNotes(state: MatchState, you: FieldTeam, opponent: FieldTeam, settings: CustomSettings, difficulty: Difficulty) {
