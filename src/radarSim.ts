@@ -304,12 +304,17 @@ function hashString(str: string): number {
 }
 
 export interface SimulatedRadarPlayer extends Player {
+  radarKey: string;
   x: number;
   y: number;
   yaw: number; // facing in degrees (0 = +x / east), from movement direction
   alive: boolean;
   side: "CT" | "T";
   team: "you" | "opponent";
+}
+
+function teamPlayerKey(team: "you" | "opponent", id: string) {
+  return `${team}:${id}`;
 }
 
 export function getClosestNodeKey(pos: Position, layout: MapLayout): string {
@@ -575,12 +580,13 @@ export function simulateRadarPlayers(
   const stepIndex = stepOverride !== undefined ? stepOverride : completedEvents.length;
   const totalSteps = Math.max(1, allEvents.length);
 
-  const deadIds = new Set();
+  const deadIds = new Set<string>();
   for (let i = 0; i < allEvents.length; i++) {
     const event = allEvents[i];
     if ((!event.type || event.type === "kill") && event.victimId) {
       if (i < stepIndex) {
-        deadIds.add(event.victimId);
+        const victimTeam = event.team === "you" ? "opponent" : event.team === "opponent" ? "you" : undefined;
+        if (victimTeam) deadIds.add(teamPlayerKey(victimTeam, event.victimId));
       }
     }
   }
@@ -600,8 +606,9 @@ export function simulateRadarPlayers(
 
     const mk = (players: Player[], side: "CT" | "T", team: "you" | "opponent"): SimulatedRadarPlayer[] =>
       players.map((p) => {
-        const s = sampleTimeline(tl, curT, p.id);
-        return { ...p, x: s?.x ?? 50, y: s?.y ?? 50, yaw: s?.yaw ?? 0, alive: !deadIds.has(p.id), side, team };
+        const radarKey = teamPlayerKey(team, p.id);
+        const s = sampleTimeline(tl, curT, radarKey) ?? sampleTimeline(tl, curT, p.id);
+        return { ...p, radarKey, x: s?.x ?? 50, y: s?.y ?? 50, yaw: s?.yaw ?? 0, alive: !deadIds.has(radarKey), side, team };
       });
     const players = [...mk(you.players, yourSide, "you"), ...mk(opponent.players, opponentSide, "opponent")];
 
@@ -633,7 +640,7 @@ export function simulateRadarPlayers(
       for (const p of players) {
         if (p.team !== enemyTeam || !p.alive) continue;
         const d = Math.hypot(p.x - ev.targetPos.x, p.y - ev.targetPos.y);
-        if (d < FLASH_R) flashed[p.id] = Math.max(flashed[p.id] ?? 0, fade * (1 - d / FLASH_R));
+        if (d < FLASH_R) flashed[p.radarKey] = Math.max(flashed[p.radarKey] ?? 0, fade * (1 - d / FLASH_R));
       }
     }
     return { players, traces: traces.slice(-6), bomb, flashed };
@@ -655,12 +662,12 @@ export function simulateRadarPlayers(
 
   // 1. Determine base destinations — always use exact known node positions
   const allPlayers = [
-    ...you.players.map((p, idx) => ({ p, idx, side: yourSide, team: "you" as const })),
-    ...opponent.players.map((p, idx) => ({ p, idx, side: opponentSide, team: "opponent" as const }))
+    ...you.players.map((p, idx) => ({ p, idx, key: teamPlayerKey("you", p.id), side: yourSide, team: "you" as const })),
+    ...opponent.players.map((p, idx) => ({ p, idx, key: teamPlayerKey("opponent", p.id), side: opponentSide, team: "opponent" as const }))
   ];
 
   const playerDest = new Map<string, Position>();
-  for (const { p, idx, side } of allPlayers) {
+  for (const { idx, key, side } of allPlayers) {
     let dest: Position;
     if (side === "CT") {
       if (idx === 0 || idx === 3) dest = layout.bombsiteA;
@@ -675,14 +682,14 @@ export function simulateRadarPlayers(
         else dest = layout.mid;
       }
     }
-    playerDest.set(p.id, dest);
+    playerDest.set(key, dest);
   }
 
   // 2. Initialize waypoints — everyone starts at spawn
   const playerWaypoints = new Map<string, Waypoint[]>();
-  for (const { p, side } of allPlayers) {
+  for (const { key, side } of allPlayers) {
     const spawn = side === "CT" ? layout.ctSpawn : layout.tSpawn;
-    playerWaypoints.set(p.id, [{ step: 0, pos: spawn }]);
+    playerWaypoints.set(key, [{ step: 0, pos: spawn }]);
   }
 
   const roundTraces: RadarTrace[] = [];
@@ -695,14 +702,14 @@ export function simulateRadarPlayers(
     
     if (event.type === "plant") {
        const plantSitePos = plantSite === "A" ? layout.bombsiteA : layout.bombsiteB;
-       for (const { p, idx, team } of allPlayers) {
-         if (!deadIdsSet.has(p.id)) {
-           const wps = playerWaypoints.get(p.id)!;
+       for (const { idx, key, team } of allPlayers) {
+         if (!deadIdsSet.has(key)) {
+           const wps = playerWaypoints.get(key)!;
            const lastWp = wps[wps.length - 1];
            // By the plant a player should be AT their pre-plant objective (site/mid), then rotate —
            // NOT frozen at spawn. Anchor them at their current destination at the plant step; the
            // rotate leg (below) then runs from there over the rest of the round.
-           const preplantDest = playerDest.get(p.id) ?? lastWp.pos;
+           const preplantDest = playerDest.get(key) ?? lastWp.pos;
            if (lastWp.step < i) {
              wps.push({ step: i, pos: preplantDest });
            }
@@ -711,13 +718,13 @@ export function simulateRadarPlayers(
            if (actualSide === "T") {
              // One lurker goes mid, rest play on site
              if (idx === 0) {
-               playerDest.set(p.id, layout.mid);
+               playerDest.set(key, layout.mid);
              } else {
-               playerDest.set(p.id, plantSitePos);
+               playerDest.set(key, plantSitePos);
              }
            } else {
              // CT retakes toward bomb site
-             playerDest.set(p.id, plantSitePos);
+             playerDest.set(key, plantSitePos);
            }
          }
        }
@@ -726,10 +733,14 @@ export function simulateRadarPlayers(
     if ((!event.type || event.type === "kill") && event.victimId) {
       const victimId = event.victimId;
       const killerId = event.killerId;
-      deadIdsSet.add(victimId);
+      const victimTeam = event.team === "you" ? "opponent" : event.team === "opponent" ? "you" : undefined;
+      const killerTeam = event.team === "you" ? "you" : event.team === "opponent" ? "opponent" : undefined;
+      const victimKey = victimTeam ? teamPlayerKey(victimTeam, victimId) : victimId;
+      const killerKey = killerTeam && killerId ? teamPlayerKey(killerTeam, killerId) : killerId;
+      deadIdsSet.add(victimKey);
 
       // Raw spots the sim resolved the duel at (pixel-nav maps like mirage); else where they headed.
-      const rawVictim = onFloor(event.victimPos ?? playerDest.get(victimId) ?? layout.mid);
+      const rawVictim = onFloor(event.victimPos ?? playerDest.get(victimKey) ?? layout.mid);
       // Killer position first (needed to make the engagement plausible): the sim's, else a peek offset.
       const angle = hashString((killerId || "") + i) * (Math.PI / 180);
       const killerFightPos = onFloor(event.killerPos ?? {
@@ -738,22 +749,22 @@ export function simulateRadarPlayers(
       });
       // Pull the victim in so the duel is a believable sightline, not a cross-map shot through walls.
       const victimDestination = killerId ? plausibleEngagement(killerFightPos, rawVictim) : rawVictim;
-      deathPos.set(victimId, victimDestination); // dead players freeze here (no ghost wandering)
+      deathPos.set(victimKey, victimDestination); // dead players freeze here (no ghost wandering)
 
-      const victimWps = playerWaypoints.get(victimId);
+      const victimWps = playerWaypoints.get(victimKey);
       if (victimWps) {
         victimWps.push({ step: i, pos: victimDestination });
         victimWps.push({ step: totalSteps, pos: victimDestination }); // stay dead
       }
 
       if (killerId) {
-        const killerWps = playerWaypoints.get(killerId);
+        const killerWps = killerKey ? playerWaypoints.get(killerKey) : undefined;
         if (killerWps) {
           killerWps.push({ step: i, pos: killerFightPos });
 
           // After the kill the killer drifts toward their objective over the REST of the round, not
           // in a single step — a one-step hop across the map was the main "supersonic" sprint.
-          const killerOwnDest = playerDest.get(killerId) ?? victimDestination;
+          const killerOwnDest = (killerKey ? playerDest.get(killerKey) : undefined) ?? victimDestination;
           if (i + 1 < totalSteps) {
             killerWps.push({ step: totalSteps, pos: killerOwnDest });
           }
@@ -774,12 +785,12 @@ export function simulateRadarPlayers(
   }
 
   // 4. Finalize waypoints for survivors
-  for (const { p } of allPlayers) {
-    if (!deadIdsSet.has(p.id)) {
-      const wps = playerWaypoints.get(p.id)!;
+  for (const { key } of allPlayers) {
+    if (!deadIdsSet.has(key)) {
+      const wps = playerWaypoints.get(key)!;
       const lastStep = wps[wps.length - 1].step;
       if (lastStep < totalSteps) {
-        wps.push({ step: totalSteps, pos: playerDest.get(p.id)! });
+        wps.push({ step: totalSteps, pos: playerDest.get(key)! });
       }
     }
   }
@@ -787,12 +798,12 @@ export function simulateRadarPlayers(
   // 4b. Collapse any duplicate-step waypoints (keep the latest write) and sort by step. Two
   // waypoints at the same step — e.g. a post-kill "head to dest" point colliding with a second
   // kill on the next event — would otherwise make the dot teleport across the map within one step.
-  for (const { p } of allPlayers) {
-    const wps = playerWaypoints.get(p.id)!;
+  for (const { key } of allPlayers) {
+    const wps = playerWaypoints.get(key)!;
     const byStep = new Map<number, Position>();
     for (const wp of wps) byStep.set(wp.step, wp.pos); // later writes win
     playerWaypoints.set(
-      p.id,
+      key,
       [...byStep.entries()].sort((a, b) => a[0] - b[0]).map(([step, pos]) => ({ step, pos })),
     );
   }
@@ -803,8 +814,8 @@ export function simulateRadarPlayers(
   // dot moves at a constant, believable pace. Anchors only ever move LATER (so order is preserved),
   // and a player whose timeline runs past round-end simply hasn't finished crossing — which is fine.
   if (useGraph) {
-    for (const { p } of allPlayers) {
-      const wps = playerWaypoints.get(p.id)!;
+    for (const { key } of allPlayers) {
+      const wps = playerWaypoints.get(key)!;
       if (wps.length < 2) continue;
       const retimed: Waypoint[] = [wps[0]];
       let prevStep = wps[0].step;
@@ -814,35 +825,37 @@ export function simulateRadarPlayers(
         retimed.push({ step, pos: wps[k].pos });
         prevStep = step;
       }
-      playerWaypoints.set(p.id, retimed);
+      playerWaypoints.set(key, retimed);
     }
   }
 
   // 5. Calculate final positions (+ facing) at current stepIndex
   // A dead player freezes at the spot they died — never keeps drifting along their route ("ghost").
-  const positionFor = (p: Player, isAlive: boolean): Position => {
-    if (!isAlive && deathPos.has(p.id)) return deathPos.get(p.id)!;
-    return getPlayerPositionAtStep(playerWaypoints.get(p.id) || [], stepIndex, layout, isAlive, useGraph);
+  const positionFor = (key: string, isAlive: boolean): Position => {
+    if (!isAlive && deathPos.has(key)) return deathPos.get(key)!;
+    return getPlayerPositionAtStep(playerWaypoints.get(key) || [], stepIndex, layout, isAlive, useGraph);
   };
-  const yawOf = (p: Player, pos: Position): number => {
-    const wps = playerWaypoints.get(p.id) || [];
+  const yawOf = (key: string, pos: Position): number => {
+    const wps = playerWaypoints.get(key) || [];
     const prev = getPlayerPositionAtStep(wps, Math.max(0, stepIndex - 0.06), layout, true, useGraph);
     const dx = pos.x - prev.x;
     const dy = pos.y - prev.y;
     if (dx * dx + dy * dy > 0.04) return (Math.atan2(dy, dx) * 180) / Math.PI; // face movement
-    const dest = playerDest.get(p.id);
+    const dest = playerDest.get(key);
     if (dest) return (Math.atan2(dest.y - pos.y, dest.x - pos.x) * 180) / Math.PI; // hold: face objective
     return 0;
   };
 
   const youSimulated = you.players.map((p) => {
-    const isAlive = !deadIds.has(p.id);
-    const pos = positionFor(p, isAlive);
+    const radarKey = teamPlayerKey("you", p.id);
+    const isAlive = !deadIds.has(radarKey);
+    const pos = positionFor(radarKey, isAlive);
     return {
       ...p,
+      radarKey,
       x: pos.x,
       y: pos.y,
-      yaw: yawOf(p, pos),
+      yaw: yawOf(radarKey, pos),
       alive: isAlive,
       side: yourSide,
       team: "you" as const,
@@ -850,13 +863,15 @@ export function simulateRadarPlayers(
   });
 
   const opponentSimulated = opponent.players.map((p) => {
-    const isAlive = !deadIds.has(p.id);
-    const pos = positionFor(p, isAlive);
+    const radarKey = teamPlayerKey("opponent", p.id);
+    const isAlive = !deadIds.has(radarKey);
+    const pos = positionFor(radarKey, isAlive);
     return {
       ...p,
+      radarKey,
       x: pos.x,
       y: pos.y,
-      yaw: yawOf(p, pos),
+      yaw: yawOf(radarKey, pos),
       alive: isAlive,
       side: opponentSide,
       team: "opponent" as const,

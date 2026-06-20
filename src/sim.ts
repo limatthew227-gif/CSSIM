@@ -548,7 +548,7 @@ export function initMatch(map: MapId, you: FieldTeam, opponent: FieldTeam, conte
     opponentArmor[p.id] = "none";
   });
 
-  const peakingPlayers: string[] = [];
+  const peakingPlayers: string[] = [...(context?.peakingPlayers ?? [])];
   const stage = context?.stage;
   if (stage && stage !== "swiss") {
     const youRank = you.rank || 20;
@@ -591,21 +591,8 @@ export function initMatch(map: MapId, you: FieldTeam, opponent: FieldTeam, conte
     });
   }
 
-  const coldPlayers: string[] = [];
-  you.players.forEach((p) => {
-    if (peakingPlayers.includes(p.id)) return;
-    const coldProb = clamp(0.02 + (90 - p.stats.consistency) * 0.003, 0.01, 0.18);
-    if (Math.random() < coldProb) {
-      coldPlayers.push(p.id);
-    }
-  });
-  opponent.players.forEach((p) => {
-    if (peakingPlayers.includes(p.id)) return;
-    const coldProb = clamp(0.02 + (90 - p.stats.consistency) * 0.003, 0.01, 0.18);
-    if (Math.random() < coldProb) {
-      coldPlayers.push(p.id);
-    }
-  });
+  const peakingSet = new Set(peakingPlayers);
+  const coldPlayers = (context?.coldPlayers ?? []).filter((id) => !peakingSet.has(id));
 
   return {
     map,
@@ -1732,7 +1719,16 @@ export function playRound(
   const yourLossBonus = lossBonusForStreak(yourLossStreak);
   const opponentLossBonus = lossBonusForStreak(opponentLossStreak);
 
-  const deadPlayerIds = new Set(feed.map((event) => event.victimId));
+  const deadYourPlayerIds = new Set(
+    feed
+      .filter((event) => (!event.type || event.type === "kill") && event.team === "opponent" && event.victimId)
+      .map((event) => event.victimId),
+  );
+  const deadOpponentPlayerIds = new Set(
+    feed
+      .filter((event) => (!event.type || event.type === "kill") && event.team === "you" && event.victimId)
+      .map((event) => event.victimId),
+  );
 
   const yourIncome = roundIncome({
     won: winningTeamId === "you",
@@ -1800,7 +1796,7 @@ export function playRound(
 
   const nextYourWeapons: Record<string, string> = {};
   you.players.forEach((p) => {
-    if (deadPlayerIds.has(p.id)) {
+    if (deadYourPlayerIds.has(p.id)) {
       nextYourWeapons[p.id] = state.side === "CT" ? "USP-S" : "Glock-18";
     } else {
       nextYourWeapons[p.id] = yourWeapons[p.id];
@@ -1809,7 +1805,7 @@ export function playRound(
 
   const nextOpponentWeapons: Record<string, string> = {};
   opponent.players.forEach((p) => {
-    if (deadPlayerIds.has(p.id)) {
+    if (deadOpponentPlayerIds.has(p.id)) {
       nextOpponentWeapons[p.id] = state.side === "CT" ? "Glock-18" : "USP-S";
     } else {
       nextOpponentWeapons[p.id] = opponentWeapons[p.id];
@@ -1818,7 +1814,7 @@ export function playRound(
 
   const nextYourArmor: Record<string, "none" | "kevlar" | "helmet"> = {};
   you.players.forEach((p) => {
-    if (deadPlayerIds.has(p.id)) {
+    if (deadYourPlayerIds.has(p.id)) {
       nextYourArmor[p.id] = "none";
     } else {
       nextYourArmor[p.id] = yourArmor[p.id] ?? "none";
@@ -1827,7 +1823,7 @@ export function playRound(
 
   const nextOpponentArmor: Record<string, "none" | "kevlar" | "helmet"> = {};
   opponent.players.forEach((p) => {
-    if (deadPlayerIds.has(p.id)) {
+    if (deadOpponentPlayerIds.has(p.id)) {
       nextOpponentArmor[p.id] = "none";
     } else {
       nextOpponentArmor[p.id] = opponentArmor[p.id] ?? "none";
@@ -2060,28 +2056,36 @@ export function generateDynamicRound(
     const skill = new Map<string, number>();
     const awpSet = new Set<string>();
     const weaponsAll: Record<string, string> = {};
-    const fillSkill = (players: Player[], weapons: Record<string, string>, oppRank: number | undefined) => {
+    const scopedKey = (teamKey: "you" | "opponent", id: string) => `${teamKey}:${id}`;
+    const fillSkill = (teamKey: "you" | "opponent", players: Player[], weapons: Record<string, string>, oppRank: number | undefined) => {
       for (const pl of players) {
         const wpn = weapons[pl.id] ?? "";
         const kw = killWeightFn(pl, context, oppRank, wpn);
         const dw = Math.max(0.2, deathWeightFn(pl, context, oppRank, wpn));
-        skill.set(pl.id, Math.max(0.1, kw / dw)); // strong duelists: high kill weight, low death weight
-        if (wpn.toUpperCase().includes("AWP")) awpSet.add(pl.id);
-        weaponsAll[pl.id] = wpn;
+        const key = scopedKey(teamKey, pl.id);
+        skill.set(key, Math.max(0.1, kw / dw)); // strong duelists: high kill weight, low death weight
+        if (wpn.toUpperCase().includes("AWP")) awpSet.add(key);
+        weaponsAll[key] = wpn;
       }
     };
-    fillSkill(you.players, yourWeapons, opponent.rank);
-    fillSkill(opponent.players, opponentWeapons, you.rank);
+    fillSkill("you", you.players, yourWeapons, opponent.rank);
+    fillSkill("opponent", opponent.players, opponentWeapons, you.rank);
     const teamBias = clamp(initialProbability, 0.01, 0.99) - 0.5; // team strength still tilts duels
 
     const sim = simulateMirageRound({ you, opponent, side, strategy, skill, awp: awpSet, weapons: weaponsAll, teamBias, tactic });
 
-    const idMap = new Map<string, Player>([...you.players, ...opponent.players].map((pl) => [pl.id, pl] as const));
+    const idMap = new Map<string, Player>([
+      ...you.players.map((pl) => [scopedKey("you", pl.id), pl] as const),
+      ...opponent.players.map((pl) => [scopedKey("opponent", pl.id), pl] as const),
+    ]);
+    const playerFor = (teamKey: "you" | "opponent", id: string) => idMap.get(scopedKey(teamKey, id));
     const deathTimeOf = new Map<string, number>();
-    for (const ev of sim.events) if (ev.type === "kill" && ev.victimId) deathTimeOf.set(ev.victimId, ev.t);
+    for (const ev of sim.events) {
+      if (ev.type === "kill" && ev.victimId) deathTimeOf.set(scopedKey(otherSide(ev.side), ev.victimId), ev.t);
+    }
     const aliveAt = (teamKey: "you" | "opponent", atT: number) =>
       (teamKey === "you" ? you.players : opponent.players).filter((pl) => {
-        const d = deathTimeOf.get(pl.id);
+        const d = deathTimeOf.get(scopedKey(teamKey, pl.id));
         return d === undefined || d > atT;
       });
     const countsAt = (atT: number) => ({ ct: aliveAt(ctTeamKey, atT).length, t: aliveAt(tTeamKey, atT).length });
@@ -2101,7 +2105,7 @@ export function generateDynamicRound(
       const squad = teamKey === "you" ? you.players : opponent.players;
       const thrower = pickUtilThrower(squad);
       const ut = 3 + k * 3 + Math.random() * 2;
-      const fr = sim.timeline.length ? frameAt(ut).players.find((p) => p.id === thrower.id) : undefined;
+      const fr = sim.timeline.length ? frameAt(ut).players.find((p) => p.id === scopedKey(teamKey, thrower.id)) : undefined;
       const from = fr ? { x: fr.x, y: fr.y } : undefined;
       // T util lands on the site being hit; CT util contests mid / the choke.
       const targetNode = getNode(teamKey === tTeamKey ? (strategy === 2 ? "bsite" : "asite") : "mid");
@@ -2114,8 +2118,8 @@ export function generateDynamicRound(
     let killSeen = 0;
     for (const ev of sim.events) {
       if (ev.type === "kill" && ev.killerId && ev.victimId) {
-        const killer = idMap.get(ev.killerId)!;
-        const victim = idMap.get(ev.victimId)!;
+        const killer = playerFor(ev.side, ev.killerId)!;
+        const victim = playerFor(otherSide(ev.side), ev.victimId)!;
         const isFirst = killSeen === 0;
         killSeen += 1;
         // assist: a living teammate of the killer at that moment (cosmetic), ~36% of kills
@@ -2132,17 +2136,17 @@ export function generateDynamicRound(
         killerDmg = assistantDmg > 0 ? Math.max(30, 100 - assistantDmg) : Math.floor(65 + Math.random() * 35);
         eventLines.push({
           round, killer: killer.handle, killerId: killer.id, victim: victim.handle, victimId: victim.id,
-          weapon: nadeKillWeapon(killer, context?.map, (ev.side === "you" ? yourUtilCount : opponentUtilCount) > 0) ?? (weaponsAll[killer.id] || "Pistol"), team: ev.side, first: isFirst,
+          weapon: nadeKillWeapon(killer, context?.map, (ev.side === "you" ? yourUtilCount : opponentUtilCount) > 0) ?? (weaponsAll[scopedKey(ev.side, killer.id)] || "Pistol"), team: ev.side, first: isFirst,
           assistant: assistant?.handle, assistantId: assistant?.id, killerDamage: killerDmg, assistantDamage: assistantDmg,
           isHeadshot: !!ev.headshot, flashAssist: Math.random() < 0.25, killerPos: ev.killerPos, victimPos: ev.victimPos, engage: ev.engage, t: ev.t,
         });
       } else if (ev.type === "plant") {
         const c = countsAt(ev.t);
-        const planter = ev.killerId ? idMap.get(ev.killerId) : undefined;
+        const planter = ev.killerId ? playerFor(tTeamKey, ev.killerId) : undefined;
         eventLines.push({ round, killer: planter?.handle ?? "", killerId: ev.killerId ?? "", victim: "Bomb Site", victimId: "", weapon: "bomb", team: tTeamKey, first: false, type: "plant", ctAlive: c.ct, tAlive: c.t, killerPos: ev.killerPos, t: ev.t });
       } else if (ev.type === "defuse") {
         const c = countsAt(ev.t);
-        const defuser = ev.killerId ? idMap.get(ev.killerId) : undefined;
+        const defuser = ev.killerId ? playerFor(ctTeamKey, ev.killerId) : undefined;
         eventLines.push({ round, killer: defuser?.handle ?? "", killerId: ev.killerId ?? "", victim: "Bomb", victimId: "", weapon: "defuse_kit", team: ctTeamKey, first: false, type: "defuse", ctAlive: c.ct, tAlive: c.t, t: ev.t });
       } else if (ev.type === "explode") {
         eventLines.push({ round, killer: "Bomb", killerId: "", victim: "", victimId: "", weapon: "bomb", team: "neutral", first: false, type: "explode", killerPos: ev.killerPos, t: ev.t });

@@ -60,9 +60,9 @@ export interface MirageSimInput {
   opponent: Team;
   side: "CT" | "T"; // your team's side
   strategy: number; // mirageStrategy
-  skill: Map<string, number>; // playerId -> duel skill (from killWeight); higher wins more
-  awp: Set<string>; // playerIds holding an AWP
-  weapons: Record<string, string>; // playerId -> weapon name (for the feed)
+  skill: Map<string, number>; // `${team}:${playerId}` -> duel skill (from killWeight); higher wins more
+  awp: Set<string>; // `${team}:${playerId}` entries holding an AWP
+  weapons: Record<string, string>; // `${team}:${playerId}` -> weapon name (for the feed)
   teamBias: number; // -0.5..0.5: >0 favours "you" per duel (from team-strength probability)
   tactic?: string; // "aggressive" makes CTs more likely to push out to the extremities
 }
@@ -98,6 +98,7 @@ export interface MirageSimResult {
 
 interface SimP {
   ref: Player;
+  key: string;
   team: TeamKey;
   side: "CT" | "T";
   idx: number;
@@ -117,6 +118,10 @@ interface SimP {
   hasBomb: boolean;
   home: string; // the callout this player is anchored to (repositions around it)
   repoTimer: number; // seconds until the next reposition while holding
+}
+
+function playerKey(team: TeamKey, id: string) {
+  return `${team}:${id}`;
 }
 
 // T-side approach plans — distinct routes per player so a take spreads across the map (ramp, palace,
@@ -254,8 +259,10 @@ export function simulateMirageRound(input: MirageSimInput): MirageSimResult {
       const ang = ((idx % 5) * 72 + 18) * (Math.PI / 180);
       const pad: Vec = { x: c.x + Math.cos(ang) * SPAWN_R[pside], y: c.y + Math.sin(ang) * SPAWN_R[pside] };
       route = withStart(route, pad, true); // straight from pad toward objective (no spawn-node funnel)
+      const key = playerKey(team, ref.id);
       return {
         ref,
+        key,
         team,
         side: pside,
         idx,
@@ -265,8 +272,8 @@ export function simulateMirageRound(input: MirageSimInput): MirageSimResult {
         nodeId: pside === "CT" ? "ctspawn" : "tspawn",
         objective,
         alive: true,
-        awp: awp.has(ref.id),
-        skill: Math.max(0.1, skill.get(ref.id) ?? 1),
+        awp: awp.has(key) || awp.has(ref.id),
+        skill: Math.max(0.1, skill.get(key) ?? skill.get(ref.id) ?? 1),
         yaw: 0,
         fightTimer: 0,
         fightTarget: null,
@@ -277,7 +284,7 @@ export function simulateMirageRound(input: MirageSimInput): MirageSimResult {
     });
   };
   const ps: SimP[] = [...make("you", input.you.players), ...make("opponent", input.opponent.players)];
-  const byId = new Map(ps.map((p) => [p.ref.id, p]));
+  const byId = new Map(ps.map((p) => [p.key, p]));
   // bomb carrier: the lowest-idx T whose objective is the bomb site
   const carrier = ps.filter((p) => p.side === "T" && p.objective === bombSite).sort((a, b) => a.idx - b.idx)[0]
     ?? ps.find((p) => p.side === "T");
@@ -292,7 +299,7 @@ export function simulateMirageRound(input: MirageSimInput): MirageSimResult {
   const framePlayers = () =>
     ps.map((p) => {
       const a = p.idx * ((2 * Math.PI) / 5);
-      return { id: p.ref.id, x: p.pos.x + Math.cos(a) * LANE_W, y: p.pos.y + Math.sin(a) * LANE_W, alive: p.alive, yaw: p.yaw };
+      return { id: p.key, x: p.pos.x + Math.cos(a) * LANE_W, y: p.pos.y + Math.sin(a) * LANE_W, alive: p.alive, yaw: p.yaw };
     });
 
   const events: SimEvent[] = [];
@@ -374,8 +381,8 @@ export function simulateMirageRound(input: MirageSimInput): MirageSimResult {
     const xfA = 1 + CROSSFIRE * (enemiesOf(a).filter((e) => hasLos(a, e)).length - 1);
     const xfB = 1 + CROSSFIRE * (enemiesOf(b).filter((e) => hasLos(b, e)).length - 1);
     // a CT caught mid-defuse can't fight back — whoever peeks them is hugely favoured
-    const defA = a.ref.id === defusingId ? 1 / DEFUSE_EXPOSE : 1;
-    const defB = b.ref.id === defusingId ? 1 / DEFUSE_EXPOSE : 1;
+    const defA = a.key === defusingId ? 1 / DEFUSE_EXPOSE : 1;
+    const defB = b.key === defusingId ? 1 / DEFUSE_EXPOSE : 1;
     const mult = (holdA * awpA * defA) / Math.max(1, xfA) / ((holdB * awpB * defB) / Math.max(1, xfB));
     const odds = (core / (1 - core)) * mult;
     return Math.max(0.03, Math.min(0.97, odds / (1 + odds)));
@@ -399,7 +406,7 @@ export function simulateMirageRound(input: MirageSimInput): MirageSimResult {
       victimPos: { ...victim.pos },
       engage: kn && vn ? { from: kn.id, to: vn.id } : undefined,
       headshot: Math.random() < 0.4,
-      weapon: input.weapons[killer.ref.id] ?? "Rifle",
+      weapon: input.weapons[killer.key] ?? input.weapons[killer.ref.id] ?? "Rifle",
     });
     // Reactive rotation / trade: a free teammate of the player who just died swings toward the
     // fight to trade the killer or retake the area — so kills pull players in, like real CS.
@@ -457,7 +464,7 @@ export function simulateMirageRound(input: MirageSimInput): MirageSimResult {
         continue;
       }
       p.fightTimer -= DT;
-      if (p.fightTimer <= 0 && foe.fightTarget === p.ref.id) {
+      if (p.fightTimer <= 0 && foe.fightTarget === p.key) {
         // resolve once (guard so the pair resolves a single death)
         if (foe.alive && p.alive) {
           const pWins = Math.random() < winProbA(p, foe);
@@ -472,7 +479,7 @@ export function simulateMirageRound(input: MirageSimInput): MirageSimResult {
       let nearest: SimP | null = null;
       let nd = Infinity;
       for (const foe of enemiesOf(p)) {
-        if (foe.fightTarget && foe.fightTarget !== p.ref.id) continue; // already dueling someone else
+        if (foe.fightTarget && foe.fightTarget !== p.key) continue; // already dueling someone else
         if (!hasLos(p, foe)) continue;
         const d = Math.hypot(p.pos.x - foe.pos.x, p.pos.y - foe.pos.y);
         if (d < nd) {
@@ -488,9 +495,9 @@ export function simulateMirageRound(input: MirageSimInput): MirageSimResult {
           enemiesOf(nearest).filter((e) => hasLos(nearest, e)).length,
         );
         const timer = (TTK_BASE * (0.5 + Math.random()) * (p.awp || nearest.awp ? 0.7 : 1)) / (1 + 0.5 * (losMax - 1));
-        p.fightTarget = nearest.ref.id;
+        p.fightTarget = nearest.key;
         p.fightTimer = timer;
-        nearest.fightTarget = p.ref.id;
+        nearest.fightTarget = p.key;
         nearest.fightTimer = timer;
       }
     }
@@ -529,7 +536,7 @@ export function simulateMirageRound(input: MirageSimInput): MirageSimResult {
       const tWatching = tAlive.some((tp) => Math.hypot(tp.pos.x - site.x, tp.pos.y - site.y) < SIGHT_RANGE && GRID && hasLineOfSight(GRID, tp.pos, site));
       if (ctAtSite && !tWatching) {
         defuseProgress += DT;
-        defusingId = ctAtSite.ref.id; // flag the defuser as exposed (stays briefly via the grace)
+        defusingId = ctAtSite.key; // flag the defuser as exposed (stays briefly via the grace)
         defuseGrace = 1.2;
         // Ts never give up the bomb: pull the nearest free T back to contest the defuse (re-peek).
         const helpers = tAlive.filter((tp) => !tp.fightTarget);

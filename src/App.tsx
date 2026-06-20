@@ -538,10 +538,7 @@ function App() {
 
   const formAdjustedPlayers = useMemo(
     () =>
-      selected.map((player) => ({
-        ...player,
-        ovr: Math.max(60, Math.min(99, player.ovr + Math.round((playerForm[player.id] ?? 0) / 4))),
-      })),
+      selected.map((player) => applyCarriedPlayerForm(player, playerForm[player.id] ?? 0)),
     [selected, playerForm],
   );
   const yourTeam = useMemo(() => draftedTeam(teamName, formAdjustedPlayers, coach), [teamName, formAdjustedPlayers, coach]);
@@ -824,7 +821,7 @@ function App() {
     setRollSequence([]);
     setRollsLeft(settings.draftRolls);
     if (mode === "random") {
-      setSelected(randomFiveWithIgl(rosterPool));
+      setSelected(randomFiveWithIgl(rosterPool).map((player, index) => draftedPlayerCopy(player, index)));
       openCoachDraft();
       return;
     }
@@ -869,7 +866,7 @@ function App() {
   }
 
   function choosePlayer(player: Player) {
-    const nextSelected = [...selected, player];
+    const nextSelected = [...selected, draftedPlayerCopy(player, selected.length)];
     const nextUsed = [...usedRosterIds, currentRoster.id];
     setSelected(nextSelected);
     setUsedRosterIds(nextUsed);
@@ -3372,12 +3369,12 @@ function MatchMapView({ match, you, opponent, speed = 1 }: { match: MatchState; 
           );
         })}
         {radarPlayers.map((simPlayer, index) => {
-          const { id, handle, side, team, alive, x, y, yaw } = simPlayer;
-          const blind = alive ? flashed[id] ?? 0 : 0;
+          const { id, radarKey, handle, side, team, alive, x, y, yaw } = simPlayer;
+          const blind = alive ? flashed[radarKey] ?? 0 : 0;
           return (
             <div
               className={`radar-player ${side.toLowerCase()} ${team} ${alive ? "alive" : "dead"}`}
-              key={id}
+              key={radarKey || `${team}-${id}-${index}`}
               style={
                 {
                   left: `${x}%`,
@@ -5724,6 +5721,38 @@ function generatePlayerForm(players: Player[]) {
     },
     {} as Record<string, number>,
   );
+}
+
+function draftedPlayerCopy(player: Player, pickIndex: number): Player {
+  return {
+    ...player,
+    id: `user-pick-${pickIndex + 1}-${player.id}`,
+  };
+}
+
+function applyCarriedPlayerForm(player: Player, formPercent: number): Player {
+  const form = clampNumber(formPercent, -5, 5);
+  if (form === 0) return player;
+
+  const multiplier = 1 + form / 100;
+  const softMultiplier = 1 + form / 160;
+  const scaleSkill = (value: number, mult = multiplier) => clampWhole(value * mult, 1, 99);
+  const maps = Object.fromEntries(
+    Object.entries(player.maps).map(([map, value]) => [map, scaleSkill(value, softMultiplier)]),
+  ) as Player["maps"];
+
+  return {
+    ...player,
+    ovr: clampWhole(player.ovr * multiplier, 60, 99),
+    stats: {
+      ...player.stats,
+      aim: scaleSkill(player.stats.aim),
+      clutch: scaleSkill(player.stats.clutch),
+      consistency: scaleSkill(player.stats.consistency, softMultiplier),
+      awp: player.role === "AWP" ? scaleSkill(player.stats.awp) : scaleSkill(player.stats.awp, softMultiplier),
+    },
+    maps,
+  };
 }
 
 function shiftPlayerForm(current: Record<string, number>, players: Player[], match: MatchState) {

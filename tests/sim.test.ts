@@ -196,6 +196,65 @@ test("initMatch: pistol round starts both teams at $800 with starter pistols", (
   }
 });
 
+test("initMatch: player form starts neutral, with no random cold-player flags", () => {
+  const you = makeTeam("you", 84);
+  const opp = makeTeam("opp", 84);
+
+  for (let seed = 1; seed <= 25; seed += 1) {
+    const s = withSeed(seed, () => initMatch("inferno", you, opp, { stage: "swiss" }));
+    assert.deepEqual(s.context.coldPlayers, []);
+    assert.deepEqual(s.context.peakingPlayers, []);
+  }
+});
+
+test("duplicate player ids on opposite teams do not share death/loadout state", () => {
+  const you = makeTeam("you", 84, 8);
+  const opp = makeTeam("opp", 84, 8);
+  you.players[0] = { ...you.players[0], id: "shared", handle: "shared-you" };
+  opp.players[0] = { ...opp.players[0], id: "shared", handle: "shared-opp" };
+
+  let foundOneSidedSharedDeath = false;
+
+  for (let seed = 1; seed <= 300 && !foundOneSidedSharedDeath; seed += 1) {
+    withSeed(seed, () => {
+      const richYou = Object.fromEntries(you.players.map((p) => [p.id, 10000]));
+      const richOpp = Object.fromEntries(opp.players.map((p) => [p.id, 10000]));
+      let state = initMatch("inferno", you, opp);
+      state = {
+        ...state,
+        round: 3,
+        economy: "FULL",
+        opponentEconomy: "FULL",
+        yourMoney: richYou,
+        opponentMoney: richOpp,
+        yourWeapons: { ...state.yourWeapons, shared: "M4A4" },
+        opponentWeapons: { ...state.opponentWeapons, shared: "AK-47" },
+        yourArmor: { ...state.yourArmor, shared: "helmet" },
+        opponentArmor: { ...state.opponentArmor, shared: "helmet" },
+      };
+
+      const next = playRound(state, you, opp, defaultSettings, difficulties[0], "standard", 0, true);
+      const roundKills = next.feed.filter((event) => event.round === 3 && (!event.type || event.type === "kill"));
+      const yourSharedDied = roundKills.some((event) => event.team === "opponent" && event.victimId === "shared");
+      const oppSharedDied = roundKills.some((event) => event.team === "you" && event.victimId === "shared");
+
+      if (yourSharedDied === oppSharedDied) return;
+      foundOneSidedSharedDeath = true;
+
+      if (!yourSharedDied) {
+        assert.notEqual(next.yourWeapons?.shared, "USP-S", "your surviving duplicate-id player should keep a real weapon");
+        assert.equal(next.yourArmor?.shared, "helmet", "your surviving duplicate-id player should keep armor");
+      }
+      if (!oppSharedDied) {
+        assert.notEqual(next.opponentWeapons?.shared, "Glock-18", "opponent surviving duplicate-id player should keep a real weapon");
+        assert.equal(next.opponentArmor?.shared, "helmet", "opponent surviving duplicate-id player should keep armor");
+      }
+    });
+  }
+
+  assert.equal(foundOneSidedSharedDeath, true, "test setup should find a one-sided shared-id death");
+});
+
 test("per-round invariants hold across many seeded matches", () => {
   const you = makeTeam("you", 84, 6);
   const opp = makeTeam("opp", 80, 9);
