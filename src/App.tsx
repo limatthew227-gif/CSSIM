@@ -187,15 +187,27 @@ interface SwissPair {
   active?: boolean;
 }
 
+type TimelineSide = "left" | "right";
+
 interface SeriesMapResult {
   map: MapId;
   leftScore: number;
   rightScore: number;
   winnerId: string;
+  roundWinners?: TimelineSide[];
   leftStats: MatchState["yourStats"];
   rightStats: MatchState["yourStats"];
   leftSideStats: Record<"CT" | "T", MatchState["yourStats"]>;
   rightSideStats: Record<"CT" | "T", MatchState["yourStats"]>;
+}
+
+interface RoundTimelineMap {
+  key: string;
+  map: MapId;
+  leftScore: number;
+  rightScore: number;
+  roundWinners?: TimelineSide[];
+  activeRound?: number;
 }
 
 interface SwissResult {
@@ -2177,6 +2189,13 @@ function App() {
             </div>
             <TeamPlate team={opponent} align="right" />
           </section>
+          <RoundTimelinePanel
+            title="Round timeline"
+            label={`${mapName(match.map)} momentum`}
+            left={yourTeam}
+            right={opponent}
+            maps={[roundTimelineMapFromMatch(match)]}
+          />
           <section className="live-grid">
             <div className="feed-panel">
               <div className="feed-panel-head">
@@ -2355,6 +2374,13 @@ function App() {
             </div>
             <TeamPlate team={opponent} align="right" />
           </section>
+          <RoundTimelinePanel
+            title="Round timeline"
+            label="Momentum report"
+            left={yourTeam}
+            right={opponent}
+            maps={resultMapResults.map((map, index) => roundTimelineMapFromResult(map, index))}
+          />
           <section className="analysis-panel full series-analysis">
             <div className="series-analysis-head">
               <div className="section-title">
@@ -3083,6 +3109,149 @@ function CaseRoll({ sequence, winnerIndex }: { sequence: Roster[]; winnerIndex: 
       </div>
     </section>
   );
+}
+
+function RoundTimelinePanel({
+  title,
+  label,
+  left,
+  right,
+  maps,
+}: {
+  title: string;
+  label: string;
+  left: FieldTeam;
+  right: FieldTeam;
+  maps: RoundTimelineMap[];
+}) {
+  const visibleMaps = maps.filter((map) => (map.roundWinners?.length ?? 0) > 0 || Boolean(map.activeRound));
+  if (!visibleMaps.length) return null;
+
+  const allRounds = visibleMaps.flatMap((map) => map.roundWinners ?? []);
+  const leftLongest = Math.max(0, ...visibleMaps.map((map) => longestTimelineStreak(map.roundWinners ?? [], "left")));
+  const rightLongest = Math.max(0, ...visibleMaps.map((map) => longestTimelineStreak(map.roundWinners ?? [], "right")));
+  const recent = allRounds.slice(-5);
+  const recentLeft = recent.filter((winner) => winner === "left").length;
+  const recentRight = recent.length - recentLeft;
+  const leadSwings = visibleMaps.reduce((sum, map) => sum + timelineLeadSwings(map.roundWinners ?? []), 0);
+
+  return (
+    <section className="round-timeline-panel">
+      <div className="round-timeline-head">
+        <div className="section-title">
+          <Gauge size={18} />
+          <span>{title}</span>
+        </div>
+        <span>{label}</span>
+      </div>
+      <div className="round-timeline-legend">
+        <span>
+          <TeamLogo team={left} small />
+          {left.tag}
+        </span>
+        <span>
+          <TeamLogo team={right} small />
+          {right.tag}
+        </span>
+      </div>
+      <div className="round-timeline-maps">
+        {visibleMaps.map((map) => {
+          const rounds = map.roundWinners ?? [];
+          const showActive = Boolean(map.activeRound && map.activeRound > rounds.length);
+          return (
+            <div className="round-timeline-map" key={map.key}>
+              <div className="round-timeline-map-head">
+                <strong>{mapName(map.map)}</strong>
+                <span>{map.leftScore}:{map.rightScore}</span>
+              </div>
+              <div className="round-timeline-strip">
+                {rounds.map((winner, index) => {
+                  const team = winner === "left" ? left : right;
+                  return (
+                    <span
+                      className={`round-cell ${winner} ${roundTimelineBreakClass(index)}`}
+                      key={`${map.key}-${index}`}
+                      title={`R${index + 1}: ${team.name}`}
+                    />
+                  );
+                })}
+                {showActive && (
+                  <span
+                    className={`round-cell active ${roundTimelineBreakClass(rounds.length)}`}
+                    title={`R${map.activeRound}: live`}
+                  />
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      {allRounds.length > 0 ? (
+        <div className="round-timeline-summary">
+          <span>{left.tag} run <b>{leftLongest}</b></span>
+          <span>{right.tag} run <b>{rightLongest}</b></span>
+          <span>Swings <b>{leadSwings}</b></span>
+          <span>Last 5 <b>{recentLeft}-{recentRight}</b></span>
+        </div>
+      ) : (
+        <div className="round-timeline-summary">
+          <span>Opening round live</span>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function roundTimelineMapFromMatch(match: MatchState): RoundTimelineMap {
+  return {
+    key: `live-${match.map}`,
+    map: match.map,
+    leftScore: match.you,
+    rightScore: match.opponent,
+    roundWinners: match.roundWinners.map((winner) => (winner === "you" ? "left" : "right")),
+    activeRound: match.ended ? undefined : match.round,
+  };
+}
+
+function roundTimelineMapFromResult(result: SeriesMapResult, index: number): RoundTimelineMap {
+  return {
+    key: `${result.map}-${index}`,
+    map: result.map,
+    leftScore: result.leftScore,
+    rightScore: result.rightScore,
+    roundWinners: result.roundWinners,
+  };
+}
+
+function longestTimelineStreak(rounds: TimelineSide[], side: TimelineSide) {
+  let current = 0;
+  let longest = 0;
+  rounds.forEach((winner) => {
+    current = winner === side ? current + 1 : 0;
+    longest = Math.max(longest, current);
+  });
+  return longest;
+}
+
+function timelineLeadSwings(rounds: TimelineSide[]) {
+  let leftScore = 0;
+  let rightScore = 0;
+  let leader: TimelineSide | undefined;
+  let swings = 0;
+  rounds.forEach((winner) => {
+    if (winner === "left") leftScore += 1;
+    if (winner === "right") rightScore += 1;
+    const nextLeader: TimelineSide | undefined = leftScore === rightScore ? undefined : leftScore > rightScore ? "left" : "right";
+    if (nextLeader && leader && nextLeader !== leader) swings += 1;
+    if (nextLeader) leader = nextLeader;
+  });
+  return swings;
+}
+
+function roundTimelineBreakClass(index: number) {
+  if (index === 12) return "half-break";
+  if (index >= 24 && (index - 24) % 3 === 0) return "ot-break";
+  return "";
 }
 
 function Avatar({ label, accent }: { label: string; accent: string }) {
@@ -4828,6 +4997,14 @@ function SeriesDetailPage({
         ))}
       </section>
 
+      <RoundTimelinePanel
+        title="Round timeline"
+        label={`${result.maps.length} map${result.maps.length === 1 ? "" : "s"} played`}
+        left={result.left}
+        right={result.right}
+        maps={result.maps.map((map, index) => roundTimelineMapFromResult(map, index))}
+      />
+
       <MatchStatsPanel
         maps={result.maps.map((map) => map.map)}
         mapResults={result.maps}
@@ -5526,6 +5703,7 @@ function mapResultFromState(map: MapId, state: MatchState, left: FieldTeam, righ
     leftScore: state.you,
     rightScore: state.opponent,
     winnerId: state.winner === "you" ? left.id : state.winner === "opponent" ? right.id : state.you >= state.opponent ? left.id : right.id,
+    roundWinners: state.roundWinners.map((winner) => (winner === "you" ? "left" : "right")),
     leftStats: state.yourStats,
     rightStats: state.opponentStats,
     leftSideStats: state.yourSideStats,
