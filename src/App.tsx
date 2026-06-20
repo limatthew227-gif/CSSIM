@@ -592,6 +592,25 @@ function App() {
   }, [matchResults, spectatorLiveRound]);
   const spectatorHasLive = spectatorSwissPairs.length > 0;
   const spectatorViewingPast = viewedSwissRound != null && spectatorPastRounds.includes(viewedSwissRound);
+  // Each team's record as it stood ENTERING the viewed round (only rounds before it count), so a past
+  // round shows the standings teams brought into it — round 1 is all 0-0, round 2 is 1-0 / 0-1, etc.
+  const swissRecordsBeforeViewed = useMemo(() => {
+    const recs: Record<string, SwissRecord> = {};
+    if (viewedSwissRound == null) return recs;
+    const touch = (id: string) => {
+      if (!recs[id]) recs[id] = { wins: 0, losses: 0 };
+    };
+    matchResults.forEach((r) => {
+      if (r.stage !== "swiss") return;
+      touch(r.left.id);
+      touch(r.right.id);
+      if (r.round >= viewedSwissRound) return; // only count rounds played BEFORE the viewed one
+      const loserId = r.winnerId === r.left.id ? r.right.id : r.left.id;
+      recs[r.winnerId].wins += 1;
+      recs[loserId].losses += 1;
+    });
+    return recs;
+  }, [matchResults, viewedSwissRound]);
   const playerDatabase = useMemo(() => buildPlayerDatabase(matchResults), [matchResults]);
   const selectedResult = useMemo(
     () => matchResults.find((result) => result.id === selectedResultId) ?? matchResults[matchResults.length - 1],
@@ -1530,8 +1549,8 @@ function App() {
                       <SwissMatchRow
                         key={res.id}
                         pair={{ id: res.pairId, left: res.left, right: res.right }}
-                        record={record}
-                        teamRecords={swissRecords}
+                        record={swissRecordsBeforeViewed["user"] ?? { wins: 0, losses: 0 }}
+                        teamRecords={swissRecordsBeforeViewed}
                         result={res}
                         locked
                         bestOf={res.bestOf}
@@ -1690,8 +1709,8 @@ function App() {
                       <SwissMatchRow
                         key={res.id}
                         pair={{ id: res.pairId, left: res.left, right: res.right }}
-                        record={record}
-                        teamRecords={swissRecords}
+                        record={swissRecordsBeforeViewed["user"] ?? { wins: 0, losses: 0 }}
+                        teamRecords={swissRecordsBeforeViewed}
                         result={res}
                         locked
                         bestOf={res.bestOf}

@@ -371,7 +371,9 @@ export function mapScore(team: FieldTeam, map: MapId, settings: CustomSettings) 
 }
 
 export function mapEdge(you: FieldTeam, opponent: FieldTeam, map: MapId, settings: CustomSettings) {
-  return (mapScore(you, map, settings) - mapScore(opponent, map, settings)) / 4;
+  // /2 (not /4): a team's map specialization should genuinely swing a matchup — a weaker team on their
+  // best map vs a stronger team's worst map is a real upset spot, so the per-map OVR gap matters more.
+  return (mapScore(you, map, settings) - mapScore(opponent, map, settings)) / 2;
 }
 
 export function createVeto(bestOf = 1): VetoState {
