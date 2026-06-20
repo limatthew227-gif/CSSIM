@@ -2098,14 +2098,14 @@ export function generateDynamicRound(
       const type: "smoke" | "flash" | "molotov" | "he" =
         teamKey === tTeamKey ? (Math.random() < 0.6 ? "smoke" : "flash") : Math.random() < 0.5 ? "molotov" : "he";
       const squad = teamKey === "you" ? you.players : opponent.players;
-      const thrower = squad[Math.floor(Math.random() * squad.length)];
+      const thrower = pickUtilThrower(squad);
       const ut = 3 + k * 3 + Math.random() * 2;
       const fr = sim.timeline.length ? frameAt(ut).players.find((p) => p.id === thrower.id) : undefined;
       const from = fr ? { x: fr.x, y: fr.y } : undefined;
       // T util lands on the site being hit; CT util contests mid / the choke.
       const targetNode = getNode(teamKey === tTeamKey ? (strategy === 2 ? "bsite" : "asite") : "mid");
       const targetPos = targetNode ? { x: targetNode.x, y: targetNode.y } : undefined;
-      utilLines.push({ round, killer: thrower.handle, killerId: "", victim: "", victimId: "", weapon: type, team: teamKey, first: false, type, killerPos: from ?? targetPos, targetPos, t: ut });
+      utilLines.push({ round, killer: thrower.handle, killerId: thrower.id, victim: "", victimId: "", weapon: type, team: teamKey, first: false, type, killerPos: from ?? targetPos, targetPos, t: ut });
     }
 
     // Translate engine events -> feed lines (with timestamps so the radar plays the timeline).
@@ -2131,7 +2131,7 @@ export function generateDynamicRound(
         killerDmg = assistantDmg > 0 ? Math.max(30, 100 - assistantDmg) : Math.floor(65 + Math.random() * 35);
         eventLines.push({
           round, killer: killer.handle, killerId: killer.id, victim: victim.handle, victimId: victim.id,
-          weapon: weaponsAll[killer.id] || "Pistol", team: ev.side, first: isFirst,
+          weapon: nadeKillWeapon(killer, context?.map, (ev.side === "you" ? yourUtilCount : opponentUtilCount) > 0) ?? (weaponsAll[killer.id] || "Pistol"), team: ev.side, first: isFirst,
           assistant: assistant?.handle, assistantId: assistant?.id, killerDamage: killerDmg, assistantDamage: assistantDmg,
           isHeadshot: !!ev.headshot, flashAssist: Math.random() < 0.25, killerPos: ev.killerPos, victimPos: ev.victimPos, engage: ev.engage, t: ev.t,
         });
@@ -2222,9 +2222,9 @@ export function generateDynamicRound(
     if (!squad.length) return false;
     utilLeft[teamSide] -= 1;
     utilEventsThisRound += 1;
-    const thrower = squad[Math.floor(Math.random() * squad.length)];
+    const thrower = pickUtilThrower(squad);
     const at = usePositions ? posOf(thrower, 115 - timeRemaining) : undefined;
-    feed.push({ round, killer: thrower.handle, killerId: "", victim: "", victimId: "", weapon: type, team: teamSide, first: false, type, killerPos: at });
+    feed.push({ round, killer: thrower.handle, killerId: thrower.id, victim: "", victimId: "", weapon: type, team: teamSide, first: false, type, killerPos: at });
     return true;
   }
 
@@ -2518,7 +2518,7 @@ export function generateDynamicRound(
 
        feed.push({
          round, killer: killer.handle, killerId: killer.id, victim: victim.handle, victimId: victim.id,
-         weapon: killerEquipped[killer.id] ?? "Pistol", team: killerSide, first: feed.filter(f => !f.type || f.type === "kill").length === 0,
+         weapon: nadeKillWeapon(killer, context?.map, (killerSide === "you" ? yourUtilCount : opponentUtilCount) > 0) ?? (killerEquipped[killer.id] ?? "Pistol"), team: killerSide, first: feed.filter(f => !f.type || f.type === "kill").length === 0,
          assistant: assistant?.handle, assistantId: assistant?.id, killerDamage: killerDmg, assistantDamage: assistantDmg,
          isHeadshot: Math.random() < 0.38, flashAssist, killerPos, victimPos, engage,
        });
@@ -2701,6 +2701,39 @@ function playerPerformanceMultiplier(player: Player, context: MatchContext, oppo
   return multiplier;
 }
 
+// Players who set up plays (support / IGL) throw most of the team's utility, so they earn most of the
+// nade damage and the rare nade kill — like a high-util IGL (apEX) racking up chip on inferno/dust2.
+function utilAffinity(p: Player): number {
+  const role = p.role === "Support" ? 2.2 : p.role === "IGL" ? 1.8 : p.role === "Rifler" ? 1.1 : p.role === "Entry" ? 0.9 : p.role === "AWP" ? 0.6 : 1.0;
+  return role * (0.7 + (p.stats.consistency / 100) * 0.6);
+}
+function pickUtilThrower(squad: Player[]): Player {
+  const weights = squad.map(utilAffinity);
+  let r = Math.random() * weights.reduce((s, w) => s + w, 0);
+  for (let i = 0; i < squad.length; i += 1) {
+    r -= weights[i];
+    if (r <= 0) return squad[i];
+  }
+  return squad[squad.length - 1];
+}
+// Damage from a thrown HE / molotov (the thrower's util chip). Skill-scaled, small per throw so it adds
+// a believable few ADR for util players without inflating the league average.
+function utilDamage(thrower: Player | undefined, type: "he" | "molotov"): number {
+  const skill = thrower ? clamp((thrower.ovr - 60) / 40, 0, 1) : 0.5;
+  return type === "he" ? 4 + skill * 9 + Math.random() * 6 : 3 + skill * 6 + Math.random() * 4;
+}
+// A grenade that lands a KILL (HE finishes a low-HP enemy / molotov burns one out). Rare, biased toward
+// util-heavy roles and util-friendly maps so nade kills show up where they realistically should.
+function nadeKillWeapon(killer: Player, map: MapId | undefined, teamHasUtil: boolean): string | null {
+  if (!teamHasUtil) return null;
+  const mapFactor = map === "inferno" || map === "dust2" || map === "mirage" || map === "anubis" ? 1.4 : 1.0;
+  const roleFactor = killer.role === "Support" || killer.role === "IGL" ? 1.7 : killer.role === "Lurker" ? 0.8 : 1.0;
+  if (Math.random() < 0.016 * mapFactor * roleFactor) {
+    return Math.random() < 0.45 ? "HE Grenade" : "Molotov";
+  }
+  return null;
+}
+
 function createRoundStatPatch(
   players: Player[],
   feed: FeedLine[],
@@ -2721,7 +2754,12 @@ function createRoundStatPatch(
   });
 
   feed.forEach((event) => {
-    // Only kills (legacy untyped events) mutate stats; plant/defuse/explode/util are inert here.
+    // HE / molotov throws deal chip damage, credited to the thrower (counts toward ADR / rating).
+    if ((event.type === "he" || event.type === "molotov") && event.team === team && event.killerId && patch[event.killerId]) {
+      patch[event.killerId].damage += utilDamage(playersById.get(event.killerId), event.type);
+      return;
+    }
+    // flash/smoke/plant/defuse/explode are inert; only kills (and the util damage above) mutate stats.
     if (event.type && event.type !== "kill") return;
 
     if (event.team === team) {

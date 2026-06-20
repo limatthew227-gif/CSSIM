@@ -326,8 +326,8 @@ test("generateDynamicRound: utility events appear only when nades were bought, a
   );
   const utilEvents = withUtil.feed.filter((f) => f.type && utilTypes.has(f.type));
   assert.ok(utilEvents.length > 0, "a full-util round should surface utility events");
-  // util is purely narrative — no phantom killers/victims
-  assert.ok(utilEvents.every((f) => !f.killerId && !f.victimId), "util events must not carry kill/death ids");
+  // util now credits chip damage to its thrower (killerId), but never mints a kill: no victim, not a kill
+  assert.ok(utilEvents.every((f) => !f.victimId && f.type !== "kill"), "util events must not mint kills");
 
   const noUtil = withSeed(3, () =>
     generateDynamicRound(5, you, opp, armed(you), armed(opp), "standard", "FULL", "FULL", "CT", 5, 5, ctx, 0, 0, money(you), money(opp), helm(you), helm(opp), 0.5, w, w, 0, 0),
