@@ -1038,10 +1038,10 @@ const hltvTeams: HltvTeamSeed[] = [
     mapBias: { mirage: 2, dust2: 2, anubis: 1, train: 1 },
     players: [
       { handle: "huNter-", realName: "Nemanja Kovac", country: "BA", role: "IGL", style: "Balanced", hltvRating: 1.1 },
-      { handle: "NertZ", realName: "Guy Iluz", country: "IL", role: "Entry", style: "Aggressive", hltvRating: 1.15 },
+      { handle: "NertZ", realName: "Guy Iluz", country: "IL", role: "Lurker", style: "Aggressive", hltvRating: 1.15 },
       { handle: "SunPayus", realName: "Alvaro Garcia", country: "ES", role: "AWP", style: "Passive", hltvRating: 1.08 },
-      { handle: "HeavyGod", realName: "Nikita Martynenko", country: "IL", role: "Rifler", style: "Balanced", hltvRating: 1.08 },
-      { handle: "MATYS", realName: "Matus Simko", country: "SK", role: "Rifler", style: "Aggressive", hltvRating: 1.12 },
+      { handle: "HeavyGod", realName: "Nikita Martynenko", country: "IL", role: "Lurker", style: "Balanced", hltvRating: 1.08 },
+      { handle: "MATYS", realName: "Matus Simko", country: "SK", role: "Entry", style: "Aggressive", hltvRating: 1.12 },
     ],
   },
   {
