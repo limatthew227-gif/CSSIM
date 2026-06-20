@@ -5712,7 +5712,12 @@ function simulatePairWinner(pair: SwissPair, settings: CustomSettings, difficult
 function generatePlayerForm(players: Player[]) {
   return players.reduce(
     (acc, player) => {
-      acc[player.id] = 0;
+      // Each player starts the Major hot, cold, or stable. Lower consistency => more volatile starting
+      // form. Triangular around 0, clamped to the [-5, 5] range the UI labels and OVR nudge expect.
+      // Spread is wide enough that ~1-2 players on a roster visibly run hot or cold (|form| > 2).
+      const spread = 3.6 + (100 - (player.stats.consistency ?? 80)) * 0.06; // ~4.2 (elite) .. ~5.4 (volatile)
+      const raw = (Math.random() + Math.random() - 1) * spread;
+      acc[player.id] = clampNumber(Math.round(raw), -5, 5);
       return acc;
     },
     {} as Record<string, number>,

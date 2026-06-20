@@ -287,10 +287,10 @@ export function composition(players: Player[], settings: CustomSettings, isUserT
   });
   const bestCore = Array.from(hltvCores.entries()).sort((a, b) => b[1] - a[1])[0];
   if (bestCore?.[1] >= 3) {
-    bonuses.push({ label: `${bestCore[0]} core`, value: 10, tone: "good" });
+    bonuses.push({ label: `${bestCore[0]} core`, value: 6, tone: "good" });
   }
 
-  const eraChemistry = eraChemistryValue(players, bestCore?.[1] ?? 0);
+  const eraChemistry = eraChemistryValue(players);
   if (players.length > 1 && eraChemistry > 0) {
     bonuses.push({ label: "Era chemistry", value: Number(eraChemistry.toFixed(1)), tone: "good" });
   }
@@ -298,15 +298,16 @@ export function composition(players: Player[], settings: CustomSettings, isUserT
   return bonuses;
 }
 
-function eraChemistryValue(players: Player[], bestCoreCount: number) {
+function eraChemistryValue(players: Player[]) {
   const eras = new Map<string, number>();
   players.forEach((player) => eras.set(player.source.era, (eras.get(player.source.era) ?? 0) + 1));
   const dominantEraCount = Math.max(0, ...Array.from(eras.values()));
   if (dominantEraCount < 3) return 0;
 
-  const sameEraBase = dominantEraCount === players.length ? 0.22 : dominantEraCount * 0.04;
-  const coreLift = bestCoreCount >= 5 ? 0.55 : bestCoreCount >= 3 ? 0.38 : 0;
-  return Math.max(0.1, Math.min(0.8, sameEraBase + coreLift));
+  // Era chemistry = sharing the same era/meta. It does NOT require a same-team core: 5 players who all
+  // come from one CS era understand the same game, so a full same-era roster (even hand-drafted from
+  // different teams) gets the full bonus. 5 same => 0.8, 4 => 0.4, 3 => 0.2.
+  return dominantEraCount >= players.length ? 0.8 : dominantEraCount === 4 ? 0.4 : 0.2;
 }
 
 export function compositionScore(players: Player[], settings: CustomSettings, isUserTeam = false) {
