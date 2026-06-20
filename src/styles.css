@@ -2823,7 +2823,71 @@ meter::-webkit-meter-optimum-value {
   white-space: nowrap;
 }
 
-/* Per-match table on the player-detail page */
+/* HLTV-style per-map match history on the player-detail page */
+.player-summary-cards {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.player-summary-cards > div {
+  border: 1px solid #2a3441;
+  border-radius: var(--radius);
+  background: #1b2129;
+  padding: 14px 18px;
+}
+
+.player-summary-cards strong {
+  display: block;
+  color: var(--text);
+  font-size: 30px;
+  font-weight: 950;
+  line-height: 1.15;
+  font-variant-numeric: tabular-nums;
+}
+
+.player-summary-cards strong.good {
+  color: var(--green);
+}
+
+.player-summary-cards strong.bad {
+  color: #d76d6d;
+}
+
+.player-summary-cards span {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.player-map-grid {
+  grid-template-columns: 78px minmax(0, 1.3fr) minmax(0, 1.3fr) 56px 88px 60px 76px;
+}
+
+.player-map-grid.series-start {
+  border-top: 2px solid #333d4a;
+}
+
+.pm-date {
+  color: var(--muted);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.pm-mapscore {
+  color: var(--muted);
+  font-style: normal;
+  font-weight: 800;
+}
+
+.pm-map {
+  color: var(--muted);
+  font-weight: 800;
+  text-transform: lowercase;
+}
+
+/* Per-match table on the player-detail page (legacy per-series view, kept for reference) */
 .player-match-grid {
   grid-template-columns: minmax(200px, 2fr) 92px 90px 70px 80px 88px 86px;
 }

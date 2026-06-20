@@ -4232,23 +4232,37 @@ function PlayerDetailPage({
   onOpenSeries: (id: string) => void;
   onOpenTeam: (team: FieldTeam) => void;
 }) {
-  const matches = results
+  // one row per MAP the player featured in (HLTV-style match history), in chronological order
+  const maps = results
     .filter((r) => r.left.id === team.id || r.right.id === team.id)
-    .map((r) => {
+    .flatMap((r) => {
       const isLeft = r.left.id === team.id;
-      const line = (isLeft ? r.leftStats : r.rightStats)[player.id];
       const opponent = isLeft ? r.right : r.left;
-      const single = r.maps.length === 1;
-      const teamScore = single ? (isLeft ? r.maps[0].leftScore : r.maps[0].rightScore) : isLeft ? r.leftScore : r.rightScore;
-      const oppScore = single ? (isLeft ? r.maps[0].rightScore : r.maps[0].leftScore) : isLeft ? r.rightScore : r.leftScore;
-      return { r, line, opponent, teamScore, oppScore, won: r.winnerId === team.id };
+      return r.maps.map((m) => {
+        const line = (isLeft ? m.leftStats : m.rightStats)[player.id];
+        return {
+          result: r,
+          map: m.map,
+          line,
+          opponent,
+          teamScore: isLeft ? m.leftScore : m.rightScore,
+          oppScore: isLeft ? m.rightScore : m.leftScore,
+          won: m.winnerId === team.id,
+        };
+      });
     })
-    .filter((m) => m.line)
-    .reverse();
+    .filter((m) => m.line);
 
-  const totalKills = matches.reduce((sum, m) => sum + m.line.kills, 0);
-  const totalDeaths = matches.reduce((sum, m) => sum + m.line.deaths, 0);
-  const avgRating = matches.length ? matches.reduce((sum, m) => sum + m.line.rating, 0) / matches.length : 0;
+  const total = maps.length;
+  const avgRating = total ? maps.reduce((sum, m) => sum + m.line.rating, 0) / total : 0;
+  const mapsWonPct = total ? (maps.filter((m) => m.won).length / total) * 100 : 0;
+  const onePlusPct = total ? (maps.filter((m) => m.line.rating >= 1).length / total) * 100 : 0;
+  let streak = 0;
+  let bestStreak = 0;
+  maps.forEach((m) => {
+    if (m.line.rating >= 1) { streak += 1; bestStreak = Math.max(bestStreak, streak); } else streak = 0;
+  });
+  const display = [...maps].reverse(); // most recent first
 
   return (
     <main className="layout fullscreen-page">
@@ -4266,8 +4280,7 @@ function PlayerDetailPage({
             <button type="button" className="inline-link" onClick={() => onOpenTeam(team)}>
               {team.name}
             </button>{" "}
-            — {matches.length} {matches.length === 1 ? "match" : "matches"} this major
-            {matches.length ? ` / ${totalKills}-${totalDeaths} K-D / ${avgRating.toFixed(2)} avg rating` : ""}
+            — match history, {total} {total === 1 ? "map" : "maps"} this major
           </p>
         </div>
         <button className="secondary" onClick={onBack}>
@@ -4276,37 +4289,67 @@ function PlayerDetailPage({
         </button>
       </section>
 
+      {total > 0 && (
+        <section className="player-summary-cards">
+          <div>
+            <strong className={ratingTone(avgRating)}>{avgRating.toFixed(2)}</strong>
+            <span>Avg. Rating</span>
+          </div>
+          <div>
+            <strong>{mapsWonPct.toFixed(1)}%</strong>
+            <span>Maps won</span>
+          </div>
+          <div>
+            <strong>{onePlusPct.toFixed(1)}%</strong>
+            <span>Maps with 1+ rating</span>
+          </div>
+          <div>
+            <strong>{bestStreak}</strong>
+            <span>Best 1+ rating streak</span>
+          </div>
+        </section>
+      )}
+
       <section className="full-table-card">
-        <div className="full-table-head player-match-grid">
+        <div className="full-table-head player-map-grid">
+          <span>Date</span>
+          <span>Player team</span>
           <span>Opponent</span>
-          <span>Score</span>
-          <span>K-D</span>
+          <span>Map</span>
+          <span>K - D</span>
           <span>+/-</span>
-          <span>ADR</span>
-          <span>KAST</span>
           <span>Rating</span>
         </div>
-        {matches.length ? (
-          matches.map(({ r, line, opponent, teamScore, oppScore, won }) => {
-            const kast = line.rounds ? (line.kastRounds / line.rounds) * 100 : 0;
+        {display.length ? (
+          display.map((m, index) => {
+            const newSeries = index === 0 || display[index - 1].result.id !== m.result.id;
             return (
-              <button type="button" className="full-table-row player-match-grid clickable" key={r.id} onClick={() => onOpenSeries(r.id)}>
-                <span className="run-team-cell" title={`${r.label} vs ${opponent.name}`}>
-                  <TeamLogo team={opponent} small />
-                  <b>{opponent.tag}</b>
-                  <em className="match-stage-tag">{r.label}</em>
+              <button
+                type="button"
+                className={`full-table-row player-map-grid clickable${newSeries ? " series-start" : ""}`}
+                key={`${m.result.id}-${m.map}-${index}`}
+                onClick={() => onOpenSeries(m.result.id)}
+              >
+                <span className="pm-date">{seriesDateLabel(m.result.round)}</span>
+                <span className="run-team-cell">
+                  <TeamLogo team={team} small />
+                  <b>{team.name}</b>
+                  <em className="pm-mapscore">({m.teamScore})</em>
                 </span>
-                <span className={won ? "stat-positive" : "stat-negative"}>{teamScore}-{oppScore}</span>
-                <span>{line.kills}-{line.deaths}</span>
-                <span className={line.kills >= line.deaths ? "stat-positive" : "stat-negative"}>{signedInteger(line.kills - line.deaths)}</span>
-                <span>{line.adr.toFixed(1)}</span>
-                <span>{kast.toFixed(1)}%</span>
-                <span className={`rating-number ${ratingTone(line.rating)}`}>{line.rating.toFixed(2)}</span>
+                <span className="run-team-cell">
+                  <TeamLogo team={m.opponent} small />
+                  <b>{m.opponent.name}</b>
+                  <em className="pm-mapscore">({m.oppScore})</em>
+                </span>
+                <span className="pm-map">{mapAbbr(m.map)}</span>
+                <span>{m.line.kills} - {m.line.deaths}</span>
+                <span className={m.line.kills >= m.line.deaths ? "stat-positive" : "stat-negative"}>{signedInteger(m.line.kills - m.line.deaths)}</span>
+                <span className={`rating-number ${ratingTone(m.line.rating)}`}>{m.line.rating.toFixed(2)}</span>
               </button>
             );
           })
         ) : (
-          <div className="empty-fullscreen">No completed matches for {player.handle} yet.</div>
+          <div className="empty-fullscreen">No completed maps for {player.handle} yet.</div>
         )}
       </section>
     </main>
@@ -5200,7 +5243,13 @@ function playoffRoundNumber(round: PlayoffRound) {
 function seriesDateLabel(round: number): string {
   const day = round <= 5 ? 10 + round : round === 6 ? 17 : round === 7 ? 18 : 19;
   const date = new Date(2026, 5, day); // June 2026
-  return `${String(date.getDate()).padStart(2, "0")}/${String(date.getMonth() + 1).padStart(2, "0")}/${date.getFullYear()}`;
+  return `${String(date.getDate()).padStart(2, "0")}/${String(date.getMonth() + 1).padStart(2, "0")}/${date.getFullYear().toString().slice(2)}`;
+}
+
+// Short map tag (HLTV-style) for the player match-history table.
+function mapAbbr(map: MapId): string {
+  const abbr: Partial<Record<MapId, string>> = { mirage: "mrg", inferno: "inf", nuke: "nuke", dust2: "d2", train: "trn", ancient: "anc", anubis: "anb" };
+  return abbr[map] ?? map;
 }
 
 function buildSeriesMaps(openingMap: MapId | undefined, you: FieldTeam, opponent: FieldTeam, bestOf: number, settings: CustomSettings) {
