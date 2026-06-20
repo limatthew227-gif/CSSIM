@@ -1655,7 +1655,13 @@ export function playRound(
   const utilMod = clamp(utilEdge * 0.012, -0.04, 0.04);
 
   const baseProbability = clamp(0.5 + (yourStrength - opponentStrength) / 58 + economyMod + sideMod + tacticMod + timeoutBoost + utilMod + luck, ROUND_CLAMP_LO, ROUND_CLAMP_HI);
-  const probability = applyEcoUpsetCaps(baseProbability, yourLoadout, opponentLoadout, yourStrength, opponentStrength);
+  // Anti-blowout: once a map is decided, ease the leader's per-round edge so games don't snowball to
+  // 13:0/13:1 (the trailing team forces / plays loose, the leader relaxes). Applied AFTER the eco-upset
+  // caps so it also tames the near-automatic eco rounds that drive bagels. Only past a 4-round lead and
+  // symmetric, so it shrinks blowouts without deciding close games.
+  const scoreGap = state.you - state.opponent;
+  const comebackMod = -Math.sign(scoreGap) * Math.min(Math.max(0, Math.abs(scoreGap) - 2) * 0.035, 0.15);
+  const probability = clamp(applyEcoUpsetCaps(baseProbability, yourLoadout, opponentLoadout, yourStrength, opponentStrength) + comebackMod, 0.05, 0.95);
 
   const dynamicResult = generateDynamicRound(
     state.round,
