@@ -548,20 +548,21 @@ function App() {
   const bonuses = useMemo(() => composition(selected, settings, true), [selected, settings]);
   const opponentBonuses = useMemo(() => composition(opponent.players, settings, opponent.id === "user"), [opponent, settings]);
   const missingRoles = requiredRoles.filter((role) => !selected.some((player) => player.role === role));
-  const swissPairs = useMemo(() => buildSwissPairs(yourTeam, opponent, swissField, record, swissRecords), [yourTeam, opponent, swissField, record, swissRecords]);
+  const swissHistory = useMemo(() => buildSwissHistory(matchResults), [matchResults]); // who has played whom in Swiss
+  const swissPairs = useMemo(() => buildSwissPairs(yourTeam, opponent, swissField, record, swissRecords, swissHistory), [yourTeam, opponent, swissField, record, swissRecords, swissHistory]);
   const swissUserFinished = runKind === "player" && phase === "swiss" && (record.wins >= 3 || record.losses >= 3);
   const swissCanSim = swissUserFinished && !isSwissStageResolved(swissField, swissRecords, record);
   const spectatorSwissResolved = runKind === "spectator" && phase === "swiss" && isNeutralSwissStageResolved(swissField, swissRecords);
   const spectatorSwissPairs = useMemo(
     () =>
       runKind === "spectator" && phase === "swiss" && !spectatorSwissResolved
-        ? buildRemainingSwissPairs(swissField, swissRecords, spectatorSwissRound)
+        ? buildRemainingSwissPairs(swissField, swissRecords, spectatorSwissRound, swissHistory)
         : [],
-    [phase, runKind, spectatorSwissResolved, spectatorSwissRound, swissField, swissRecords],
+    [phase, runKind, spectatorSwissResolved, spectatorSwissRound, swissField, swissRecords, swissHistory],
   );
   const swissDisplayPairs = useMemo(
-    () => (swissUserFinished ? buildRemainingSwissPairs(swissField, swissRecords, record.wins + record.losses + 1) : swissPairs),
-    [record, swissField, swissPairs, swissRecords, swissUserFinished],
+    () => (swissUserFinished ? buildRemainingSwissPairs(swissField, swissRecords, record.wins + record.losses + 1, swissHistory) : swissPairs),
+    [record, swissField, swissPairs, swissRecords, swissUserFinished, swissHistory],
   );
   // Swiss round navigation: the live round (the one being picked/played) plus every past round that
   // has saved results, so you can flip back through the clean pick'em list to review any round.
@@ -1099,7 +1100,9 @@ function App() {
     let nextRound = Math.min(record.wins + record.losses + 1, 5);
 
     while (nextRound <= 5 && !isSwissStageResolved(swissField, nextSwissRecords, record)) {
-      const pairs = buildRemainingSwissPairs(swissField, nextSwissRecords, nextRound);
+      // rebuild history each round so the games we just simulated also block rematches
+      const history = buildSwissHistory([...matchResults, ...simulatedResults]);
+      const pairs = buildRemainingSwissPairs(swissField, nextSwissRecords, nextRound, history);
       if (!pairs.length) break;
       const roundResults = pairs.map((pair) => simulateSwissSeries(pair, nextRound, settings, difficulty, nextSwissRecords));
       simulatedResults.push(...roundResults);
@@ -1131,7 +1134,7 @@ function App() {
       return;
     }
 
-    const pairs = buildRemainingSwissPairs(swissField, swissRecords, spectatorSwissRound);
+    const pairs = buildRemainingSwissPairs(swissField, swissRecords, spectatorSwissRound, swissHistory);
     if (!pairs.length) {
       enterNeutralPlayoffs(swissRecords, "running");
       return;
@@ -4355,7 +4358,10 @@ function TeamDetailPage({
             const oppScore = single ? (isLeft ? result.maps[0].rightScore : result.maps[0].leftScore) : isLeft ? result.rightScore : result.leftScore;
             return (
               <div className="team-match-row" key={result.id}>
-                <span className="tm-stage">{result.label} / BO{result.bestOf}</span>
+                <span className="tm-date">
+                  <strong>{seriesDateLabel(result.round)}</strong>
+                  <small>{result.label} / BO{result.bestOf}</small>
+                </span>
                 <span className="tm-team home">
                   <strong>{team.name}</strong>
                   <TeamLogo team={team} small />
@@ -4943,70 +4949,96 @@ function buildSpectatorField(rosterPool: Roster[]) {
   return shuffle(rosterPool).slice(0, SWISS_FIELD_SIZE).map(toTournamentTeam);
 }
 
+// Opponent history for the Swiss stage: teamId -> set of opponent ids it has already faced. Used to
+// prevent rematches, which a CS Major Swiss (Buchholz) never produces — two teams only meet again in
+// the playoff bracket. Only swiss-stage results count.
+function buildSwissHistory(results: SwissResult[]): Map<string, Set<string>> {
+  const history = new Map<string, Set<string>>();
+  const add = (a: string, b: string) => {
+    const set = history.get(a) ?? new Set<string>();
+    set.add(b);
+    history.set(a, set);
+  };
+  results.forEach((result) => {
+    if (result.stage !== "swiss") return;
+    add(result.left.id, result.right.id);
+    add(result.right.id, result.left.id);
+  });
+  return history;
+}
+
+// Pair a (seed-sorted) record group with NO repeat opponents. Pairs high seed vs low seed and
+// backtracks whenever a rematch blocks a slot; only if no rematch-free matching exists at all (very
+// rare) does it fall back to plain adjacency. Odd groups float one team down to the next record group.
+function pairWithoutRematch(teams: FieldTeam[], history: Map<string, Set<string>>): { pairs: [FieldTeam, FieldTeam][]; leftover: FieldTeam[] } {
+  const played = (a: FieldTeam, b: FieldTeam) => history.get(a.id)?.has(b.id) ?? false;
+  const solve = (rem: FieldTeam[]): [FieldTeam, FieldTeam][] | null => {
+    if (rem.length === 0) return [];
+    const [a, ...rest] = rem;
+    for (let i = rest.length - 1; i >= 0; i -= 1) {
+      if (played(a, rest[i])) continue;
+      const sub = solve([...rest.slice(0, i), ...rest.slice(i + 1)]);
+      if (sub) return [[a, rest[i]], ...sub];
+    }
+    return null;
+  };
+  if (teams.length % 2 === 0) {
+    const matched = solve(teams);
+    if (matched) return { pairs: matched, leftover: [] };
+  } else {
+    for (let f = teams.length - 1; f >= 0; f -= 1) {
+      const matched = solve([...teams.slice(0, f), ...teams.slice(f + 1)]);
+      if (matched) return { pairs: matched, leftover: [teams[f]] };
+    }
+  }
+  const pairs: [FieldTeam, FieldTeam][] = [];
+  const even = teams.length - (teams.length % 2);
+  for (let i = 0; i < even; i += 2) pairs.push([teams[i], teams[i + 1]]);
+  return { pairs, leftover: teams.length % 2 ? [teams[teams.length - 1]] : [] };
+}
+
+// Group a seed-sorted pool by record, pair each group without rematches, then pair any odd-group
+// floats together (also rematch-free). The shared core of both swiss pairing builders.
+function pairPoolNoRematch(pool: FieldTeam[], records: Record<string, SwissRecord>, history: Map<string, Set<string>>, makeId: (a: FieldTeam, b: FieldTeam, key: string) => string): SwissPair[] {
+  const groups: Record<string, FieldTeam[]> = {};
+  pool.forEach((team) => {
+    const key = recordKey(records[team.id] ?? { wins: 0, losses: 0 });
+    groups[key] = [...(groups[key] ?? []), team];
+  });
+  const laneKeys = Object.keys(groups).sort((a, b) => {
+    const [aWins, aLosses] = a.split("-").map(Number);
+    const [bWins, bLosses] = b.split("-").map(Number);
+    return bWins - aWins || aLosses - bLosses;
+  });
+  const pairs: SwissPair[] = [];
+  const floats: FieldTeam[] = [];
+  laneKeys.forEach((key) => {
+    const { pairs: groupPairs, leftover } = pairWithoutRematch(groups[key], history);
+    groupPairs.forEach(([left, right]) => pairs.push({ id: makeId(left, right, key), left, right }));
+    floats.push(...leftover);
+  });
+  const { pairs: floatPairs } = pairWithoutRematch(floats, history);
+  floatPairs.forEach(([left, right]) => pairs.push({ id: makeId(left, right, "float"), left, right }));
+  return pairs;
+}
+
 function buildSwissPairs(
   user: FieldTeam,
   opponent: FieldTeam,
   field: FieldTeam[],
   record: SwissRecord,
   records: Record<string, SwissRecord>,
+  history: Map<string, Set<string>>,
 ): SwissPair[] {
+  // the user's match is fixed (opponent already chosen rematch-free); pair everyone else rematch-free.
   const pool = swissPairPool(field.filter((team) => team.id !== opponent.id), records);
-  const others: SwissPair[] = [];
-  for (let index = 0; index < pool.length - 1 && others.length < SWISS_FIELD_SIZE / 2 - 1; index += 2) {
-    others.push({
-      id: `${record.wins}-${record.losses}-${pool[index].id}-${pool[index + 1].id}`,
-      left: pool[index],
-      right: pool[index + 1],
-    });
-  }
-  return [
-    others[0],
-    { id: `${record.wins}-${record.losses}-user`, left: user, right: opponent, active: true },
-    ...others.slice(1),
-  ].filter(Boolean) as SwissPair[];
+  const others = pairPoolNoRematch(pool, records, history, (a, b, key) => `${record.wins}-${record.losses}-${key}-${a.id}-${b.id}`);
+  return [{ id: `${record.wins}-${record.losses}-user`, left: user, right: opponent, active: true }, ...others];
 }
 
-function buildRemainingSwissPairs(field: FieldTeam[], records: Record<string, SwissRecord>, round: number) {
+function buildRemainingSwissPairs(field: FieldTeam[], records: Record<string, SwissRecord>, round: number, history: Map<string, Set<string>>) {
   const pool = swissPairPool(field, records);
-  const groups = pool.reduce(
-    (acc, team) => {
-      const teamRecord = records[team.id] ?? { wins: 0, losses: 0 };
-      const key = recordKey(teamRecord);
-      acc[key] = [...(acc[key] ?? []), team];
-      return acc;
-    },
-    {} as Record<string, FieldTeam[]>,
-  );
-  const pairs: SwissPair[] = [];
-  const floats: FieldTeam[] = [];
-  const laneKeys = Object.keys(groups).sort((a, b) => {
-    const [aWins, aLosses] = a.split("-").map(Number);
-    const [bWins, bLosses] = b.split("-").map(Number);
-    return bWins - aWins || aLosses - bLosses;
-  });
-
-  laneKeys.forEach((key) => {
-    const teams = groups[key];
-    for (let index = 0; index < teams.length - 1; index += 2) {
-      pairs.push({
-        id: `swiss-sim-${round}-${key}-${teams[index].id}-${teams[index + 1].id}`,
-        left: teams[index],
-        right: teams[index + 1],
-      });
-    }
-    if (teams.length % 2 === 1) floats.push(teams[teams.length - 1]);
-  });
-
-  for (let index = 0; index < floats.length - 1; index += 2) {
-    const leftRecord = records[floats[index].id] ?? { wins: 0, losses: 0 };
-    pairs.push({
-      id: `swiss-sim-${round}-${recordKey(leftRecord)}-float-${floats[index].id}-${floats[index + 1].id}`,
-      left: floats[index],
-      right: floats[index + 1],
-    });
-  }
-
-  return pairs;
+  return pairPoolNoRematch(pool, records, history, (a, b, key) => `swiss-sim-${round}-${key}-${a.id}-${b.id}`);
 }
 
 function isSwissStageResolved(field: FieldTeam[], records: Record<string, SwissRecord>, userRecord: SwissRecord) {
@@ -5112,6 +5144,15 @@ function playoffRoundLabel(round: PlayoffRound) {
 
 function playoffRoundNumber(round: PlayoffRound) {
   return round === "quarterfinal" ? 6 : round === "semifinal" ? 7 : 8;
+}
+
+// Plausible per-round calendar for a Major: Swiss rounds 1-5 over Jun 11-15 2026, then playoffs
+// (QF/SF/Final) Jun 17-19, with the final landing on the current in-app date. round is 1-5 for Swiss
+// and 6/7/8 for the playoff rounds (playoffRoundNumber).
+function seriesDateLabel(round: number): string {
+  const day = round <= 5 ? 10 + round : round === 6 ? 17 : round === 7 ? 18 : 19;
+  const date = new Date(2026, 5, day); // June 2026
+  return `${String(date.getDate()).padStart(2, "0")}/${String(date.getMonth() + 1).padStart(2, "0")}/${date.getFullYear()}`;
 }
 
 function buildSeriesMaps(openingMap: MapId | undefined, you: FieldTeam, opponent: FieldTeam, bestOf: number, settings: CustomSettings) {

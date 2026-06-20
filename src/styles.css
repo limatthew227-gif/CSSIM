@@ -2914,10 +2914,24 @@ button.full-table-row {
   background: #1b232c;
 }
 
-.tm-stage {
+.tm-date {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.tm-date strong {
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+}
+
+.tm-date small {
   overflow: hidden;
   color: var(--muted);
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 800;
   text-transform: uppercase;
   letter-spacing: 0.02em;
