@@ -42,6 +42,7 @@ export interface FieldTeam {
   players: Player[];
   coach?: Coach;
   rank?: number;
+  trophies?: string[]; // notable titles this roster has won (for the team profile)
 }
 
 export type MatchStageContext = "swiss" | "quarterfinal" | "semifinal" | "final";
@@ -199,6 +200,7 @@ export function toFieldTeam(roster: Roster): FieldTeam {
     logo: roster.logo,
     players: roster.players,
     rank: roster.rank,
+    trophies: roster.trophies,
   };
 }
 

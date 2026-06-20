@@ -3017,6 +3017,125 @@ button.full-table-row {
   border-color: #5277a8;
 }
 
+/* Team profile: roster + trophies, shown above the match list */
+.team-profile-grid {
+  display: grid;
+  grid-template-columns: 1.3fr 1fr;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.team-roster-card,
+.team-trophy-card {
+  border: 1px solid #2a3441;
+  border-radius: var(--radius);
+  background: #151a21;
+  padding: 8px;
+}
+
+.card-subhead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px 8px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 950;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.team-roster-row {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr) 70px 44px;
+  gap: 10px;
+  align-items: center;
+  width: 100%;
+  min-height: 46px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+
+.team-roster-row:not(.coach):hover {
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.team-roster-row.coach {
+  cursor: default;
+  opacity: 0.8;
+}
+
+.team-roster-row b {
+  font-size: 15px;
+  font-weight: 900;
+}
+
+.team-roster-row small {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.team-roster-row em {
+  color: var(--muted);
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 800;
+  text-transform: uppercase;
+  text-align: right;
+}
+
+.team-roster-ovr {
+  font-size: 16px;
+  font-weight: 950;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.team-roster-ovr.good {
+  color: var(--green);
+}
+
+.team-roster-ovr.bad {
+  color: #d76d6d;
+}
+
+.team-roster-ovr.neutral {
+  color: var(--text);
+}
+
+.team-trophy-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 38px;
+  padding: 0 8px;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.team-trophy-row svg {
+  color: var(--gold);
+  flex-shrink: 0;
+}
+
+.team-trophy-empty {
+  padding: 10px 8px;
+  color: var(--muted);
+  font-weight: 700;
+}
+
 .stat-positive {
   color: var(--green);
 }

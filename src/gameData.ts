@@ -54,6 +54,7 @@ export interface Roster extends SourceTeam {
   players: Player[];
   mapPool: Record<MapId, number>;
   rank?: number;
+  trophies?: string[]; // notable titles this roster has won (for the team profile)
 }
 
 export interface Coach {

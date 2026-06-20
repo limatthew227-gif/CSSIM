@@ -56,6 +56,7 @@ interface HltvTeamSeed {
   mapBias: Partial<Record<MapId, number>>;
   players: HltvPlayerSeed[];
   note?: string;
+  trophies?: string[]; // notable titles this roster has won (real events)
 }
 
 const ids = mapPool.map((map) => map.id) as MapId[];
@@ -353,6 +354,7 @@ function makeRoster(team: HltvTeamSeed): Roster {
     tagline: `${rankingLabel}${pointsCopy}. OVR is opposition, role, sample-size, recent-form, and team-context adjusted.${team.note ? ` ${team.note}` : ""}`,
     mapPool: maps,
     rank: team.rank,
+    trophies: team.trophies,
     players: team.players.map((player, index) => {
       const stats = { ...statsFromHltv(player, team), ...player.statOverrides };
       return {
@@ -409,6 +411,7 @@ const hltvTeams: HltvTeamSeed[] = [
     points: 991,
     tag: "VIT",
     name: "Vitality",
+    trophies: ["BLAST.tv Major Austin 2025", "IEM Katowice 2025", "BLAST Premier World Final 2024", "IEM Dallas 2025"],
     country: "EU",
     accent: "#f5cf3b",
     coachHandle: "XTQZZZ",
@@ -434,6 +437,7 @@ const hltvTeams: HltvTeamSeed[] = [
     points: 712,
     tag: "NAVI",
     name: "Natus Vincere",
+    trophies: ["IEM Atlanta 2026", "ESL Pro League Season 21"],
     country: "UA",
     accent: "#f6d32d",
     coachHandle: "B1ad3",
@@ -489,6 +493,7 @@ const hltvTeams: HltvTeamSeed[] = [
     points: 850,
     tag: "NAVI",
     name: "Natus Vincere 2018",
+    trophies: ["CS:GO Asia Championships 2018", "ESL One Cologne 2018 (Finalist)"],
     country: "UA",
     accent: "#f6d32d",
     coachHandle: "kane",
@@ -584,6 +589,7 @@ const hltvTeams: HltvTeamSeed[] = [
     points: 930,
     tag: "AST",
     name: "Astralis 2018",
+    trophies: ["FACEIT Major: London 2018", "IEM Katowice Major 2019", "StarLadder Major: Berlin 2019", "Intel Grand Slam Season 1"],
     country: "DK",
     accent: "#d1131a",
     coachHandle: "zonic",
@@ -681,6 +687,7 @@ const hltvTeams: HltvTeamSeed[] = [
     points: 805,
     tag: "LG",
     name: "Luminosity 2016",
+    trophies: ["MLG Major: Columbus 2016", "ESL One: Cologne 2016"],
     country: "BR",
     accent: "#1f8f4e",
     coachHandle: "zews",
@@ -775,6 +782,7 @@ const hltvTeams: HltvTeamSeed[] = [
     points: 544,
     tag: "SPI",
     name: "Spirit",
+    trophies: ["PGL Astana 2025", "PGL Cluj-Napoca 2024"],
     country: "RU",
     accent: "#79b8ff",
     coachHandle: "hally",
@@ -873,6 +881,7 @@ const hltvTeams: HltvTeamSeed[] = [
     points: 301,
     tag: "MOUZ",
     name: "MOUZ",
+    trophies: ["ESL Pro League Season 20"],
     country: "EU",
     accent: "#ef4444",
     coachHandle: "sycrone",

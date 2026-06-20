@@ -1953,6 +1953,7 @@ function App() {
           results={matchResults}
           onBack={() => setScreen("stats")}
           onOpenSeries={(id) => openSeriesFrom(id, "team-detail")}
+          onOpenPlayer={openPlayerDetail}
         />
       )}
 
@@ -4317,14 +4318,17 @@ function TeamDetailPage({
   results,
   onBack,
   onOpenSeries,
+  onOpenPlayer,
 }: {
   team: FieldTeam;
   results: SwissResult[];
   onBack: () => void;
   onOpenSeries: (id: string) => void;
+  onOpenPlayer: (player: Player, team: FieldTeam) => void;
 }) {
   const games = results.filter((r) => r.left.id === team.id || r.right.id === team.id);
   const wins = games.filter((r) => r.winnerId === team.id).length;
+  const played = games.length > 0;
 
   return (
     <main className="layout fullscreen-page">
@@ -4347,7 +4351,51 @@ function TeamDetailPage({
         </button>
       </section>
 
-      {games.length ? (
+      <section className="team-profile-grid">
+        <div className="team-roster-card">
+          <div className="card-subhead">
+            <Users size={16} />
+            <span>Roster</span>
+          </div>
+          {team.players.map((player) => (
+            <button type="button" className="team-roster-row" key={player.id} onClick={() => onOpenPlayer(player, team)} title={`${player.handle} — per-match stats`}>
+              <Flag country={player.country} />
+              <b>{player.handle}</b>
+              <small>{player.realName}</small>
+              <em>{player.role}</em>
+              <span className={`team-roster-ovr ${ratingTone(player.ovr / 80)}`}>{player.ovr}</span>
+            </button>
+          ))}
+          {team.coach && (
+            <div className="team-roster-row coach">
+              <Flag country={team.coach.country} />
+              <b>{team.coach.handle}</b>
+              <small>{team.coach.realName}</small>
+              <em>Coach</em>
+              <span />
+            </div>
+          )}
+        </div>
+
+        <div className="team-trophy-card">
+          <div className="card-subhead">
+            <Trophy size={16} />
+            <span>Trophies</span>
+          </div>
+          {team.trophies?.length ? (
+            team.trophies.map((trophy) => (
+              <div className="team-trophy-row" key={trophy}>
+                <Trophy size={15} />
+                <span>{trophy}</span>
+              </div>
+            ))
+          ) : (
+            <div className="team-trophy-empty">No major titles on record.</div>
+          )}
+        </div>
+      </section>
+
+      {played ? (
         <section className="team-match-list">
           {[...games].reverse().map((result) => {
             const isLeft = result.left.id === team.id;
