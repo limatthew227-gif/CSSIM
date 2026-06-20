@@ -26,6 +26,7 @@ interface HltvPlayerSeed {
   country: string;
   role: Role;
   secondaryRole?: Role; // a second job (e.g. AWP who also IGLs) — counts for composition, not fragging
+  fragSupport?: boolean; // a Support who frags like a rifler (no support debuff on stats/OVR/fragging)
   style: Style;
   hltvRating: number;
   statOverrides?: Partial<PlayerStats>;
@@ -273,18 +274,20 @@ function statsFromHltv(player: HltvPlayerSeed, team: HltvTeamSeed): PlayerStats 
   const ratingLift = (oppositionAdjustedRating(player, team) - 1) * 14;
   const styleAim = player.style === "Aggressive" ? 2 : player.style === "Passive" ? -1 : 0;
   const stylePatience = player.style === "Passive" ? 2 : 0;
+  // a frag-support is a rifler for stat purposes (keeps Support only for composition/utility/display)
+  const role: Role = player.role === "Support" && player.fragSupport ? "Rifler" : player.role;
 
   return {
-    aim: clampWhole(card + ratingLift + styleAim + (player.role === "Entry" ? 4 : player.role === "IGL" ? -4 : player.role === "Support" ? -2 : player.role === "Rifler" ? 2 : 1), 50, 99),
-    clutch: clampWhole(card + ratingLift + stylePatience + (player.role === "Lurker" ? 5 : player.role === "AWP" ? 2 : player.role === "Rifler" ? 1 : player.role === "Entry" ? -1 : 0), 50, 99),
-    consistency: clampWhole(card + (teamContextRating(team) - 1) * 18 + (player.role === "Support" ? 4 : player.role === "Lurker" ? 3 : player.role === "IGL" ? 3 : player.role === "Entry" ? -2 : 0), 50, 99),
+    aim: clampWhole(card + ratingLift + styleAim + (role === "Entry" ? 4 : role === "IGL" ? -4 : role === "Support" ? -2 : role === "Rifler" ? 2 : 1), 50, 99),
+    clutch: clampWhole(card + ratingLift + stylePatience + (role === "Lurker" ? 5 : role === "AWP" ? 2 : role === "Rifler" ? 1 : role === "Entry" ? -1 : 0), 50, 99),
+    consistency: clampWhole(card + (teamContextRating(team) - 1) * 18 + (role === "Support" ? 4 : role === "Lurker" ? 3 : role === "IGL" ? 3 : role === "Entry" ? -2 : 0), 50, 99),
     awp: clampWhole(
-      player.role === "AWP" ? card + 8 : player.role === "Rifler" ? card - 11 : player.role === "Entry" ? card - 15 : player.role === "Lurker" ? card - 13 : card - 18,
+      role === "AWP" ? card + 8 : role === "Rifler" ? card - 11 : role === "Entry" ? card - 15 : role === "Lurker" ? card - 13 : card - 18,
       45,
       99,
     ),
     igl: clampWhole(
-      player.role === "IGL" ? card + 10 : player.role === "Support" ? card + 1 : player.role === "Lurker" ? card - 5 : player.role === "Rifler" ? card - 9 : card - 14,
+      role === "IGL" ? card + 10 : role === "Support" ? card + 1 : role === "Lurker" ? card - 5 : role === "Rifler" ? card - 9 : card - 14,
       45,
       99,
     ),
@@ -364,10 +367,11 @@ function makeRoster(team: HltvTeamSeed): Roster {
         country: player.country,
         role: player.role,
         secondaryRole: player.secondaryRole,
+        fragSupport: player.fragSupport,
         style: player.style,
         traits: traitsFor(player, stats, team),
         stats,
-        ovr: rateStatsForRole(stats, player.role),
+        ovr: rateStatsForRole(stats, player.role === "Support" && player.fragSupport ? "Rifler" : player.role),
         hltvRating: effectiveHltvRating(player, team),
         hltvMaps: ratingSample(player, team, "overall").maps,
         source,
@@ -1038,10 +1042,11 @@ const hltvTeams: HltvTeamSeed[] = [
     mapBias: { mirage: 2, dust2: 2, anubis: 1, train: 1 },
     players: [
       { handle: "huNter-", realName: "Nemanja Kovac", country: "BA", role: "IGL", style: "Balanced", hltvRating: 1.1 },
-      { handle: "NertZ", realName: "Guy Iluz", country: "IL", role: "Lurker", style: "Aggressive", hltvRating: 1.15 },
+      { handle: "NertZ", realName: "Guy Iluz", country: "IL", role: "Entry", style: "Aggressive", hltvRating: 1.15 },
       { handle: "SunPayus", realName: "Alvaro Garcia", country: "ES", role: "AWP", style: "Passive", hltvRating: 1.08 },
-      { handle: "HeavyGod", realName: "Nikita Martynenko", country: "IL", role: "Lurker", style: "Balanced", hltvRating: 1.08 },
-      { handle: "MATYS", realName: "Matus Simko", country: "SK", role: "Entry", style: "Aggressive", hltvRating: 1.12 },
+      // star support: plays the support role but frags like a rifler — no support debuff
+      { handle: "HeavyGod", realName: "Nikita Martynenko", country: "IL", role: "Support", fragSupport: true, style: "Aggressive", hltvRating: 1.16 },
+      { handle: "MATYS", realName: "Matus Simko", country: "SK", role: "Lurker", style: "Aggressive", hltvRating: 1.12 },
     ],
   },
   {

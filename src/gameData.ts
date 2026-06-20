@@ -38,6 +38,10 @@ export interface Player {
   // composition / role coverage, but NOT the fragging weights — so a star AWP-IGL keeps his AWP duel
   // profile and does NOT take the IGL fragging debuff.
   secondaryRole?: Role;
+  // A Support who frags like a rifler (e.g. a star support such as HeavyGod). Keeps the Support role
+  // for composition/utility/display, but his stats, OVR and fragging weights are rifler-grade — i.e.
+  // NO support debuff.
+  fragSupport?: boolean;
   style: Style;
   traits: string[];
   stats: PlayerStats;
