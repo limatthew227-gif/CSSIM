@@ -4344,9 +4344,9 @@ function TeamDetailPage({
         </button>
       </section>
 
-      <section className="results-grid-full">
-        {games.length ? (
-          [...games].reverse().map((result) => {
+      {games.length ? (
+        <section className="team-match-list">
+          {[...games].reverse().map((result) => {
             const isLeft = result.left.id === team.id;
             const opponent = isLeft ? result.right : result.left;
             const won = result.winnerId === team.id;
@@ -4354,38 +4354,31 @@ function TeamDetailPage({
             const teamScore = single ? (isLeft ? result.maps[0].leftScore : result.maps[0].rightScore) : isLeft ? result.leftScore : result.rightScore;
             const oppScore = single ? (isLeft ? result.maps[0].rightScore : result.maps[0].leftScore) : isLeft ? result.rightScore : result.leftScore;
             return (
-              <button className="series-result-card" key={result.id} onClick={() => onOpenSeries(result.id)}>
-                <span className="series-stage-pill">{result.label} / BO{result.bestOf}</span>
-                <div className="series-card-score">
-                  <div>
-                    <TeamLogo team={team} small />
-                    <strong>{team.name}</strong>
-                  </div>
-                  <b>
-                    <span className={won ? "winner" : ""}>{teamScore}</span>
-                    <em>:</em>
-                    <span className={!won ? "winner" : ""}>{oppScore}</span>
-                  </b>
-                  <div>
-                    <TeamLogo team={opponent} small />
-                    <strong>{opponent.name}</strong>
-                  </div>
-                </div>
-                <div className="series-map-pills">
-                  {result.maps.map((map, index) => (
-                    <span key={`${result.id}-${map.map}-${index}`}>
-                      {mapName(map.map)} {isLeft ? map.leftScore : map.rightScore}:{isLeft ? map.rightScore : map.leftScore}
-                    </span>
-                  ))}
-                </div>
-                <small className={won ? "stat-positive" : "stat-negative"}>{won ? "Win" : "Loss"} vs {opponent.name}</small>
-              </button>
+              <div className="team-match-row" key={result.id}>
+                <span className="tm-stage">{result.label} / BO{result.bestOf}</span>
+                <span className="tm-team home">
+                  <strong>{team.name}</strong>
+                  <TeamLogo team={team} small />
+                </span>
+                <span className="tm-score">
+                  <b className={won ? "winner" : ""}>{teamScore}</b>
+                  <em>:</em>
+                  <b className={!won ? "winner" : ""}>{oppScore}</b>
+                </span>
+                <span className="tm-team away">
+                  <TeamLogo team={opponent} small />
+                  <strong>{opponent.name}</strong>
+                </span>
+                <button type="button" className="tm-match-btn" onClick={() => onOpenSeries(result.id)}>
+                  Match
+                </button>
+              </div>
             );
-          })
-        ) : (
-          <div className="empty-fullscreen">No completed series for {team.name} yet.</div>
-        )}
-      </section>
+          })}
+        </section>
+      ) : (
+        <div className="empty-fullscreen">No completed series for {team.name} yet.</div>
+      )}
     </main>
   );
 }

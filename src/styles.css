@@ -2887,6 +2887,122 @@ button.full-table-row {
   gap: 10px;
 }
 
+/* Compact head-to-head match list on the team-detail page */
+.team-match-list {
+  display: grid;
+  border: 1px solid #2a3441;
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: #151a21;
+}
+
+.team-match-row {
+  display: grid;
+  grid-template-columns: minmax(120px, 0.8fr) minmax(0, 1fr) auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  min-height: 60px;
+  padding: 0 18px;
+  border-bottom: 1px solid #2a3441;
+}
+
+.team-match-row:last-child {
+  border-bottom: 0;
+}
+
+.team-match-row:nth-child(odd) {
+  background: #1b232c;
+}
+
+.tm-stage {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tm-team {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.tm-team .team-logo.small {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  flex-shrink: 0;
+}
+
+.tm-team strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 15px;
+  font-weight: 900;
+}
+
+.tm-team.home {
+  justify-content: flex-end;
+  text-align: right;
+}
+
+.tm-team.home strong {
+  color: var(--text);
+}
+
+.tm-team.away {
+  justify-content: flex-start;
+}
+
+.tm-team.away strong {
+  color: var(--muted);
+}
+
+.tm-score {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 22px;
+  font-weight: 950;
+  font-variant-numeric: tabular-nums;
+}
+
+.tm-score b {
+  color: var(--muted);
+}
+
+.tm-score b.winner {
+  color: var(--text);
+}
+
+.tm-score em {
+  color: #5b6675;
+  font-style: normal;
+  font-size: 17px;
+}
+
+.tm-match-btn {
+  padding: 7px 18px;
+  border: 1px solid #3a526f;
+  border-radius: 8px;
+  background: #2b3a52;
+  color: #dbe6f5;
+  font-weight: 900;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+}
+
+.tm-match-btn:hover {
+  background: #34527a;
+  border-color: #5277a8;
+}
+
 .stat-positive {
   color: var(--green);
 }
