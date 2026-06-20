@@ -514,7 +514,7 @@ function App() {
   const [selectedResultId, setSelectedResultId] = useState<string>();
   const [detailPlayer, setDetailPlayer] = useState<{ player: Player; team: FieldTeam } | null>(null);
   const [detailTeam, setDetailTeam] = useState<FieldTeam | null>(null);
-  const [seriesReturn, setSeriesReturn] = useState<Screen>("results"); // where series-detail "Back" returns to
+  const [navStack, setNavStack] = useState<Screen[]>([]); // back-stack for the detail pages
   const [statsScope, setStatsScope] = useState<StatsScope>("all");
   const [record, setRecord] = useState({ wins: 0, losses: 0 });
   const [pickems, setPickems] = useState<Record<string, string>>({});
@@ -651,26 +651,35 @@ function App() {
         ]
     : [];
 
-  function openSeriesResult(id: string) {
-    setSelectedResultId(id);
-    setSeriesReturn("results");
-    setScreen("series-detail");
+  // Detail-page navigation uses a small back-stack so "Back" returns to wherever you came from
+  // (results, swiss board, a team page, a player page, …) even across player <-> team <-> series hops.
+  function pushScreen(next: Screen) {
+    setNavStack((stack) => [...stack, screen]);
+    setScreen(next);
   }
 
-  function openSeriesFrom(id: string, from: Screen) {
+  function goBackScreen() {
+    setNavStack((stack) => {
+      const copy = [...stack];
+      const prev = copy.pop();
+      setScreen(prev ?? (phase === "playoffs" ? "playoffs" : "swiss"));
+      return copy;
+    });
+  }
+
+  function openSeriesResult(id: string) {
     setSelectedResultId(id);
-    setSeriesReturn(from);
-    setScreen("series-detail");
+    pushScreen("series-detail");
   }
 
   function openPlayerDetail(player: Player, team: FieldTeam) {
     setDetailPlayer({ player, team });
-    setScreen("player-detail");
+    pushScreen("player-detail");
   }
 
   function openTeamDetail(team: FieldTeam) {
     setDetailTeam(team);
-    setScreen("team-detail");
+    pushScreen("team-detail");
   }
 
   useEffect(() => {
@@ -1941,8 +1950,8 @@ function App() {
           player={detailPlayer.player}
           team={detailPlayer.team}
           results={matchResults}
-          onBack={() => setScreen("stats")}
-          onOpenSeries={(id) => openSeriesFrom(id, "player-detail")}
+          onBack={goBackScreen}
+          onOpenSeries={openSeriesResult}
           onOpenTeam={openTeamDetail}
         />
       )}
@@ -1951,8 +1960,8 @@ function App() {
         <TeamDetailPage
           team={detailTeam}
           results={matchResults}
-          onBack={() => setScreen("stats")}
-          onOpenSeries={(id) => openSeriesFrom(id, "team-detail")}
+          onBack={goBackScreen}
+          onOpenSeries={openSeriesResult}
           onOpenPlayer={openPlayerDetail}
         />
       )}
@@ -1969,8 +1978,13 @@ function App() {
       {screen === "series-detail" && (
         <SeriesDetailPage
           result={selectedResult}
-          onBack={() => setScreen(seriesReturn)}
-          onBackToRun={() => setScreen(phase === "playoffs" ? "playoffs" : "swiss")}
+          onBack={goBackScreen}
+          onBackToRun={() => {
+            setNavStack([]);
+            setScreen(phase === "playoffs" ? "playoffs" : "swiss");
+          }}
+          onOpenPlayer={openPlayerDetail}
+          onOpenTeam={openTeamDetail}
         />
       )}
 
@@ -4014,10 +4028,14 @@ function MatchStatsPanel({
   maps,
   mapResults = [],
   teams,
+  onOpenPlayer,
+  onOpenTeam,
 }: {
   maps: MapId[];
   mapResults?: SeriesMapResult[];
   teams: Array<{ team: FieldTeam; players: Player[]; stats: MatchState["yourStats"]; side?: "left" | "right" }>;
+  onOpenPlayer?: (player: Player, team: FieldTeam) => void;
+  onOpenTeam?: (team: FieldTeam) => void;
 }) {
   const [sideFilter, setSideFilter] = useState<StatsSideFilter>("both");
   const [mapFilter, setMapFilter] = useState<StatsMapFilter>("all");
@@ -4063,7 +4081,7 @@ function MatchStatsPanel({
       </div>
       <div className="team-stats-stack">
         {filteredTeams.map(({ team, players, stats }) => (
-          <TeamStatsBlock key={team.id} team={team} players={players} stats={stats} />
+          <TeamStatsBlock key={team.id} team={team} players={players} stats={stats} onOpenPlayer={onOpenPlayer} onOpenTeam={onOpenTeam} />
         ))}
       </div>
     </section>
@@ -4558,10 +4576,14 @@ function SeriesDetailPage({
   result,
   onBack,
   onBackToRun,
+  onOpenPlayer,
+  onOpenTeam,
 }: {
   result?: SwissResult;
   onBack: () => void;
   onBackToRun: () => void;
+  onOpenPlayer: (player: Player, team: FieldTeam) => void;
+  onOpenTeam: (team: FieldTeam) => void;
 }) {
   if (!result) {
     return (
@@ -4598,7 +4620,7 @@ function SeriesDetailPage({
         <div className="fullscreen-actions">
           <button className="secondary" onClick={onBack}>
             <ArrowLeft size={16} />
-            Results
+            Back
           </button>
           <button className="secondary" onClick={onBackToRun}>
             Back to run
@@ -4607,11 +4629,11 @@ function SeriesDetailPage({
       </section>
 
       <section className="series-detail-hero">
-        <div className="series-detail-team" style={{ "--crest": result.left.accent } as React.CSSProperties}>
+        <button type="button" className="series-detail-team link-team" style={{ "--crest": result.left.accent } as React.CSSProperties} onClick={() => onOpenTeam(result.left)} title={`${result.left.name} — team profile`}>
           <TeamLogo team={result.left} />
           <strong>{result.left.name}</strong>
           <span>{result.left.country} / {result.left.year}</span>
-        </div>
+        </button>
         <div className="series-detail-score">
           <strong>
             <span className={result.winnerId === result.left.id ? "winner" : ""}>
@@ -4624,11 +4646,11 @@ function SeriesDetailPage({
           </strong>
           <small>{result.label}</small>
         </div>
-        <div className="series-detail-team right" style={{ "--crest": result.right.accent } as React.CSSProperties}>
+        <button type="button" className="series-detail-team right link-team" style={{ "--crest": result.right.accent } as React.CSSProperties} onClick={() => onOpenTeam(result.right)} title={`${result.right.name} — team profile`}>
           <TeamLogo team={result.right} />
           <strong>{result.right.name}</strong>
           <span>{result.right.country} / {result.right.year}</span>
-        </div>
+        </button>
       </section>
 
       <section className="series-map-summary">
@@ -4647,6 +4669,8 @@ function SeriesDetailPage({
           { team: result.left, players: result.left.players, stats: result.leftStats, side: "left" },
           { team: result.right, players: result.right.players, stats: result.rightStats, side: "right" },
         ]}
+        onOpenPlayer={onOpenPlayer}
+        onOpenTeam={onOpenTeam}
       />
     </main>
   );
@@ -4656,19 +4680,30 @@ function TeamStatsBlock({
   team,
   players,
   stats,
+  onOpenPlayer,
+  onOpenTeam,
 }: {
   team: FieldTeam;
   players: Player[];
   stats: MatchState["yourStats"];
+  onOpenPlayer?: (player: Player, team: FieldTeam) => void;
+  onOpenTeam?: (team: FieldTeam) => void;
 }) {
   const rows = statRows(players, stats, true);
   return (
     <section className="team-stats-block" style={{ "--crest": team.accent } as React.CSSProperties}>
       <div className="team-stats-grid team-stats-head">
-        <div className="team-stats-title">
-          <TeamLogo team={team} small />
-          <strong>{team.name}</strong>
-        </div>
+        {onOpenTeam ? (
+          <button type="button" className="team-stats-title link-team" onClick={() => onOpenTeam(team)} title={`${team.name} — team profile`}>
+            <TeamLogo team={team} small />
+            <strong>{team.name}</strong>
+          </button>
+        ) : (
+          <div className="team-stats-title">
+            <TeamLogo team={team} small />
+            <strong>{team.name}</strong>
+          </div>
+        )}
         <b>K-D</b>
         <b>Swing</b>
         <b>ADR</b>
@@ -4681,8 +4716,14 @@ function TeamStatsBlock({
           <span>2.0</span>
         </b>
       </div>
-      {rows.map(({ player, line, kast, swing }) => (
-        <div className="team-stats-grid team-stats-row" key={player.id}>
+      {rows.map(({ player, line, kast, swing }) => {
+        const RowTag = onOpenPlayer ? "button" : "div";
+        return (
+        <RowTag
+          className={`team-stats-grid team-stats-row${onOpenPlayer ? " clickable" : ""}`}
+          key={player.id}
+          {...(onOpenPlayer ? { type: "button" as const, onClick: () => onOpenPlayer(player, team), title: `${player.handle} — match history` } : {})}
+        >
           <div className="stats-player">
             <Flag country={player.country} />
             <span className="country-code">{player.country}</span>
@@ -4698,8 +4739,9 @@ function TeamStatsBlock({
           <span data-label="FK-FD">{line.firstKills}-{line.firstDeaths}</span>
           <span data-label="2K+">{line.multiKills}</span>
           <span data-label="Rating" className={`rating-number ${ratingTone(line.rating)}`}>{line.rating.toFixed(2)}</span>
-        </div>
-      ))}
+        </RowTag>
+        );
+      })}
     </section>
   );
 }

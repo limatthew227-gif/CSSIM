@@ -3943,6 +3943,39 @@ button.full-table-row {
   background: #1b232c;
 }
 
+/* Clickable team headers (hero + stats block) and player rows on the series-detail page */
+.link-team {
+  border: 0;
+  color: inherit;
+  font: inherit;
+  text-align: inherit;
+  cursor: pointer;
+}
+
+.link-team:hover strong {
+  text-decoration: underline;
+}
+
+.series-detail-team.link-team:hover {
+  filter: brightness(1.08);
+}
+
+.team-stats-title.link-team {
+  width: 100%;
+  justify-content: flex-start;
+  background: transparent;
+}
+
+button.team-stats-row {
+  width: 100%;
+  border: 0;
+  border-bottom: 1px solid #2a3441;
+  color: inherit;
+  font: inherit;
+  text-align: inherit;
+  cursor: pointer;
+}
+
 .team-stats-row > span {
   display: grid;
   place-items: center;
