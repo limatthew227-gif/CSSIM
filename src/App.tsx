@@ -138,7 +138,7 @@ const utilityLabels: Record<string, string> = {
 
 const COACH_SHORTLIST_SIZE = 5;
 
-type Screen = "setup" | "teams" | "draft" | "coach" | "swiss" | "playoffs" | "veto" | "match" | "result" | "stats" | "results" | "series-detail";
+type Screen = "setup" | "teams" | "draft" | "coach" | "swiss" | "playoffs" | "veto" | "match" | "result" | "stats" | "results" | "series-detail" | "player-detail" | "team-detail";
 type Mode = "classic" | "blind" | "random" | "spectator";
 type RunKind = "player" | "spectator";
 type SwissRecord = { wins: number; losses: number };
@@ -512,6 +512,9 @@ function App() {
   const [playedOpponentIds, setPlayedOpponentIds] = useState<string[]>([]);
   const [matchResults, setMatchResults] = useState<SwissResult[]>([]);
   const [selectedResultId, setSelectedResultId] = useState<string>();
+  const [detailPlayer, setDetailPlayer] = useState<{ player: Player; team: FieldTeam } | null>(null);
+  const [detailTeam, setDetailTeam] = useState<FieldTeam | null>(null);
+  const [seriesReturn, setSeriesReturn] = useState<Screen>("results"); // where series-detail "Back" returns to
   const [statsScope, setStatsScope] = useState<StatsScope>("all");
   const [record, setRecord] = useState({ wins: 0, losses: 0 });
   const [pickems, setPickems] = useState<Record<string, string>>({});
@@ -649,7 +652,24 @@ function App() {
 
   function openSeriesResult(id: string) {
     setSelectedResultId(id);
+    setSeriesReturn("results");
     setScreen("series-detail");
+  }
+
+  function openSeriesFrom(id: string, from: Screen) {
+    setSelectedResultId(id);
+    setSeriesReturn(from);
+    setScreen("series-detail");
+  }
+
+  function openPlayerDetail(player: Player, team: FieldTeam) {
+    setDetailPlayer({ player, team });
+    setScreen("player-detail");
+  }
+
+  function openTeamDetail(team: FieldTeam) {
+    setDetailTeam(team);
+    setScreen("team-detail");
   }
 
   useEffect(() => {
@@ -1908,6 +1928,28 @@ function App() {
           scope={statsScope}
           onScopeChange={setStatsScope}
           onBack={() => setScreen(phase === "playoffs" ? "playoffs" : "swiss")}
+          onOpenPlayer={openPlayerDetail}
+          onOpenTeam={openTeamDetail}
+        />
+      )}
+
+      {screen === "player-detail" && detailPlayer && (
+        <PlayerDetailPage
+          player={detailPlayer.player}
+          team={detailPlayer.team}
+          results={matchResults}
+          onBack={() => setScreen("stats")}
+          onOpenSeries={(id) => openSeriesFrom(id, "player-detail")}
+          onOpenTeam={openTeamDetail}
+        />
+      )}
+
+      {screen === "team-detail" && detailTeam && (
+        <TeamDetailPage
+          team={detailTeam}
+          results={matchResults}
+          onBack={() => setScreen("stats")}
+          onOpenSeries={(id) => openSeriesFrom(id, "team-detail")}
         />
       )}
 
@@ -1923,7 +1965,7 @@ function App() {
       {screen === "series-detail" && (
         <SeriesDetailPage
           result={selectedResult}
-          onBack={() => setScreen("results")}
+          onBack={() => setScreen(seriesReturn)}
           onBackToRun={() => setScreen(phase === "playoffs" ? "playoffs" : "swiss")}
         />
       )}
@@ -4062,11 +4104,15 @@ function RunStatsPage({
   scope,
   onScopeChange,
   onBack,
+  onOpenPlayer,
+  onOpenTeam,
 }: {
   rows: PlayerDatabaseRow[];
   scope: StatsScope;
   onScopeChange: (scope: StatsScope) => void;
   onBack: () => void;
+  onOpenPlayer: (player: Player, team: FieldTeam) => void;
+  onOpenTeam: (team: FieldTeam) => void;
 }) {
   const visibleRows = scope === "mine" ? rows.filter((row) => row.team.id === "user") : rows;
   const leader = visibleRows[0];
@@ -4138,16 +4184,16 @@ function RunStatsPage({
             const kast = line.rounds ? (line.kastRounds / line.rounds) * 100 : 0;
             return (
               <div className="full-table-row run-stats-grid" key={databaseKey}>
-                <span className="full-player-cell">
+                <button type="button" className="full-player-cell link-cell" onClick={() => onOpenPlayer(player, team)} title={`${player.handle} — per-match stats`}>
                   <Flag country={player.country} />
                   <b>{player.handle}</b>
                   <small>{player.realName}</small>
-                </span>
+                </button>
                 <span>{player.country}</span>
-                <span className="run-team-cell" title={team.name}>
+                <button type="button" className="run-team-cell link-cell" onClick={() => onOpenTeam(team)} title={`${team.name} — major results`}>
                   <TeamLogo team={team} small />
                   <b>{team.tag}</b>
-                </span>
+                </button>
                 <span>{player.role}</span>
                 <span>{matches}</span>
                 <span>{line.kills}-{line.deaths}</span>
@@ -4161,6 +4207,183 @@ function RunStatsPage({
           })
         ) : (
           <div className="empty-fullscreen">No player stats for this filter yet.</div>
+        )}
+      </section>
+    </main>
+  );
+}
+
+function PlayerDetailPage({
+  player,
+  team,
+  results,
+  onBack,
+  onOpenSeries,
+  onOpenTeam,
+}: {
+  player: Player;
+  team: FieldTeam;
+  results: SwissResult[];
+  onBack: () => void;
+  onOpenSeries: (id: string) => void;
+  onOpenTeam: (team: FieldTeam) => void;
+}) {
+  const matches = results
+    .filter((r) => r.left.id === team.id || r.right.id === team.id)
+    .map((r) => {
+      const isLeft = r.left.id === team.id;
+      const line = (isLeft ? r.leftStats : r.rightStats)[player.id];
+      const opponent = isLeft ? r.right : r.left;
+      const single = r.maps.length === 1;
+      const teamScore = single ? (isLeft ? r.maps[0].leftScore : r.maps[0].rightScore) : isLeft ? r.leftScore : r.rightScore;
+      const oppScore = single ? (isLeft ? r.maps[0].rightScore : r.maps[0].leftScore) : isLeft ? r.rightScore : r.leftScore;
+      return { r, line, opponent, teamScore, oppScore, won: r.winnerId === team.id };
+    })
+    .filter((m) => m.line)
+    .reverse();
+
+  const totalKills = matches.reduce((sum, m) => sum + m.line.kills, 0);
+  const totalDeaths = matches.reduce((sum, m) => sum + m.line.deaths, 0);
+  const avgRating = matches.length ? matches.reduce((sum, m) => sum + m.line.rating, 0) / matches.length : 0;
+
+  return (
+    <main className="layout fullscreen-page">
+      <section className="fullscreen-head">
+        <div>
+          <div className="section-title">
+            <Target size={18} />
+            <span>Player</span>
+          </div>
+          <h1>
+            <Flag country={player.country} /> {player.handle}
+          </h1>
+          <p>
+            {player.realName} / {player.role} /{" "}
+            <button type="button" className="inline-link" onClick={() => onOpenTeam(team)}>
+              {team.name}
+            </button>{" "}
+            — {matches.length} {matches.length === 1 ? "match" : "matches"} this major
+            {matches.length ? ` / ${totalKills}-${totalDeaths} K-D / ${avgRating.toFixed(2)} avg rating` : ""}
+          </p>
+        </div>
+        <button className="secondary" onClick={onBack}>
+          <ArrowLeft size={16} />
+          Back
+        </button>
+      </section>
+
+      <section className="full-table-card">
+        <div className="full-table-head player-match-grid">
+          <span>Opponent</span>
+          <span>Score</span>
+          <span>K-D</span>
+          <span>+/-</span>
+          <span>ADR</span>
+          <span>KAST</span>
+          <span>Rating</span>
+        </div>
+        {matches.length ? (
+          matches.map(({ r, line, opponent, teamScore, oppScore, won }) => {
+            const kast = line.rounds ? (line.kastRounds / line.rounds) * 100 : 0;
+            return (
+              <button type="button" className="full-table-row player-match-grid clickable" key={r.id} onClick={() => onOpenSeries(r.id)}>
+                <span className="run-team-cell" title={`${r.label} vs ${opponent.name}`}>
+                  <TeamLogo team={opponent} small />
+                  <b>{opponent.tag}</b>
+                  <em className="match-stage-tag">{r.label}</em>
+                </span>
+                <span className={won ? "stat-positive" : "stat-negative"}>{teamScore}-{oppScore}</span>
+                <span>{line.kills}-{line.deaths}</span>
+                <span className={line.kills >= line.deaths ? "stat-positive" : "stat-negative"}>{signedInteger(line.kills - line.deaths)}</span>
+                <span>{line.adr.toFixed(1)}</span>
+                <span>{kast.toFixed(1)}%</span>
+                <span className={`rating-number ${ratingTone(line.rating)}`}>{line.rating.toFixed(2)}</span>
+              </button>
+            );
+          })
+        ) : (
+          <div className="empty-fullscreen">No completed matches for {player.handle} yet.</div>
+        )}
+      </section>
+    </main>
+  );
+}
+
+function TeamDetailPage({
+  team,
+  results,
+  onBack,
+  onOpenSeries,
+}: {
+  team: FieldTeam;
+  results: SwissResult[];
+  onBack: () => void;
+  onOpenSeries: (id: string) => void;
+}) {
+  const games = results.filter((r) => r.left.id === team.id || r.right.id === team.id);
+  const wins = games.filter((r) => r.winnerId === team.id).length;
+
+  return (
+    <main className="layout fullscreen-page">
+      <section className="fullscreen-head">
+        <div>
+          <div className="section-title">
+            <Database size={18} />
+            <span>Team</span>
+          </div>
+          <h1 className="team-detail-title">
+            <TeamLogo team={team} small /> {team.name}
+          </h1>
+          <p>
+            {wins}-{games.length - wins} at this major / {games.length} {games.length === 1 ? "series" : "series"} played
+          </p>
+        </div>
+        <button className="secondary" onClick={onBack}>
+          <ArrowLeft size={16} />
+          Back
+        </button>
+      </section>
+
+      <section className="results-grid-full">
+        {games.length ? (
+          [...games].reverse().map((result) => {
+            const isLeft = result.left.id === team.id;
+            const opponent = isLeft ? result.right : result.left;
+            const won = result.winnerId === team.id;
+            const single = result.maps.length === 1;
+            const teamScore = single ? (isLeft ? result.maps[0].leftScore : result.maps[0].rightScore) : isLeft ? result.leftScore : result.rightScore;
+            const oppScore = single ? (isLeft ? result.maps[0].rightScore : result.maps[0].leftScore) : isLeft ? result.rightScore : result.leftScore;
+            return (
+              <button className="series-result-card" key={result.id} onClick={() => onOpenSeries(result.id)}>
+                <span className="series-stage-pill">{result.label} / BO{result.bestOf}</span>
+                <div className="series-card-score">
+                  <div>
+                    <TeamLogo team={team} small />
+                    <strong>{team.name}</strong>
+                  </div>
+                  <b>
+                    <span className={won ? "winner" : ""}>{teamScore}</span>
+                    <em>:</em>
+                    <span className={!won ? "winner" : ""}>{oppScore}</span>
+                  </b>
+                  <div>
+                    <TeamLogo team={opponent} small />
+                    <strong>{opponent.name}</strong>
+                  </div>
+                </div>
+                <div className="series-map-pills">
+                  {result.maps.map((map, index) => (
+                    <span key={`${result.id}-${map.map}-${index}`}>
+                      {mapName(map.map)} {isLeft ? map.leftScore : map.rightScore}:{isLeft ? map.rightScore : map.leftScore}
+                    </span>
+                  ))}
+                </div>
+                <small className={won ? "stat-positive" : "stat-negative"}>{won ? "Win" : "Loss"} vs {opponent.name}</small>
+              </button>
+            );
+          })
+        ) : (
+          <div className="empty-fullscreen">No completed series for {team.name} yet.</div>
         )}
       </section>
     </main>

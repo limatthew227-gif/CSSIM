@@ -2823,6 +2823,70 @@ meter::-webkit-meter-optimum-value {
   white-space: nowrap;
 }
 
+/* Per-match table on the player-detail page */
+.player-match-grid {
+  grid-template-columns: minmax(200px, 2fr) 92px 90px 70px 80px 88px 86px;
+}
+
+/* Clickable name/logo cells in the stats table + full-row buttons on the detail pages */
+.link-cell,
+button.full-table-row {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+button.full-table-row {
+  width: 100%;
+}
+
+.link-cell {
+  border-radius: 6px;
+  transition: background 0.12s;
+}
+
+.link-cell:hover {
+  background: rgba(255, 255, 255, 0.09);
+}
+
+.full-table-row.clickable:hover {
+  background: #232d38;
+}
+
+.match-stage-tag {
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--muted);
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.inline-link {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  color: var(--accent);
+  font: inherit;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.inline-link:hover {
+  text-decoration: underline;
+}
+
+.team-detail-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
 .stat-positive {
   color: var(--green);
 }
