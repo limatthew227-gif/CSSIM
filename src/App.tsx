@@ -738,11 +738,16 @@ function App() {
   useEffect(() => {
     if (screen !== "match" || !match?.ended) return;
     if (!series) {
+      // standalone map: drift form from this map's performance, then show the result
+      setPlayerForm((current) => shiftPlayerForm(current, selected, match));
       setScreen("result");
       return;
     }
     const nextSeries = completedSeriesState(series, match);
     if (seriesIsDone(nextSeries)) {
+      // final/deciding map of the series (this is every BO1): advanceCompletedMap won't run, so drift
+      // form here before the result screen — otherwise BO1 matches never move player form.
+      setPlayerForm((current) => shiftPlayerForm(current, selected, match));
       setScreen("result");
       return;
     }
@@ -976,6 +981,7 @@ function App() {
       return;
     }
     setMatch(next);
+    setPlayerForm((current) => shiftPlayerForm(current, selected, next));
     setScreen("result");
   }
 
@@ -5710,14 +5716,10 @@ function simulatePairWinner(pair: SwissPair, settings: CustomSettings, difficult
 }
 
 function generatePlayerForm(players: Player[]) {
+  // Everyone starts the Major at neutral form (0%); it drifts up/down after each map from performance.
   return players.reduce(
     (acc, player) => {
-      // Each player starts the Major hot, cold, or stable. Lower consistency => more volatile starting
-      // form. Triangular around 0, clamped to the [-5, 5] range the UI labels and OVR nudge expect.
-      // Spread is wide enough that ~1-2 players on a roster visibly run hot or cold (|form| > 2).
-      const spread = 3.6 + (100 - (player.stats.consistency ?? 80)) * 0.06; // ~4.2 (elite) .. ~5.4 (volatile)
-      const raw = (Math.random() + Math.random() - 1) * spread;
-      acc[player.id] = clampNumber(Math.round(raw), -5, 5);
+      acc[player.id] = 0;
       return acc;
     },
     {} as Record<string, number>,
