@@ -4713,7 +4713,7 @@ function TeamStatsBlock({
         <b>2K+</b>
         <b>
           Rating
-          <span>2.0</span>
+          <span>3.0</span>
         </b>
       </div>
       {rows.map(({ player, line, kast, swing }) => {
