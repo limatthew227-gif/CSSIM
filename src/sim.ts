@@ -2750,11 +2750,16 @@ function createRoundStatPatch(
     }
   });
 
+  const teamKillsThisRound = Array.from(killsThisRound.values()).reduce((sum, n) => sum + n, 0);
   players.forEach((player) => {
     const line = patch[player.id];
     const roundKills = killsThisRound.get(player.id) ?? 0;
     const survived = !deathsThisRound.has(player.id);
-    const traded = !survived && wasTraded(player.id, feed, team);
+    // KAST "traded": in real CS most deaths are traded/assisted, so even a steamrolled team keeps a
+    // realistic KAST (~40-55%) instead of near-zero. wasTraded under-counts because the losing team
+    // gets few kills in the sim, so add a trade chance scaled by the team's activity that round.
+    const tradeChance = clamp(0.24 + teamKillsThisRound * 0.05, 0.24, 0.5);
+    const traded = !survived && (wasTraded(player.id, feed, team) || Math.random() < tradeChance);
     if (roundKills > 1) line.multiKills += roundKills - 1;
     if (roundWon && survived && roundKills >= 2 && Math.random() < 0.12) line.clutchWins += 1;
     if (roundKills > 0 || assistedThisRound.has(player.id) || survived || traded) line.kastRounds += 1;
@@ -2861,7 +2866,9 @@ export function recalculateHltvStyleRating(line: PlayerLine) {
 
   line.adr = Number(adr.toFixed(1));
   line.impact = Number(impact.toFixed(2));
-  line.rating = Number(clamp(rating, 0.01, 2.8).toFixed(2));
+  // HLTV effectively floors bad games (a 0-kill map still shows ~0.1, not ~0), and the raw 2.0 formula
+  // dips below that on heavy losses — so floor at 0.1 to match what HLTV actually displays.
+  line.rating = Number(clamp(rating, 0.1, 2.8).toFixed(2));
 }
 
 export function resultNotes(state: MatchState, you: FieldTeam, opponent: FieldTeam, settings: CustomSettings, difficulty: Difficulty) {
