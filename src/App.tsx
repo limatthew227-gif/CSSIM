@@ -580,6 +580,18 @@ function App() {
       .forEach((r) => byPair.set(r.pairId, r)); // keep the latest result per pairing
     return Array.from(byPair.values());
   }, [matchResults, viewedSwissRound]);
+  // Spectator-mode round navigation (same idea, keyed to the spectator round). swissPastResults above
+  // is mode-agnostic — it just filters matchResults by the viewed round — so it's reused here.
+  const spectatorLiveRound = spectatorSwissResolved ? null : spectatorSwissRound;
+  const spectatorPastRounds = useMemo(() => {
+    const rounds = new Set<number>();
+    matchResults.forEach((r) => {
+      if (r.stage === "swiss" && (spectatorLiveRound === null || r.round < spectatorLiveRound)) rounds.add(r.round);
+    });
+    return Array.from(rounds).sort((a, b) => a - b);
+  }, [matchResults, spectatorLiveRound]);
+  const spectatorHasLive = spectatorSwissPairs.length > 0;
+  const spectatorViewingPast = viewedSwissRound != null && spectatorPastRounds.includes(viewedSwissRound);
   const playerDatabase = useMemo(() => buildPlayerDatabase(matchResults), [matchResults]);
   const selectedResult = useMemo(
     () => matchResults.find((result) => result.id === selectedResultId) ?? matchResults[matchResults.length - 1],
@@ -1074,6 +1086,7 @@ function App() {
 
   function simSpectatorSwissPhase() {
     if (runKind !== "spectator" || phase !== "swiss") return;
+    setViewedSwissRound(null); // snap back to the live round when simming
     if (isNeutralSwissStageResolved(swissField, swissRecords)) {
       enterNeutralPlayoffs(swissRecords, "running");
       return;
@@ -1487,11 +1500,49 @@ function App() {
             <div className="pickem-strip">
               <div className="pickem-title">
                 <Target size={17} />
-                <span>{spectatorSwissResolved ? "Qualified teams are locked" : `Swiss round ${spectatorSwissRound} pairings`}</span>
+                <span>
+                  {spectatorViewingPast
+                    ? `Swiss round ${viewedSwissRound} results — click a series to open the match`
+                    : spectatorSwissResolved
+                      ? "Qualified teams are locked"
+                      : `Swiss round ${spectatorSwissRound} pairings`}
+                </span>
                 <b>{swissField.length} teams</b>
               </div>
+              {spectatorPastRounds.length > 0 && (
+                <div className="swiss-round-tabs">
+                  {spectatorPastRounds.map((rn) => (
+                    <button key={rn} className={viewedSwissRound === rn ? "active" : ""} onClick={() => setViewedSwissRound(rn)}>
+                      Round {rn}
+                    </button>
+                  ))}
+                  {spectatorHasLive && (
+                    <button className={!spectatorViewingPast ? "active" : ""} onClick={() => setViewedSwissRound(null)}>
+                      {spectatorLiveRound ? `Round ${spectatorLiveRound}` : "Current"}
+                    </button>
+                  )}
+                </div>
+              )}
               <div className="swiss-match-list">
-                {spectatorSwissPairs.length ? (
+                {spectatorViewingPast ? (
+                  swissPastResults.length ? (
+                    swissPastResults.map((res) => (
+                      <SwissMatchRow
+                        key={res.id}
+                        pair={{ id: res.pairId, left: res.left, right: res.right }}
+                        record={record}
+                        teamRecords={swissRecords}
+                        result={res}
+                        locked
+                        bestOf={res.bestOf}
+                        onPick={() => undefined}
+                        onOpenResult={openSeriesResult}
+                      />
+                    ))
+                  ) : (
+                    <div className="swiss-empty-row">No results saved for this round.</div>
+                  )
+                ) : spectatorSwissPairs.length ? (
                   spectatorSwissPairs.map((pair) => (
                     <SwissMatchRow
                       key={pair.id}
@@ -3376,9 +3427,14 @@ function SwissMatchRow({
       <SwissTeamName team={pair.left} record={leftRecord} completedRounds={completedRounds} />
       {result ? (
         <div className="swiss-result-score">
-          <b className={result.winnerId === pair.left.id ? "winner" : ""}>{result.leftScore}</b>
+          {/* a single-map series (BO1) shows the map round score, not a 1-0 series tally */}
+          <b className={result.winnerId === pair.left.id ? "winner" : ""}>
+            {result.maps.length === 1 ? result.maps[0].leftScore : result.leftScore}
+          </b>
           <span>-</span>
-          <b className={result.winnerId === pair.right.id ? "winner" : ""}>{result.rightScore}</b>
+          <b className={result.winnerId === pair.right.id ? "winner" : ""}>
+            {result.maps.length === 1 ? result.maps[0].rightScore : result.rightScore}
+          </b>
         </div>
       ) : locked ? (
         <div className="swiss-versus">BO{bestOf}</div>
@@ -3619,9 +3675,13 @@ function SwissLaneResultCard({ result, onOpen }: { result: SwissResult; onOpen: 
     <button className="lane-matchup-row completed" type="button" onClick={onOpen}>
       <SwissLaneTeam team={result.left} winner={result.winnerId === result.left.id} />
       <span className="lane-result-score">
-        <b className={result.winnerId === result.left.id ? "winner" : ""}>{result.leftScore}</b>
+        <b className={result.winnerId === result.left.id ? "winner" : ""}>
+          {result.maps.length === 1 ? result.maps[0].leftScore : result.leftScore}
+        </b>
         <em>-</em>
-        <b className={result.winnerId === result.right.id ? "winner" : ""}>{result.rightScore}</b>
+        <b className={result.winnerId === result.right.id ? "winner" : ""}>
+          {result.maps.length === 1 ? result.maps[0].rightScore : result.rightScore}
+        </b>
       </span>
       <SwissLaneTeam team={result.right} winner={result.winnerId === result.right.id} />
     </button>
@@ -4131,9 +4191,13 @@ function RunResultsPage({
                   <strong>{result.left.name}</strong>
                 </div>
                 <b>
-                  <span className={result.winnerId === result.left.id ? "winner" : ""}>{result.leftScore}</span>
+                  <span className={result.winnerId === result.left.id ? "winner" : ""}>
+                    {result.maps.length === 1 ? result.maps[0].leftScore : result.leftScore}
+                  </span>
                   <em>:</em>
-                  <span className={result.winnerId === result.right.id ? "winner" : ""}>{result.rightScore}</span>
+                  <span className={result.winnerId === result.right.id ? "winner" : ""}>
+                    {result.maps.length === 1 ? result.maps[0].rightScore : result.rightScore}
+                  </span>
                 </b>
                 <div>
                   <TeamLogo team={result.right} small />
@@ -4218,9 +4282,13 @@ function SeriesDetailPage({
         </div>
         <div className="series-detail-score">
           <strong>
-            <span className={result.winnerId === result.left.id ? "winner" : ""}>{result.leftScore}</span>
+            <span className={result.winnerId === result.left.id ? "winner" : ""}>
+              {result.maps.length === 1 ? result.maps[0].leftScore : result.leftScore}
+            </span>
             <em>:</em>
-            <span className={result.winnerId === result.right.id ? "winner" : ""}>{result.rightScore}</span>
+            <span className={result.winnerId === result.right.id ? "winner" : ""}>
+              {result.maps.length === 1 ? result.maps[0].rightScore : result.rightScore}
+            </span>
           </strong>
           <small>{result.label}</small>
         </div>
