@@ -2198,13 +2198,6 @@ function App() {
             right={opponent}
             maps={[roundTimelineMapFromMatch(match)]}
           />
-          <MatchSpotlightPanel
-            label="Live leaders"
-            teams={[
-              { team: yourTeam, players: selected, stats: match.yourStats },
-              { team: opponent, players: opponent.players, stats: match.opponentStats },
-            ]}
-          />
           <section className="live-grid">
             <div className="feed-panel">
               <div className="feed-panel-head">
