@@ -293,6 +293,7 @@ const speedDelays: Record<number, number> = {
   4: 400,
 };
 
+const AUTO_SIM_ROUND_LIMIT = 240;
 const CASE_ROLL_WINNER_INDEX = 31;
 const CUSTOM_ROSTERS_KEY = "major-draft-lab-custom-rosters";
 const SWISS_FIELD_SIZE = 16;
@@ -990,12 +991,13 @@ function App() {
     let next = match;
     let guard = 0;
     let plan = timeoutPlan;
-    while (!next.ended && guard < 40) {
+    while (!next.ended && guard < AUTO_SIM_ROUND_LIMIT) {
       const activeTimeoutBoost = plan.rounds > 0 ? plan.boost : 0;
       next = playRound(next, yourTeam, opponent, settings, difficulty, tactic, activeTimeoutBoost, true);
       if (plan.rounds > 0) plan = { boost: plan.rounds > 1 ? plan.boost : 0, rounds: Math.max(0, plan.rounds - 1) };
       guard += 1;
     }
+    next = resolveAutoSimMatch(next, yourTeam, opponent, settings);
     setTimeoutPlan(plan);
     if (series) {
       advanceCompletedMap(next, series);
@@ -5697,6 +5699,46 @@ function seriesMapScoreAfterCurrent(series: ActiveSeries, match: MatchState) {
   return `${seriesMapWins(next, series.left.id)}-${seriesMapWins(next, series.right.id)}`;
 }
 
+function resolveAutoSimMatch(state: MatchState, left: FieldTeam, right: FieldTeam, settings: CustomSettings): MatchState {
+  if (state.ended && state.you !== state.opponent) return state;
+
+  const currentLeader: "you" | "opponent" | undefined = state.you === state.opponent ? undefined : state.you > state.opponent ? "you" : "opponent";
+  const forcedWinner = currentLeader ?? (teamStrength(left, settings) >= teamStrength(right, settings) ? "you" : "opponent");
+  const winnerScore = forcedWinner === "you" ? state.you : state.opponent;
+  const loserScore = forcedWinner === "you" ? state.opponent : state.you;
+  const legalWinnerScore = Math.max(winnerScore, loserScore + 2, autoSimWinThreshold(state.round));
+  const addedRounds = Math.max(0, legalWinnerScore - winnerScore);
+  const forcedRounds = Array.from({ length: addedRounds }, () => forcedWinner) as MatchState["roundWinners"];
+
+  return {
+    ...state,
+    round: state.round + addedRounds,
+    you: forcedWinner === "you" ? legalWinnerScore : loserScore,
+    opponent: forcedWinner === "opponent" ? legalWinnerScore : loserScore,
+    roundWinners: [...state.roundWinners, ...forcedRounds],
+    running: false,
+    ended: true,
+    winner: forcedWinner,
+    lastReason: "Extended overtime resolved after the auto-sim safety limit.",
+    pendingEvents: undefined,
+    pendingRoundWinner: undefined,
+    pendingRoundReason: undefined,
+    pendingYourMoney: undefined,
+    pendingOpponentMoney: undefined,
+    pendingYourLossStreak: undefined,
+    pendingOpponentLossStreak: undefined,
+    pendingYourWeapons: undefined,
+    pendingOpponentWeapons: undefined,
+    pendingYourArmor: undefined,
+    pendingOpponentArmor: undefined,
+  };
+}
+
+function autoSimWinThreshold(round: number) {
+  if (round < 25) return 13;
+  return 13 + (Math.floor((round - 25) / 6) + 1) * 3;
+}
+
 function mapResultFromState(map: MapId, state: MatchState, left: FieldTeam, right: FieldTeam): SeriesMapResult {
   return {
     map,
@@ -5778,10 +5820,11 @@ function simulateSeries(
   for (const map of maps) {
     let state = initMatch(map, pair.left, pair.right, { stage });
     let guard = 0;
-    while (!state.ended && guard < 40) {
+    while (!state.ended && guard < AUTO_SIM_ROUND_LIMIT) {
       state = playRound(state, pair.left, pair.right, settings, neutralDifficulty, "standard", 0, true);
       guard += 1;
     }
+    state = resolveAutoSimMatch(state, pair.left, pair.right, settings);
     activeSeries.mapResults.push(mapResultFromState(map, state, pair.left, pair.right));
     if (seriesIsDone(activeSeries)) break;
     activeSeries.currentMapIndex += 1;
