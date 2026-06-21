@@ -5059,18 +5059,21 @@ button.team-stats-row {
   padding: 10px;
 }
 
-/* MVP / spotlight player face */
+/* MVP / spotlight player face — a small circular avatar inline with the name (not a banner) */
 .spotlight-face {
-  width: 100%;
-  height: 96px;
+  width: 38px;
+  height: 38px;
+  flex: 0 0 auto;
+  margin-right: 6px;
   object-fit: cover;
   object-position: center 16%;
-  border-radius: 10px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
 }
 
 .spotlight-card.primary .spotlight-face {
-  height: 152px;
+  width: 48px;
+  height: 48px;
 }
 
 /* HLTV-style lineups: team header + a row of player photo cards */

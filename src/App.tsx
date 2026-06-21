@@ -3291,8 +3291,8 @@ function MatchSpotlightPanel({
               <span>{card.label}</span>
               <TeamLogo team={card.row.team} small />
             </div>
-            {photo && <img className="spotlight-face" src={photo} alt={card.row.player.handle} loading="lazy" />}
             <div className="spotlight-player">
+              {photo && <img className="spotlight-face" src={photo} alt={card.row.player.handle} loading="lazy" />}
               <Flag country={card.row.player.country} />
               <strong>{card.row.player.handle}</strong>
               <em>{card.row.team.tag}</em>
