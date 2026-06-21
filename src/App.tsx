@@ -68,6 +68,7 @@ import {
   toFieldTeam,
 } from "./sim";
 import { hltvTop20Coaches, hltvTop20Rosters } from "./hltvTop20";
+import { playerPhoto } from "./playerPhotos";
 import { simulateRadarPlayers, MAP_LAYOUTS, getStepDelay } from "./radarSim";
 import { mapGeometries, hasPixelNav } from "./mapGeometry";
 import "./styles.css";
@@ -3387,7 +3388,14 @@ function buildMatchSpotlights(teams: Array<{ team: FieldTeam; players: Player[];
   return cards;
 }
 
-function Avatar({ label, accent }: { label: string; accent: string }) {
+function Avatar({ label, accent, photo }: { label: string; accent: string; photo?: string }) {
+  if (photo) {
+    return (
+      <div className="avatar avatar-photo" style={{ "--avatar": accent } as React.CSSProperties}>
+        <img src={photo} alt={label} loading="lazy" />
+      </div>
+    );
+  }
   return (
     <div className="avatar" style={{ "--avatar": accent } as React.CSSProperties}>
       {label.slice(0, 2).toUpperCase()}
@@ -3409,7 +3417,7 @@ function PlayerCard({
   return (
     <button className={missing ? "player-card fills" : "player-card"} onClick={onClick}>
       {missing && <span className="fill-tag">fills {player.role}</span>}
-      <Avatar label={player.handle} accent={player.source.accent} />
+      <Avatar label={player.handle} accent={player.source.accent} photo={playerPhoto(player.handle)} />
       <div className="player-head">
         <strong>{player.handle}</strong>
         <b>{hidden ? "??" : player.ovr}</b>
@@ -4474,9 +4482,11 @@ function LineupColumn({ title, players }: { title: string; players: Player[] }) 
       <strong>{title}</strong>
       {players.map((player) => {
         const hltvRating = typeof player.hltvRating === "number" && (player.hltvMaps ?? 0) > 0 ? player.hltvRating.toFixed(2) : undefined;
+        const photo = playerPhoto(player.handle);
         return (
           <div className="lineup-row" key={player.id}>
             <div className="lineup-player-main">
+              {photo && <img className="lineup-avatar" src={photo} alt={player.handle} loading="lazy" />}
               <Flag country={player.country} />
               <b>{player.handle}</b>
               <span className="lineup-ovr">{player.ovr}</span>
@@ -4749,25 +4759,29 @@ function PlayerDetailPage({
     if (m.line.rating >= 1) { streak += 1; bestStreak = Math.max(bestStreak, streak); } else streak = 0;
   });
   const display = [...maps].reverse(); // most recent first
+  const photo = playerPhoto(player.handle);
 
   return (
     <main className="layout fullscreen-page">
       <section className="fullscreen-head">
-        <div>
-          <div className="section-title">
-            <Target size={18} />
-            <span>Player</span>
+        <div className="player-detail-id">
+          {photo && <img className="player-detail-photo" src={photo} alt={player.handle} loading="lazy" />}
+          <div>
+            <div className="section-title">
+              <Target size={18} />
+              <span>Player</span>
+            </div>
+            <h1>
+              <Flag country={player.country} /> {player.handle}
+            </h1>
+            <p>
+              {player.realName} / {player.role} /{" "}
+              <button type="button" className="inline-link" onClick={() => onOpenTeam(team)}>
+                {team.name}
+              </button>{" "}
+              — match history, {total} {total === 1 ? "map" : "maps"} this major
+            </p>
           </div>
-          <h1>
-            <Flag country={player.country} /> {player.handle}
-          </h1>
-          <p>
-            {player.realName} / {player.role} /{" "}
-            <button type="button" className="inline-link" onClick={() => onOpenTeam(team)}>
-              {team.name}
-            </button>{" "}
-            — match history, {total} {total === 1 ? "map" : "maps"} this major
-          </p>
         </div>
         <button className="secondary" onClick={onBack}>
           <ArrowLeft size={16} />

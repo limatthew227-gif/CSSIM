@@ -1311,6 +1311,44 @@ textarea {
   font-size: 18px;
 }
 
+.avatar.avatar-photo {
+  padding: 0;
+  overflow: hidden;
+}
+
+.avatar.avatar-photo img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 20%;
+}
+
+.lineup-avatar {
+  width: 26px;
+  height: 26px;
+  border-radius: 999px;
+  object-fit: cover;
+  object-position: center 20%;
+  flex: 0 0 auto;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.player-detail-id {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.player-detail-photo {
+  width: 84px;
+  height: 84px;
+  border-radius: 14px;
+  object-fit: cover;
+  object-position: center 18%;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  flex: 0 0 auto;
+}
+
 .player-head {
   display: flex;
   justify-content: space-between;
