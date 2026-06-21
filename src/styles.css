@@ -4870,6 +4870,158 @@ button.team-stats-row {
   margin-top: 0;
 }
 
+.match-spotlight-panel {
+  display: grid;
+  gap: 10px;
+  margin: 0 0 12px;
+  padding: 12px;
+  border: 1px solid color-mix(in srgb, var(--gold), var(--line) 68%);
+  border-radius: var(--radius);
+  background:
+    radial-gradient(circle at 10% 0%, color-mix(in srgb, var(--gold), transparent 84%), transparent 36%),
+    linear-gradient(180deg, #20242b, #171b21);
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.22);
+}
+
+.match-spotlight-head,
+.spotlight-card-top,
+.spotlight-player,
+.spotlight-metric {
+  display: flex;
+  align-items: center;
+}
+
+.match-spotlight-head {
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.match-spotlight-head > span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.spotlight-card-grid {
+  display: grid;
+  grid-template-columns: 1.1fr repeat(2, minmax(0, 0.95fr));
+  gap: 10px;
+}
+
+.spotlight-card {
+  position: relative;
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  overflow: hidden;
+  padding: 12px;
+  border: 1px solid rgba(109, 130, 157, 0.42);
+  border-radius: 9px;
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--crest), transparent 82%), transparent 46%),
+    #151a20;
+}
+
+.spotlight-card.primary {
+  border-color: color-mix(in srgb, var(--crest), var(--gold) 42%);
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--crest), transparent 70%), transparent 52%),
+    linear-gradient(180deg, #202731, #151a20);
+}
+
+.spotlight-card-top {
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.spotlight-card-top > span {
+  color: var(--gold);
+  font-size: 11px;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.spotlight-player {
+  gap: 7px;
+  min-width: 0;
+}
+
+.spotlight-player .flat-flag {
+  width: 22px;
+  height: 15px;
+  border-radius: 3px;
+}
+
+.spotlight-player strong {
+  min-width: 0;
+  overflow: hidden;
+  color: #fff;
+  font-size: 20px;
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.spotlight-player em {
+  flex: 0 0 auto;
+  padding: 2px 5px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 5px;
+  color: var(--muted);
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 900;
+  background: rgba(0, 0, 0, 0.22);
+}
+
+.spotlight-card small {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.spotlight-metric {
+  gap: 8px;
+}
+
+.spotlight-metric b {
+  color: var(--text);
+  font-size: 30px;
+  line-height: 0.95;
+}
+
+.spotlight-metric.good b {
+  color: var(--green);
+}
+
+.spotlight-metric.bad b {
+  color: #ff8d8d;
+}
+
+.spotlight-metric span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.spotlight-card p {
+  margin: 0;
+  color: #d6dee9;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.25;
+}
+
+.match-layout .match-spotlight-panel,
+.result-layout .match-spotlight-panel,
+.series-detail-page .match-spotlight-panel {
+  margin-bottom: 10px;
+  padding: 10px;
+}
+
 .match-layout .live-grid {
   grid-template-columns: minmax(0, 1fr) 380px;
   gap: 12px;
@@ -6123,6 +6275,10 @@ input[type="range"] {
     justify-content: flex-start;
   }
 
+  .spotlight-card-grid {
+    grid-template-columns: 1fr;
+  }
+
   .stats-filter-strip {
     overflow-x: auto;
     padding-bottom: 2px;
@@ -6291,6 +6447,20 @@ input[type="range"] {
 
   .round-cell.ot-break {
     margin-left: 5px;
+  }
+
+  .match-spotlight-head {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .spotlight-player strong {
+    font-size: 18px;
+  }
+
+  .spotlight-metric b {
+    font-size: 26px;
   }
 
   .match-layout .econ-row {

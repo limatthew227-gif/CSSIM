@@ -2198,6 +2198,13 @@ function App() {
             right={opponent}
             maps={[roundTimelineMapFromMatch(match)]}
           />
+          <MatchSpotlightPanel
+            label="Live leaders"
+            teams={[
+              { team: yourTeam, players: selected, stats: match.yourStats },
+              { team: opponent, players: opponent.players, stats: match.opponentStats },
+            ]}
+          />
           <section className="live-grid">
             <div className="feed-panel">
               <div className="feed-panel-head">
@@ -2383,6 +2390,7 @@ function App() {
             right={opponent}
             maps={resultMapResults.map((map, index) => roundTimelineMapFromResult(map, index))}
           />
+          <MatchSpotlightPanel label="Series leaders" teams={resultStatsTeams} />
           <section className="analysis-panel full series-analysis">
             <div className="series-analysis-head">
               <div className="section-title">
@@ -3254,6 +3262,136 @@ function roundTimelineBreakClass(index: number) {
   if (index === 12) return "half-break";
   if (index >= 24 && (index - 24) % 3 === 0) return "ot-break";
   return "";
+}
+
+function MatchSpotlightPanel({
+  label,
+  teams,
+}: {
+  label: string;
+  teams: Array<{ team: FieldTeam; players: Player[]; stats: MatchState["yourStats"] }>;
+}) {
+  const cards = buildMatchSpotlights(teams);
+  if (!cards.length) return null;
+
+  return (
+    <section className="match-spotlight-panel">
+      <div className="match-spotlight-head">
+        <div className="section-title">
+          <Award size={18} />
+          <span>Match spotlight</span>
+        </div>
+        <span>{label}</span>
+      </div>
+      <div className="spotlight-card-grid">
+        {cards.map((card, index) => (
+          <article
+            className={index === 0 ? "spotlight-card primary" : "spotlight-card"}
+            key={card.key}
+            style={{ "--crest": card.row.team.accent } as React.CSSProperties}
+          >
+            <div className="spotlight-card-top">
+              <span>{card.label}</span>
+              <TeamLogo team={card.row.team} small />
+            </div>
+            <div className="spotlight-player">
+              <Flag country={card.row.player.country} />
+              <strong>{card.row.player.handle}</strong>
+              <em>{card.row.team.tag}</em>
+            </div>
+            <small>{card.row.player.role} / OVR {card.row.player.ovr}</small>
+            <div className={`spotlight-metric ${card.tone}`}>
+              <b>{card.metric}</b>
+              <span>{card.suffix}</span>
+            </div>
+            <p>{card.detail}</p>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function buildMatchSpotlights(teams: Array<{ team: FieldTeam; players: Player[]; stats: MatchState["yourStats"] }>) {
+  const rows = teams
+    .flatMap((entry) => statRows(entry.players, entry.stats, false).map((row) => ({ ...row, team: entry.team })))
+    .filter((row) => row.line.rounds > 0 || row.line.kills > 0 || row.line.deaths > 0 || row.line.damage > 0);
+  if (!rows.length) return [];
+
+  type SpotlightRow = (typeof rows)[number];
+  const used = new Set<string>();
+  const cards: Array<{
+    key: string;
+    label: string;
+    row: SpotlightRow;
+    metric: string;
+    suffix: string;
+    detail: string;
+    tone: string;
+  }> = [];
+
+  function addCard(
+    label: string,
+    candidates: SpotlightRow[],
+    metric: (row: SpotlightRow) => string,
+    suffix: string,
+    detail: (row: SpotlightRow) => string,
+    tone: (row: SpotlightRow) => string,
+  ) {
+    const row = candidates.find((candidate) => !used.has(`${candidate.team.id}:${candidate.player.id}`)) ?? candidates[0];
+    if (!row) return;
+    used.add(`${row.team.id}:${row.player.id}`);
+    cards.push({
+      key: `${label}-${row.team.id}-${row.player.id}`,
+      label,
+      row,
+      metric: metric(row),
+      suffix,
+      detail: detail(row),
+      tone: tone(row),
+    });
+  }
+
+  const byRating = [...rows].sort((a, b) => b.line.rating - a.line.rating || b.line.kills - a.line.kills || b.line.adr - a.line.adr);
+  const byAdr = [...rows].sort((a, b) => b.line.adr - a.line.adr || b.line.damage - a.line.damage || b.line.rating - a.line.rating);
+  const byOpening = [...rows].sort(
+    (a, b) =>
+      (b.line.firstKills - b.line.firstDeaths) - (a.line.firstKills - a.line.firstDeaths) ||
+      b.line.firstKills - a.line.firstKills ||
+      b.line.rating - a.line.rating,
+  );
+
+  addCard(
+    "MVP pace",
+    byRating,
+    (row) => row.line.rating.toFixed(2),
+    "Rating",
+    (row) => `${row.line.kills}-${row.line.deaths}-${row.line.assists} K-D-A / ${row.line.adr.toFixed(0)} ADR`,
+    (row) => ratingTone(row.line.rating),
+  );
+  addCard(
+    "Damage",
+    byAdr,
+    (row) => row.line.adr.toFixed(0),
+    "ADR",
+    (row) => `${row.line.damage.toFixed(0)} total damage / ${row.line.rating.toFixed(2)} rating`,
+    (row) => (row.line.adr >= 85 ? "good" : row.line.adr < 60 ? "bad" : "neutral"),
+  );
+  addCard(
+    "Opener",
+    byOpening,
+    (row) => signedInteger(row.line.firstKills - row.line.firstDeaths),
+    "FK-FD",
+    (row) => `${row.line.firstKills} first kills / ${row.line.firstDeaths} first deaths`,
+    (row) => {
+      const diff = row.line.firstKills - row.line.firstDeaths;
+      if (diff > 0) return "good";
+      if (diff < 0) return "bad";
+      return "neutral";
+    },
+  );
+
+  return cards;
 }
 
 function Avatar({ label, accent }: { label: string; accent: string }) {
@@ -5005,6 +5143,14 @@ function SeriesDetailPage({
         left={result.left}
         right={result.right}
         maps={result.maps.map((map, index) => roundTimelineMapFromResult(map, index))}
+      />
+
+      <MatchSpotlightPanel
+        label="Series leaders"
+        teams={[
+          { team: result.left, players: result.left.players, stats: result.leftStats },
+          { team: result.right, players: result.right.players, stats: result.rightStats },
+        ]}
       />
 
       <MatchStatsPanel
