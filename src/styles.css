@@ -5059,6 +5059,106 @@ button.team-stats-row {
   padding: 10px;
 }
 
+/* MVP / spotlight player face */
+.spotlight-face {
+  width: 100%;
+  height: 96px;
+  object-fit: cover;
+  object-position: center 16%;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.spotlight-card.primary .spotlight-face {
+  height: 152px;
+}
+
+/* HLTV-style lineups: team header + a row of player photo cards */
+.match-lineups {
+  display: grid;
+  gap: 10px;
+  margin: 0 0 12px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: linear-gradient(180deg, #20242b, #171b21);
+}
+
+.lineup-team {
+  padding: 12px;
+  border-radius: 10px;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--crest), transparent 86%), transparent 58%),
+    #14171d;
+  border: 1px solid color-mix(in srgb, var(--crest), var(--line) 55%);
+}
+
+.lineup-team-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.lineup-team-head strong {
+  font-size: 18px;
+  color: color-mix(in srgb, var(--crest), white 25%);
+}
+
+.lineup-rank {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.lineup-rank b {
+  color: var(--text);
+}
+
+.lineup-photo-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.lineup-photo-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.lineup-photo-frame {
+  aspect-ratio: 1 / 1.08;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--crest), #12141a 72%);
+}
+
+.lineup-photo-frame img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 14%;
+}
+
+.lineup-photo-fallback {
+  font-size: 24px;
+  font-weight: 900;
+  color: color-mix(in srgb, var(--crest), white 30%);
+}
+
+.lineup-photo-name {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 800;
+}
+
 .match-layout .live-grid {
   grid-template-columns: minmax(0, 1fr) 380px;
   gap: 12px;

@@ -2377,13 +2377,6 @@ function App() {
             </div>
             <TeamPlate team={opponent} align="right" />
           </section>
-          <RoundTimelinePanel
-            title="Round timeline"
-            label="Momentum report"
-            left={yourTeam}
-            right={opponent}
-            maps={resultMapResults.map((map, index) => roundTimelineMapFromResult(map, index))}
-          />
           <MatchSpotlightPanel label="Series leaders" teams={resultStatsTeams} />
           <section className="analysis-panel full series-analysis">
             <div className="series-analysis-head">
@@ -2413,6 +2406,14 @@ function App() {
             maps={resultMaps}
             mapResults={resultMapResults}
             teams={resultStatsTeams}
+          />
+          <MatchLineups teams={resultStatsTeams} />
+          <RoundTimelinePanel
+            title="Round timeline"
+            label="Momentum report"
+            left={yourTeam}
+            right={opponent}
+            maps={resultMapResults.map((map, index) => roundTimelineMapFromResult(map, index))}
           />
         </main>
       )}
@@ -3278,7 +3279,9 @@ function MatchSpotlightPanel({
         <span>{label}</span>
       </div>
       <div className="spotlight-card-grid">
-        {cards.map((card, index) => (
+        {cards.map((card, index) => {
+          const photo = playerPhoto(card.row.player.handle);
+          return (
           <article
             className={index === 0 ? "spotlight-card primary" : "spotlight-card"}
             key={card.key}
@@ -3288,6 +3291,7 @@ function MatchSpotlightPanel({
               <span>{card.label}</span>
               <TeamLogo team={card.row.team} small />
             </div>
+            {photo && <img className="spotlight-face" src={photo} alt={card.row.player.handle} loading="lazy" />}
             <div className="spotlight-player">
               <Flag country={card.row.player.country} />
               <strong>{card.row.player.handle}</strong>
@@ -3300,7 +3304,8 @@ function MatchSpotlightPanel({
             </div>
             <p>{card.detail}</p>
           </article>
-        ))}
+          );
+        })}
       </div>
     </section>
   );
@@ -4476,6 +4481,47 @@ function LineupCompare({ you, opponent }: { you: FieldTeam; opponent: FieldTeam 
   );
 }
 
+// HLTV-style lineups: per team a header (logo + name + world rank) over a row of player photo cards.
+function MatchLineups({ teams }: { teams: Array<{ team: FieldTeam; players: Player[] }> }) {
+  return (
+    <section className="match-lineups">
+      <div className="section-title">
+        <Users size={18} />
+        <span>Lineups</span>
+      </div>
+      {teams.map(({ team, players }) => (
+        <div className="lineup-team" key={team.id} style={{ "--crest": team.accent } as React.CSSProperties}>
+          <div className="lineup-team-head">
+            <TeamLogo team={team} small />
+            <strong>{team.name}</strong>
+            {team.rank ? <span className="lineup-rank">World rank: <b>#{team.rank}</b></span> : null}
+          </div>
+          <div className="lineup-photo-grid">
+            {players.map((p) => {
+              const photo = playerPhoto(p.handle);
+              return (
+                <div className="lineup-photo-card" key={p.id}>
+                  <div className="lineup-photo-frame">
+                    {photo ? (
+                      <img src={photo} alt={p.handle} loading="lazy" />
+                    ) : (
+                      <span className="lineup-photo-fallback">{p.handle.slice(0, 2).toUpperCase()}</span>
+                    )}
+                  </div>
+                  <div className="lineup-photo-name">
+                    <Flag country={p.country} />
+                    <span>{p.handle}</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ))}
+    </section>
+  );
+}
+
 function LineupColumn({ title, players }: { title: string; players: Player[] }) {
   return (
     <div className="lineup-column">
@@ -5144,14 +5190,6 @@ function SeriesDetailPage({
         ))}
       </section>
 
-      <RoundTimelinePanel
-        title="Round timeline"
-        label={`${result.maps.length} map${result.maps.length === 1 ? "" : "s"} played`}
-        left={result.left}
-        right={result.right}
-        maps={result.maps.map((map, index) => roundTimelineMapFromResult(map, index))}
-      />
-
       <MatchSpotlightPanel
         label="Series leaders"
         teams={[
@@ -5169,6 +5207,21 @@ function SeriesDetailPage({
         ]}
         onOpenPlayer={onOpenPlayer}
         onOpenTeam={onOpenTeam}
+      />
+
+      <MatchLineups
+        teams={[
+          { team: result.left, players: result.left.players },
+          { team: result.right, players: result.right.players },
+        ]}
+      />
+
+      <RoundTimelinePanel
+        title="Round timeline"
+        label={`${result.maps.length} map${result.maps.length === 1 ? "" : "s"} played`}
+        left={result.left}
+        right={result.right}
+        maps={result.maps.map((map, index) => roundTimelineMapFromResult(map, index))}
       />
     </main>
   );
