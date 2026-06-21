@@ -5079,16 +5079,16 @@ button.team-stats-row {
 /* HLTV-style lineups: team header + a row of player photo cards */
 .match-lineups {
   display: grid;
-  gap: 10px;
-  margin: 0 0 12px;
-  padding: 12px;
+  gap: 8px;
+  margin: 0 0 10px;
+  padding: 10px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: linear-gradient(180deg, #20242b, #171b21);
 }
 
 .lineup-team {
-  padding: 12px;
+  padding: 9px 10px;
   border-radius: 10px;
   background:
     linear-gradient(180deg, color-mix(in srgb, var(--crest), transparent 86%), transparent 58%),
@@ -5099,12 +5099,12 @@ button.team-stats-row {
 .lineup-team-head {
   display: flex;
   align-items: center;
-  gap: 10px;
-  margin-bottom: 12px;
+  gap: 9px;
+  margin-bottom: 8px;
 }
 
 .lineup-team-head strong {
-  font-size: 18px;
+  font-size: 15px;
   color: color-mix(in srgb, var(--crest), white 25%);
 }
 
@@ -5122,17 +5122,17 @@ button.team-stats-row {
 .lineup-photo-grid {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 8px;
+  gap: 6px;
 }
 
 .lineup-photo-card {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 5px;
 }
 
 .lineup-photo-frame {
-  aspect-ratio: 1 / 1.08;
+  height: 104px;
   display: grid;
   place-items: center;
   overflow: hidden;
@@ -5144,7 +5144,7 @@ button.team-stats-row {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  object-position: center 14%;
+  object-position: center 18%;
 }
 
 .lineup-photo-fallback {
