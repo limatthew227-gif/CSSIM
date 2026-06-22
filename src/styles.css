@@ -6115,6 +6115,102 @@ button.team-stats-row {
   text-transform: none;
 }
 
+.coach-desk {
+  display: grid;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 7px;
+  border: 1px solid #303946;
+  border-radius: 6px;
+  background: #151a20;
+}
+
+.coach-desk.good {
+  border-color: color-mix(in srgb, var(--green), transparent 58%);
+  background: color-mix(in srgb, var(--green), transparent 91%);
+}
+
+.coach-desk.bad {
+  border-color: color-mix(in srgb, var(--red), transparent 42%);
+  background: color-mix(in srgb, var(--red), transparent 90%);
+}
+
+.coach-desk.neutral {
+  border-color: color-mix(in srgb, var(--accent), transparent 50%);
+  background: color-mix(in srgb, var(--accent), transparent 91%);
+}
+
+.coach-desk-head {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+}
+
+.coach-desk-head span,
+.coach-desk-note {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 10.5px;
+  font-weight: 900;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.coach-desk-head span {
+  text-transform: uppercase;
+}
+
+.coach-desk-head strong {
+  overflow: hidden;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 950;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.match-layout .coach-desk-head button {
+  min-height: 25px;
+  padding-inline: 8px;
+  border-radius: 6px;
+  font-size: 10px;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.coach-desk-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.coach-desk-metrics span {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  min-height: 23px;
+  min-width: 0;
+  padding: 0 7px;
+  border: 1px solid #303946;
+  border-radius: 5px;
+  background: #1b222b;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.coach-desk-metrics b {
+  overflow: hidden;
+  color: var(--text);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .tactics-panel p,
 .note {
   margin: 12px 0 0;

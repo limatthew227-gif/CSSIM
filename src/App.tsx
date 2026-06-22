@@ -2396,6 +2396,14 @@ function App() {
                 </div>
               </div>
               <CallFitPanel players={yourTeam.players} activeStyle={activeCall.style} />
+              <CoachDeskPanel
+                match={match}
+                you={yourTeam}
+                opponent={opponent}
+                timeouts={timeouts}
+                timeoutPlan={timeoutPlan}
+                onTimeout={useTimeout}
+              />
               <p>{match.lastReason ?? "Opening defaults are live."}</p>
             </div>
           </section>
@@ -3534,6 +3542,150 @@ function fitRoleLabel(player: Player) {
   if (player.role === "Entry" && player.style === "Aggressive") return "ENTRY+";
   if (player.role === "AWP" && player.style === "Passive") return "AWP";
   return player.role.toUpperCase();
+}
+
+function CoachDeskPanel({
+  match,
+  you,
+  opponent,
+  timeouts,
+  timeoutPlan,
+  onTimeout,
+}: {
+  match: MatchState;
+  you: FieldTeam;
+  opponent: FieldTeam;
+  timeouts: number;
+  timeoutPlan: TimeoutPlan;
+  onTimeout: () => void;
+}) {
+  const read = buildCoachDeskRead(match, you, opponent, timeouts, timeoutPlan);
+  return (
+    <div className={`coach-desk ${read.tone}`}>
+      <div className="coach-desk-head">
+        <span>Coach desk</span>
+        <strong>{read.label}</strong>
+        <button type="button" disabled={!read.canCallTimeout} onClick={onTimeout}>
+          {read.buttonLabel}
+        </button>
+      </div>
+      <div className="coach-desk-metrics">
+        <span>
+          Boost <b>{read.boostLabel}</b>
+        </span>
+        <span>
+          Threat <b>{read.threatLabel}</b>
+        </span>
+      </div>
+      <span className="coach-desk-note">{read.reason}</span>
+    </div>
+  );
+}
+
+function buildCoachDeskRead(
+  match: MatchState,
+  you: FieldTeam,
+  opponent: FieldTeam,
+  timeouts: number,
+  timeoutPlan: TimeoutPlan,
+) {
+  const plan = tacticalTimeoutPlan(match, you, opponent);
+  const opponentStreak = trailingRoundWins(match.roundWinners, "opponent");
+  const yourStreak = trailingRoundWins(match.roundWinners, "you");
+  const threshold = liveWinThreshold(match.round);
+  const opponentAtMapPoint = match.opponent >= threshold - 1;
+  const youAtMapPoint = match.you >= threshold - 1;
+  const scoreGap = match.you - match.opponent;
+  const coachDelta = (you.coach?.rating ?? 68) - (opponent.coach?.rating ?? 68);
+  const threat = liveThreatPlayer(opponent, match);
+  const boostLabel = `${plan.boost >= 0 ? "+" : ""}${(plan.boost * 100).toFixed(1)}% / ${plan.rounds}r`;
+
+  if (timeoutPlan.rounds > 0) {
+    return {
+      label: "Timeout active",
+      buttonLabel: `${timeoutPlan.rounds}r left`,
+      canCallTimeout: false,
+      boostLabel: `${timeoutPlan.boost >= 0 ? "+" : ""}${(timeoutPlan.boost * 100).toFixed(1)}% / ${timeoutPlan.rounds}r`,
+      threatLabel: threat.label,
+      reason: "The boost is already live. Let this call breathe before spending another pause.",
+      tone: "good" as const,
+    };
+  }
+
+  if (timeouts <= 0) {
+    return {
+      label: "No pauses",
+      buttonLabel: "Used",
+      canCallTimeout: false,
+      boostLabel,
+      threatLabel: threat.label,
+      reason: `Keep the call clean; ${threat.player.handle} is the main problem right now.`,
+      tone: "neutral" as const,
+    };
+  }
+
+  const dangerReasons = [
+    opponentAtMapPoint ? "map point" : "",
+    opponentStreak >= 3 ? `${opponentStreak}-round run` : "",
+    scoreGap <= -4 ? `${Math.abs(scoreGap)} down` : "",
+    match.economy === "ECO" && match.opponentEconomy === "FULL" ? "bad buy" : "",
+  ].filter(Boolean);
+  const prepReasons = [
+    youAtMapPoint ? "close-out round" : "",
+    opponentStreak === 2 ? "run forming" : "",
+    coachDelta >= 8 ? "coach edge" : "",
+    match.round >= 20 && Math.abs(scoreGap) <= 2 ? "late tight map" : "",
+  ].filter(Boolean);
+
+  if (dangerReasons.length > 0) {
+    return {
+      label: "Call timeout",
+      buttonLabel: `Use (${timeouts})`,
+      canCallTimeout: true,
+      boostLabel,
+      threatLabel: threat.label,
+      reason: `${dangerReasons.join(", ")}. Reset around ${threat.player.handle} before the map slips.`,
+      tone: "bad" as const,
+    };
+  }
+
+  if (prepReasons.length > 0 && yourStreak < 3) {
+    return {
+      label: "Prep timeout",
+      buttonLabel: `Use (${timeouts})`,
+      canCallTimeout: true,
+      boostLabel,
+      threatLabel: threat.label,
+      reason: `${prepReasons.join(", ")}. A pause can cash in the next few rounds.`,
+      tone: "neutral" as const,
+    };
+  }
+
+  return {
+    label: "Hold timeout",
+    buttonLabel: `${timeouts} left`,
+    canCallTimeout: false,
+    boostLabel,
+    threatLabel: threat.label,
+    reason: yourStreak >= 3 ? `You have ${yourStreak} straight; keep the rhythm.` : `Save it unless ${threat.player.handle} starts chaining rounds.`,
+    tone: "good" as const,
+  };
+}
+
+function liveThreatPlayer(opponent: FieldTeam, match: MatchState) {
+  const rows = statRows(opponent.players, match.opponentStats, true);
+  const active = rows.find((row) => row.line.kills > 0 || row.line.damage > 0);
+  if (active) {
+    return {
+      player: active.player,
+      label: `${active.player.handle} ${active.line.rating.toFixed(2)}`,
+    };
+  }
+  const player = [...opponent.players].sort((a, b) => b.ovr - a.ovr || a.handle.localeCompare(b.handle))[0] ?? opponent.players[0];
+  return {
+    player,
+    label: `${player.handle} ${player.ovr}`,
+  };
 }
 
 function formatTacticLabel(tactic: Tactic) {
