@@ -213,6 +213,7 @@ button:hover:not(:disabled) {
 .secondary,
 .segmented button,
 .speed-row button,
+.call-row button,
 .tactic-grid button {
   display: inline-flex;
   align-items: center;
@@ -410,6 +411,7 @@ textarea {
 .choice.selected,
 .segmented .selected,
 .speed-row .selected,
+.call-row .selected,
 .tactic-grid .selected {
   border-color: var(--accent);
   background: color-mix(in srgb, var(--accent), transparent 78%);
@@ -5968,6 +5970,35 @@ button.team-stats-row {
   border-radius: 6px;
   font-size: 11px;
   text-transform: uppercase;
+}
+
+.call-composer {
+  display: grid;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.call-row {
+  display: grid;
+  grid-template-columns: 42px repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  align-items: center;
+}
+
+.call-row > span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.match-layout .call-row button {
+  min-height: 29px;
+  padding-inline: 7px;
+  border-radius: 6px;
+  font-size: 10.5px;
+  text-transform: uppercase;
+  white-space: nowrap;
 }
 
 .tactics-panel p,

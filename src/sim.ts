@@ -653,7 +653,94 @@ function makeLines(players: Player[]) {
   );
 }
 
-export type Tactic = "standard" | "aggressive" | "cautious" | "force" | "save";
+export type RoundStyleCall = "standard" | "aggressive" | "cautious";
+export type BuyCall = "normal" | "force" | "save";
+export type Tactic = RoundStyleCall | "force" | "save" | `${RoundStyleCall}-force` | `${RoundStyleCall}-save`;
+
+export interface ParsedTactic {
+  style: RoundStyleCall;
+  buy: BuyCall;
+}
+
+const roundStyleCalls: RoundStyleCall[] = ["standard", "aggressive", "cautious"];
+const buyCalls: BuyCall[] = ["normal", "force", "save"];
+
+export function parseTactic(tactic: Tactic): ParsedTactic {
+  if (tactic === "force" || tactic === "save") return { style: "standard", buy: tactic };
+  const [styleRaw, buyRaw] = tactic.split("-") as [RoundStyleCall, BuyCall | undefined];
+  const style = roundStyleCalls.includes(styleRaw) ? styleRaw : "standard";
+  const buy = buyRaw && buyCalls.includes(buyRaw) ? buyRaw : "normal";
+  return { style, buy };
+}
+
+export function composeTactic(style: RoundStyleCall, buy: BuyCall): Tactic {
+  if (buy === "normal") return style;
+  if (style === "standard") return buy;
+  return `${style}-${buy}`;
+}
+
+function playerCallFit(player: Player, style: RoundStyleCall) {
+  if (style === "standard") return 0;
+
+  if (style === "cautious") {
+    if (player.style === "Passive") return 1;
+    if (player.style === "Aggressive") return -0.45;
+    return 0;
+  }
+
+  if (player.style === "Balanced") return 0;
+
+  let fit = 0;
+  if (player.style === "Aggressive") fit += 1;
+  if (player.style === "Passive") fit -= 0.4;
+  if (player.role === "Entry" && player.style !== "Passive") {
+    fit += player.style === "Aggressive" ? 0.35 : 0.65;
+  }
+  return clamp(fit, -0.5, 1.25);
+}
+
+function roundStyleCallMod(players: Player[], style: RoundStyleCall, side: MatchSide) {
+  if (style === "standard") return 0;
+  const fit = players.reduce((sum, player) => sum + playerCallFit(player, style), 0) / Math.max(players.length, 1);
+  const fitEdge = clamp(fit * 0.018, -0.018, 0.028);
+  const sideLean = style === "cautious" ? (side === "CT" ? 0.006 : -0.004) : side === "T" ? 0.003 : 0;
+  const volatility = (Math.random() - 0.62) * 0.05;
+  return clamp(fitEdge + sideLean + volatility, -0.035, 0.04);
+}
+
+function buyIntentMod(buy: BuyCall, currentEconomy: "ECO" | "FORCE" | "FULL") {
+  if (buy === "force") return currentEconomy !== "FULL" ? 0.03 : -0.008;
+  if (buy === "save") return -0.04;
+  return 0;
+}
+
+function playerCallKillMultiplier(player: Player, style: RoundStyleCall) {
+  if (player.style === "Balanced") return 1;
+  if (style === "aggressive") {
+    if (player.role === "Entry" && player.style !== "Passive") return player.style === "Aggressive" ? 1.08 : 1.04;
+    if (player.style === "Aggressive") return 1.05;
+    if (player.style === "Passive") return 0.98;
+  }
+  if (style === "cautious") {
+    if (player.style === "Passive") return 1.02;
+    if (player.style === "Aggressive") return 0.97;
+  }
+  return 1;
+}
+
+function playerCallDeathMultiplier(player: Player, style: RoundStyleCall) {
+  if (player.style === "Balanced") return 1;
+  if (style === "aggressive") {
+    if (player.role === "Entry" && player.style !== "Passive") return 1.04;
+    if (player.style === "Aggressive") return 1.03;
+    if (player.style === "Passive") return 1.05;
+  }
+  if (style === "cautious") {
+    if (player.style === "Passive") return 0.94;
+    if (player.style === "Aggressive") return 0.98;
+  }
+  return 1;
+}
 
 export function lossBonusForStreak(lossStreak: number): number {
   return 1400 + Math.min(lossStreak, 4) * 500;
@@ -1470,6 +1557,7 @@ export function playRound(
   let opponentLossStreak = state.opponentLossStreak ?? 0;
   let currentEconomy = state.economy;
   let currentOpponentEconomy = state.opponentEconomy;
+  const parsedTactic = parseTactic(tactic);
 
   you.players.forEach((p) => {
     if (yourMoney[p.id] === undefined) yourMoney[p.id] = 800;
@@ -1518,9 +1606,9 @@ export function playRound(
     currentOpponentEconomy = "FULL";
   }
 
-  if (tactic === "save") {
+  if (parsedTactic.buy === "save") {
     currentEconomy = "ECO";
-  } else if (tactic === "force") {
+  } else if (parsedTactic.buy === "force") {
     currentEconomy = "FORCE";
   }
 
@@ -1622,20 +1710,7 @@ export function playRound(
   // Symmetric so the CT side's edge is zero-sum — it no longer favours whoever STARTS CT over a match
   // (both teams play equal CT/T halves). Was 0.015/-0.005, which handed the CT-starting team ~5% extra.
   const sideMod = state.side === "CT" ? 0.01 : -0.01;
-  const tacticMod =
-    tactic === "aggressive"
-      ? 0.025
-      : tactic === "cautious"
-        ? state.side === "CT"
-          ? 0.02
-          : -0.01
-        : tactic === "force"
-          ? currentEconomy !== "FULL"
-            ? 0.035
-            : -0.01
-          : tactic === "save"
-            ? -0.04
-            : 0;
+  const tacticMod = roundStyleCallMod(you.players, parsedTactic.style, state.side) + buyIntentMod(parsedTactic.buy, currentEconomy);
   const luck = (Math.random() - 0.5) * (settings.luck + difficulty.luck) * 0.34;
 
   // Utility edge: how much each team's util skill is expressed this round, gated by how
@@ -1654,6 +1729,12 @@ export function playRound(
   const scoreGap = state.you - state.opponent;
   const comebackMod = -Math.sign(scoreGap) * Math.min(Math.max(0, Math.abs(scoreGap) - 2) * 0.035, 0.15);
   const probability = clamp(applyEcoUpsetCaps(baseProbability, yourLoadout, opponentLoadout, yourStrength, opponentStrength) + comebackMod, 0.05, 0.95);
+
+  const yourPlayerRefs = new Set(you.players);
+  const tacticalKillWeight = (player: Player, ctx: MatchContext, oppRank?: number, weapon?: string) =>
+    killWeight(player, ctx, oppRank, weapon) * (yourPlayerRefs.has(player) ? playerCallKillMultiplier(player, parsedTactic.style) : 1);
+  const tacticalDeathWeight = (player: Player, ctx: MatchContext, oppRank?: number, weapon?: string) =>
+    deathWeight(player, ctx, oppRank, weapon) * (yourPlayerRefs.has(player) ? playerCallDeathMultiplier(player, parsedTactic.style) : 1);
 
   const dynamicResult = generateDynamicRound(
     state.round,
@@ -1675,8 +1756,8 @@ export function playRound(
     yourArmor,
     opponentArmor,
     probability,
-    killWeight,
-    deathWeight,
+    tacticalKillWeight,
+    tacticalDeathWeight,
     yourUtilCount,
     opponentUtilCount
   );
@@ -1975,6 +2056,7 @@ export function generateDynamicRound(
   yourUtilCount = 0,
   opponentUtilCount = 0,
 ) {
+  const parsedTactic = parseTactic(tactic);
   let p = clamp(initialProbability, 0.01, 0.99);
   let logit = Math.log(p / (1 - p)) * 0.7;
 
@@ -2072,7 +2154,7 @@ export function generateDynamicRound(
     fillSkill("opponent", opponent.players, opponentWeapons, you.rank);
     const teamBias = clamp(initialProbability, 0.01, 0.99) - 0.5; // team strength still tilts duels
 
-    const sim = simulateMirageRound({ you, opponent, side, strategy, skill, awp: awpSet, weapons: weaponsAll, teamBias, tactic });
+    const sim = simulateMirageRound({ you, opponent, side, strategy, skill, awp: awpSet, weapons: weaponsAll, teamBias, tactic: parsedTactic.style });
 
     const idMap = new Map<string, Player>([
       ...you.players.map((pl) => [scopedKey("you", pl.id), pl] as const),
@@ -2177,7 +2259,7 @@ export function generateDynamicRound(
       enemyAwperPressure: (teamKey === "you" ? oppHasAwp : youHasAwp) ? 0.7 : 0.2,
       hasUtility: util > 4,
       availableUtility: Math.min(1, util / 12),
-      saving: teamKey === "you" && tactic === "save",
+      saving: teamKey === "you" && parsedTactic.buy === "save",
     };
   };
 

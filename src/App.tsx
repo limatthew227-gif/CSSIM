@@ -49,10 +49,13 @@ import {
   FieldTeam,
   MatchState,
   Tactic,
+  type BuyCall,
+  type RoundStyleCall,
   VetoState,
   applyOpponentVeto,
   applyUserBan,
   averageOvr,
+  composeTactic,
   composition,
   createVeto,
   draftedTeam,
@@ -60,6 +63,7 @@ import {
   mapEdge,
   mapName,
   playRound,
+  parseTactic,
   resultNotes,
   requiredRoles,
   recalculateHltvStyleRating,
@@ -138,6 +142,16 @@ const utilityLabels: Record<string, string> = {
 };
 
 const COACH_SHORTLIST_SIZE = 5;
+const ROUND_STYLE_OPTIONS: Array<{ id: RoundStyleCall; label: string }> = [
+  { id: "standard", label: "Standard" },
+  { id: "aggressive", label: "Aggro" },
+  { id: "cautious", label: "Cautious" },
+];
+const BUY_CALL_OPTIONS: Array<{ id: BuyCall; label: string }> = [
+  { id: "normal", label: "Normal" },
+  { id: "force", label: "Force" },
+  { id: "save", label: "Save" },
+];
 
 type Screen = "setup" | "teams" | "draft" | "coach" | "swiss" | "playoffs" | "veto" | "match" | "result" | "stats" | "results" | "series-detail" | "player-detail" | "team-detail";
 type Mode = "classic" | "blind" | "random" | "spectator";
@@ -561,6 +575,7 @@ function App() {
   const rosterPool = useMemo(() => [...hltvTop20Rosters, ...customRosters], [customRosters]);
   const coachPool = useMemo(() => hltvTop20Coaches, []);
   const visibleCoachOptions = coachOptions.length ? coachOptions : coachPool.slice(0, COACH_SHORTLIST_SIZE);
+  const activeCall = parseTactic(tactic);
 
   const formAdjustedPlayers = useMemo(
     () =>
@@ -2353,12 +2368,31 @@ function App() {
                 currentTactic={tactic}
                 onApply={setTactic}
               />
-              <div className="tactic-grid">
-                {(["standard", "aggressive", "cautious", "force", "save"] as Tactic[]).map((item) => (
-                  <button className={tactic === item ? "selected" : ""} key={item} onClick={() => setTactic(item)}>
-                    {item}
-                  </button>
-                ))}
+              <div className="call-composer">
+                <div className="call-row">
+                  <span>Read</span>
+                  {ROUND_STYLE_OPTIONS.map((item) => (
+                    <button
+                      className={activeCall.style === item.id ? "selected" : ""}
+                      key={item.id}
+                      onClick={() => setTactic(composeTactic(item.id, activeCall.buy))}
+                    >
+                      {item.label}
+                    </button>
+                  ))}
+                </div>
+                <div className="call-row">
+                  <span>Buy</span>
+                  {BUY_CALL_OPTIONS.map((item) => (
+                    <button
+                      className={activeCall.buy === item.id ? "selected" : ""}
+                      key={item.id}
+                      onClick={() => setTactic(composeTactic(activeCall.style, item.id))}
+                    >
+                      {item.label}
+                    </button>
+                  ))}
+                </div>
               </div>
               <p>{match.lastReason ?? "Opening defaults are live."}</p>
             </div>
@@ -3407,6 +3441,7 @@ function RoundReadPanel({
   currentTactic: Tactic;
   onApply: (tactic: Tactic) => void;
 }) {
+  const readLabel = formatTacticLabel(read.tactic);
   return (
     <div className={`round-read-panel ${read.tone}`}>
       <div className="round-read-main">
@@ -3420,11 +3455,17 @@ function RoundReadPanel({
           <span key={chip}>{chip}</span>
         ))}
         <button type="button" disabled={currentTactic === read.tactic} onClick={() => onApply(read.tactic)}>
-          {currentTactic === read.tactic ? "Set" : `Use ${read.tactic}`}
+          {currentTactic === read.tactic ? "Set" : `Use ${readLabel}`}
         </button>
       </div>
     </div>
   );
+}
+
+function formatTacticLabel(tactic: Tactic) {
+  const parsed = parseTactic(tactic);
+  const style = parsed.style === "aggressive" ? "aggro" : parsed.style;
+  return parsed.buy === "normal" ? style : `${style} ${parsed.buy}`;
 }
 
 function buildRoundRead(
@@ -3450,22 +3491,23 @@ function buildRoundRead(
   let tone: "good" | "bad" | "neutral" = "neutral";
 
   if (match.economy === "ECO" && match.opponentEconomy === "FULL") {
-    tactic = opponentAtMapPoint || scoreGap <= -4 ? "force" : "save";
-    label = tactic === "force" ? "Last stand" : "Bank";
-    reason = tactic === "force" ? "Low buy in danger territory; fight for space early." : "Full-save spot: preserve money and dodge a low-value gamble.";
+    const needsForce = opponentAtMapPoint || scoreGap <= -4;
+    tactic = needsForce ? composeTactic("aggressive", "force") : composeTactic("cautious", "save");
+    label = needsForce ? "Last stand" : "Bank";
+    reason = needsForce ? "Low buy in danger territory; fight for space early." : "Full-save spot: preserve money and dodge a low-value gamble.";
     tone = "bad";
   } else if (match.opponentEconomy === "ECO" && match.economy === "FULL") {
-    tactic = "cautious";
+    tactic = composeTactic("cautious", "normal");
     label = "Anti-eco";
     reason = "They are light on weapons, so avoid solo duels and trade it out.";
     tone = "good";
   } else if (opponentStreak >= 3 || opponentAtMapPoint) {
-    tactic = "cautious";
+    tactic = composeTactic("cautious", "normal");
     label = opponentAtMapPoint ? "Map point hold" : "Stop run";
     reason = opponentAtMapPoint ? "Opponent can close the map; slow the opener." : `Opponent has ${opponentStreak} straight; stabilize first contact.`;
     tone = "bad";
   } else if (scoreGap <= -4 && match.economy !== "ECO") {
-    tactic = "aggressive";
+    tactic = composeTactic("aggressive", "normal");
     label = "Steal tempo";
     reason = "You are trailing; a faster call can break their defaults.";
     tone = "bad";
@@ -3475,7 +3517,7 @@ function buildRoundRead(
     reason = `You have ${yourStreak} straight with stable money.`;
     tone = "good";
   } else if (mapGap >= 1.5 && match.economy === "FULL") {
-    tactic = "aggressive";
+    tactic = composeTactic("aggressive", "normal");
     label = "Map edge";
     reason = `${mapName(match.map)} leans your way (${signedValue(mapGap)}).`;
     tone = "good";
@@ -3494,13 +3536,15 @@ function buildRoundRead(
     ),
   );
 
+  const parsed = parseTactic(tactic);
+
   return {
     tactic,
     label,
     reason,
     tone,
     pressure,
-    chips: [`${match.economy}/${match.opponentEconomy}`, `streak ${yourStreak}-${opponentStreak}`, signedValue(mapGap)],
+    chips: [`${parsed.style}/${parsed.buy}`, `${match.economy}/${match.opponentEconomy}`, `streak ${yourStreak}-${opponentStreak}`, signedValue(mapGap)],
   };
 }
 
