@@ -62,6 +62,7 @@ import {
   initMatch,
   mapEdge,
   mapName,
+  playerCallFitScore,
   playRound,
   parseTactic,
   resultNotes,
@@ -2394,6 +2395,7 @@ function App() {
                   ))}
                 </div>
               </div>
+              <CallFitPanel players={yourTeam.players} activeStyle={activeCall.style} />
               <p>{match.lastReason ?? "Opening defaults are live."}</p>
             </div>
           </section>
@@ -3460,6 +3462,78 @@ function RoundReadPanel({
       </div>
     </div>
   );
+}
+
+function CallFitPanel({ players, activeStyle }: { players: Player[]; activeStyle: RoundStyleCall }) {
+  const aggroFits = callFitRows(players, "aggressive");
+  const passiveFits = callFitRows(players, "cautious");
+  const neutralNames = players
+    .filter((player) => player.style === "Balanced")
+    .map((player) => player.handle)
+    .slice(0, 3);
+  const activeText =
+    activeStyle === "aggressive"
+      ? `${aggroFits.length} aggro fit${aggroFits.length === 1 ? "" : "s"}`
+      : activeStyle === "cautious"
+        ? `${passiveFits.length} passive fit${passiveFits.length === 1 ? "" : "s"}`
+        : "standard is neutral";
+
+  return (
+    <div className="call-fit-panel">
+      <div className="call-fit-head">
+        <span>Call fit</span>
+        <b>{activeText}</b>
+      </div>
+      <div className="call-fit-groups">
+        <CallFitGroup label="Aggro" active={activeStyle === "aggressive"} rows={aggroFits} empty="No aggro fit" />
+        <CallFitGroup label="Passive" active={activeStyle === "cautious"} rows={passiveFits} empty="No passive fit" />
+      </div>
+      {neutralNames.length > 0 && <span className="call-fit-neutral">Neutral: {neutralNames.join(", ")}</span>}
+    </div>
+  );
+}
+
+function CallFitGroup({
+  label,
+  rows,
+  active,
+  empty,
+}: {
+  label: string;
+  rows: Array<{ player: Player; score: number }>;
+  active: boolean;
+  empty: string;
+}) {
+  return (
+    <div className={`call-fit-group ${active ? "active" : ""}`}>
+      <span>{label}</span>
+      <div className="call-fit-chips">
+        {rows.length ? (
+          rows.map(({ player, score }) => (
+            <span className={score >= 1.2 ? "call-fit-chip strong" : "call-fit-chip"} key={player.id} title={`${player.handle}: ${player.role} / ${player.style}`}>
+              <b>{player.handle}</b>
+              <small>{fitRoleLabel(player)}</small>
+            </span>
+          ))
+        ) : (
+          <em>{empty}</em>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function callFitRows(players: Player[], style: RoundStyleCall) {
+  return players
+    .map((player) => ({ player, score: playerCallFitScore(player, style) }))
+    .filter((row) => row.score > 0)
+    .sort((a, b) => b.score - a.score || b.player.ovr - a.player.ovr || a.player.handle.localeCompare(b.player.handle));
+}
+
+function fitRoleLabel(player: Player) {
+  if (player.role === "Entry" && player.style === "Aggressive") return "ENTRY+";
+  if (player.role === "AWP" && player.style === "Passive") return "AWP";
+  return player.role.toUpperCase();
 }
 
 function formatTacticLabel(tactic: Tactic) {

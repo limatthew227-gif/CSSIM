@@ -679,7 +679,7 @@ export function composeTactic(style: RoundStyleCall, buy: BuyCall): Tactic {
   return `${style}-${buy}`;
 }
 
-function playerCallFit(player: Player, style: RoundStyleCall) {
+export function playerCallFitScore(player: Player, style: RoundStyleCall) {
   if (style === "standard") return 0;
 
   if (style === "cautious") {
@@ -701,7 +701,7 @@ function playerCallFit(player: Player, style: RoundStyleCall) {
 
 function roundStyleCallMod(players: Player[], style: RoundStyleCall, side: MatchSide) {
   if (style === "standard") return 0;
-  const fit = players.reduce((sum, player) => sum + playerCallFit(player, style), 0) / Math.max(players.length, 1);
+  const fit = players.reduce((sum, player) => sum + playerCallFitScore(player, style), 0) / Math.max(players.length, 1);
   const fitEdge = clamp(fit * 0.018, -0.018, 0.028);
   const sideLean = style === "cautious" ? (side === "CT" ? 0.006 : -0.004) : side === "T" ? 0.003 : 0;
   const volatility = (Math.random() - 0.62) * 0.05;

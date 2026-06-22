@@ -6001,6 +6001,120 @@ button.team-stats-row {
   white-space: nowrap;
 }
 
+.call-fit-panel {
+  display: grid;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 7px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #151a20;
+}
+
+.call-fit-head,
+.call-fit-neutral {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 10.5px;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.call-fit-head b {
+  overflow: hidden;
+  color: var(--text);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.call-fit-groups {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.call-fit-group {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  padding: 6px;
+  border: 1px solid #303946;
+  border-radius: 6px;
+  background: #171d24;
+}
+
+.call-fit-group.active {
+  border-color: color-mix(in srgb, var(--accent), transparent 28%);
+  background: color-mix(in srgb, var(--accent), transparent 86%);
+  box-shadow: inset 3px 0 0 color-mix(in srgb, var(--accent), white 5%);
+}
+
+.call-fit-group > span {
+  color: var(--gold);
+  font-size: 10px;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.call-fit-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-height: 22px;
+}
+
+.call-fit-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  min-height: 22px;
+  padding: 0 6px;
+  border: 1px solid #34404d;
+  border-radius: 5px;
+  background: #222933;
+  font-size: 10.5px;
+  font-weight: 950;
+}
+
+.call-fit-chip.strong {
+  border-color: color-mix(in srgb, var(--green), transparent 35%);
+  background: color-mix(in srgb, var(--green), transparent 85%);
+}
+
+.call-fit-chip b {
+  overflow: hidden;
+  max-width: 72px;
+  color: var(--text);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.call-fit-chip small {
+  color: var(--muted);
+  font-size: 8.5px;
+  font-weight: 950;
+}
+
+.call-fit-chips em {
+  color: var(--muted);
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 850;
+}
+
+.call-fit-neutral {
+  justify-content: flex-start;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-transform: none;
+}
+
 .tactics-panel p,
 .note {
   margin: 12px 0 0;
