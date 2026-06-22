@@ -76,6 +76,14 @@ import { hltvTop20Coaches, hltvTop20Rosters } from "./hltvTop20";
 import { playerPhoto } from "./playerPhotos";
 import { simulateRadarPlayers, MAP_LAYOUTS, getStepDelay } from "./radarSim";
 import { mapGeometries, hasPixelNav } from "./mapGeometry";
+import {
+  deleteRunSlot,
+  formatRunSlotTime,
+  loadRunSlots,
+  saveRunSlot,
+  type RunSummary,
+  type SavedRunSlot,
+} from "./runDatabase";
 import "./styles.css";
 
 import mirageRadar from "./assets/radar/mirage.png";
@@ -289,6 +297,51 @@ interface ScoutAuditFlag {
   reason: string;
   severity: ScoutAuditSeverity;
 }
+
+interface RunSnapshot {
+  settings: CustomSettings;
+  screen: Screen;
+  realTimeRounds: boolean;
+  teamName: string;
+  mode: Mode;
+  runKind: RunKind;
+  difficultyId: Difficulty["id"];
+  selected: Player[];
+  coach?: Coach;
+  currentRoster: Roster;
+  usedRosterIds: string[];
+  rollsLeft: number;
+  opponent: FieldTeam;
+  phase: TournamentPhase;
+  playoffRound: PlayoffRound;
+  playoffPairs: SwissPair[];
+  tournamentOutcome: TournamentOutcome;
+  tournamentWinner?: FieldTeam;
+  swissField: FieldTeam[];
+  swissRecords: Record<string, SwissRecord>;
+  spectatorSwissRound: number;
+  playedOpponentIds: string[];
+  matchResults: SwissResult[];
+  selectedResultId?: string;
+  statsScope: StatsScope;
+  record: SwissRecord;
+  pickems: Record<string, string>;
+  pickemScore: number;
+  lastPickemDelta: number;
+  viewedSwissRound: number | null;
+  achievements: string[];
+  playerForm: Record<string, number>;
+  veto: VetoState;
+  match?: MatchState;
+  series?: ActiveSeries;
+  speed: number;
+  tactic: Tactic;
+  timeouts: number;
+  timeoutPlan: TimeoutPlan;
+  liveFeedView: LiveFeedView;
+}
+
+type SavedRun = SavedRunSlot<RunSnapshot>;
 
 interface VetoRecommendation {
   action: "ban" | "pick";
@@ -532,6 +585,9 @@ function App() {
   const [mode, setMode] = useState<Mode>("classic");
   const [runKind, setRunKind] = useState<RunKind>("player");
   const [difficulty, setDifficulty] = useState<Difficulty>(difficulties[0]);
+  const [runSlots, setRunSlots] = useState<SavedRun[]>(() => loadRunSlots<RunSnapshot>());
+  const [activeSaveId, setActiveSaveId] = useState<string>();
+  const [saveMessage, setSaveMessage] = useState("");
   const [selected, setSelected] = useState<Player[]>([]);
   const [coach, setCoach] = useState<Coach | undefined>();
   const [coachOptions, setCoachOptions] = useState<Coach[]>([]);
@@ -677,6 +733,13 @@ function App() {
   const resultMaps = resultMapResults.length ? resultMapResults.map((item) => item.map) : match ? [match.map] : [];
   const totalYourMoney = match?.yourMoney ? Object.values(match.yourMoney).reduce((sum, val) => sum + val, 0) : 0;
   const totalOpponentMoney = match?.opponentMoney ? Object.values(match.opponentMoney).reduce((sum, val) => sum + val, 0) : 0;
+  const hasSavableRun =
+    selected.length > 0 ||
+    runKind === "spectator" ||
+    matchResults.length > 0 ||
+    Boolean(match) ||
+    Boolean(series) ||
+    phase === "playoffs";
 
   const resultStatsTeams = match
     ? resultMapResults.length
@@ -834,6 +897,8 @@ function App() {
       startSpectatorRun();
       return;
     }
+    setActiveSaveId(undefined);
+    setSaveMessage("");
     setRunKind("player");
     setSelected([]);
     setCoach(undefined);
@@ -874,6 +939,8 @@ function App() {
   function startSpectatorRun() {
     const nextSwissField = buildSpectatorField(rosterPool);
     const nextSwissRecords = initialSwissRecords(nextSwissField);
+    setActiveSaveId(undefined);
+    setSaveMessage("");
     setRunKind("spectator");
     setSelected([]);
     setCoach(undefined);
@@ -1287,6 +1354,8 @@ function App() {
   }
 
   function restartRun() {
+    setActiveSaveId(undefined);
+    setSaveMessage("");
     setScreen("setup");
     setRunKind("player");
     setSelected([]);
@@ -1344,6 +1413,144 @@ function App() {
     }
   }
 
+  function buildRunSnapshot(): RunSnapshot {
+    return {
+      settings,
+      screen,
+      realTimeRounds,
+      teamName,
+      mode,
+      runKind,
+      difficultyId: difficulty.id,
+      selected,
+      coach,
+      currentRoster,
+      usedRosterIds,
+      rollsLeft,
+      opponent,
+      phase,
+      playoffRound,
+      playoffPairs,
+      tournamentOutcome,
+      tournamentWinner,
+      swissField,
+      swissRecords,
+      spectatorSwissRound,
+      playedOpponentIds,
+      matchResults,
+      selectedResultId,
+      statsScope,
+      record,
+      pickems,
+      pickemScore,
+      lastPickemDelta,
+      viewedSwissRound,
+      achievements,
+      playerForm,
+      veto,
+      match,
+      series,
+      speed,
+      tactic,
+      timeouts,
+      timeoutPlan,
+      liveFeedView,
+    };
+  }
+
+  function buildRunSummary(): RunSummary {
+    const recordLabel = runKind === "spectator" ? `${matchResults.length} series` : `${record.wins}-${record.losses}`;
+    const phaseLabel = phase === "playoffs" ? playoffRoundLabel(playoffRound) : "Swiss";
+    const detail = match
+      ? `${phaseLabel} / ${mapName(match.map)} ${match.you}-${match.opponent}`
+      : tournamentOutcome === "champion"
+        ? "Champion"
+        : tournamentOutcome === "eliminated"
+          ? "Eliminated"
+          : `${phaseLabel} / ${matchResults.length} saved series`;
+    return {
+      teamName: runKind === "spectator" ? "Spectator run" : teamName,
+      mode,
+      runKind,
+      phase,
+      screen,
+      recordLabel,
+      matchCount: matchResults.length,
+      detail,
+    };
+  }
+
+  function saveCurrentRun() {
+    if (!hasSavableRun) {
+      setSaveMessage("Start a run before saving.");
+      return;
+    }
+    const saved = saveRunSlot(buildRunSnapshot(), buildRunSummary(), activeSaveId);
+    setActiveSaveId(saved.id);
+    setRunSlots(loadRunSlots<RunSnapshot>());
+    setSaveMessage(`${saved.summary.teamName} saved.`);
+  }
+
+  function loadSavedRun(slot: SavedRun) {
+    const snapshot = slot.snapshot;
+    setSettings(snapshot.settings ?? defaultSettings);
+    setRealTimeRounds(snapshot.realTimeRounds ?? true);
+    setTeamName(snapshot.teamName ?? "My Five");
+    setMode(snapshot.mode ?? "classic");
+    setRunKind(snapshot.runKind ?? "player");
+    setDifficulty(difficulties.find((item) => item.id === snapshot.difficultyId) ?? difficulties[0]);
+    setSelected(snapshot.selected ?? []);
+    setCoach(snapshot.coach);
+    setCoachOptions([]);
+    setCoachRevealKey(0);
+    setCurrentRoster(snapshot.currentRoster ?? hltvTop20Rosters[0]);
+    setUsedRosterIds(snapshot.usedRosterIds ?? []);
+    setRolling(false);
+    setRollSequence([]);
+    setRollsLeft(snapshot.rollsLeft ?? (snapshot.settings ?? defaultSettings).draftRolls);
+    setOpponent(snapshot.opponent ?? toTournamentTeam(hltvTop20Rosters[1] ?? hltvTop20Rosters[0]));
+    setPhase(snapshot.phase ?? "swiss");
+    setPlayoffRound(snapshot.playoffRound ?? "quarterfinal");
+    setPlayoffPairs(snapshot.playoffPairs ?? []);
+    setTournamentOutcome(snapshot.tournamentOutcome ?? "running");
+    setTournamentWinner(snapshot.tournamentWinner);
+    setSwissField(snapshot.swissField ?? buildSwissField(rosterPool));
+    setSwissRecords(snapshot.swissRecords ?? {});
+    setSpectatorSwissRound(snapshot.spectatorSwissRound ?? 1);
+    setPlayedOpponentIds(snapshot.playedOpponentIds ?? []);
+    setMatchResults(snapshot.matchResults ?? []);
+    setSelectedResultId(snapshot.selectedResultId);
+    setStatsScope(snapshot.statsScope ?? "all");
+    setRecord(snapshot.record ?? { wins: 0, losses: 0 });
+    setPickems(snapshot.pickems ?? {});
+    setPickemScore(snapshot.pickemScore ?? 0);
+    setLastPickemDelta(snapshot.lastPickemDelta ?? 0);
+    setViewedSwissRound(snapshot.viewedSwissRound ?? null);
+    setAchievements(snapshot.achievements ?? []);
+    setPlayerForm(snapshot.playerForm ?? {});
+    setVeto(snapshot.veto ?? createVeto());
+    setMatch(snapshot.match ? { ...snapshot.match, running: false } : undefined);
+    setSeries(snapshot.series);
+    setSpeed(snapshot.speed ?? 1);
+    setTactic(snapshot.tactic ?? "standard");
+    setTimeouts(snapshot.timeouts ?? 2);
+    setTimeoutPlan(snapshot.timeoutPlan ?? { boost: 0, rounds: 0 });
+    setLiveFeedView(snapshot.liveFeedView ?? "feed");
+    setDetailPlayer(null);
+    setDetailTeam(null);
+    setNavStack([]);
+    setActiveSaveId(slot.id);
+    setSaveMessage(`${slot.summary.teamName} loaded.`);
+    setScreen(sanitizeLoadedScreen(snapshot.screen, snapshot));
+  }
+
+  function deleteSavedRun(id: string) {
+    deleteRunSlot(id);
+    setRunSlots(loadRunSlots<RunSnapshot>());
+    if (activeSaveId === id) setActiveSaveId(undefined);
+    setSaveMessage("Save slot deleted.");
+  }
+
   return (
     <div className="app-shell">
       <header className="topbar">
@@ -1364,6 +1571,10 @@ function App() {
           ))}
         </nav>
         <div className="top-actions">
+          <button className="icon-button" disabled={!hasSavableRun} onClick={saveCurrentRun} title="Save current run">
+            <Save size={18} />
+            <span>{activeSaveId ? "Quick Save" : "Save Run"}</span>
+          </button>
           <button className="icon-button" onClick={() => setScreen("teams")} title="Team database">
             <Database size={18} />
             <span>Team Lab</span>
@@ -1450,6 +1661,15 @@ function App() {
               ))}
             </div>
           </section>
+          <RunDatabasePanel
+            slots={runSlots}
+            activeId={activeSaveId}
+            message={saveMessage}
+            canSave={hasSavableRun}
+            onSave={saveCurrentRun}
+            onLoad={loadSavedRun}
+            onDelete={deleteSavedRun}
+          />
         </main>
       )}
 
@@ -3124,6 +3344,69 @@ function RosterBadge({ roster, large = false }: { roster: Roster; large?: boolea
         {large && <p>{roster.tagline}</p>}
       </div>
     </article>
+  );
+}
+
+function RunDatabasePanel({
+  slots,
+  activeId,
+  message,
+  canSave,
+  onSave,
+  onLoad,
+  onDelete,
+}: {
+  slots: SavedRun[];
+  activeId?: string;
+  message: string;
+  canSave: boolean;
+  onSave: () => void;
+  onLoad: (slot: SavedRun) => void;
+  onDelete: (id: string) => void;
+}) {
+  return (
+    <section className="run-db-panel">
+      <div className="run-db-head">
+        <div className="section-title">
+          <Database size={18} />
+          <span>Run database</span>
+        </div>
+        <div className="run-db-actions">
+          {message && <span>{message}</span>}
+          <button className="secondary" disabled={!canSave} onClick={onSave}>
+            <Save size={16} />
+            {activeId ? "Quick save" : "Save current"}
+          </button>
+        </div>
+      </div>
+      {slots.length ? (
+        <div className="run-slot-list">
+          {slots.map((slot) => (
+            <article className={slot.id === activeId ? "run-slot active" : "run-slot"} key={slot.id}>
+              <div>
+                <strong>{slot.summary.teamName}</strong>
+                <span>
+                  {slot.summary.detail} / {slot.summary.recordLabel} / {slot.summary.matchCount} series
+                </span>
+              </div>
+              <em>{formatRunSlotTime(slot.updatedAt)}</em>
+              <button className="secondary" onClick={() => onLoad(slot)}>
+                <Upload size={15} />
+                Load
+              </button>
+              <button className="danger-icon" onClick={() => onDelete(slot.id)} title="Delete save">
+                <Trash2 size={15} />
+              </button>
+            </article>
+          ))}
+        </div>
+      ) : (
+        <div className="run-slot-empty">
+          <strong>No saved runs yet</strong>
+          <span>Start a draft or spectator run, then save it here as a resumable slot.</span>
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -6786,6 +7069,16 @@ function matchAchievements(
   if (match.winner === "you" && match.opponent <= 7) unlocks.push("clean-win");
   if (nextRecord.wins >= 3) unlocks.push("playoff-ticket");
   return unlocks;
+}
+
+function sanitizeLoadedScreen(screen: Screen | undefined, snapshot: RunSnapshot): Screen {
+  if (!screen) return "setup";
+  if (screen === "match" && !snapshot.match) return snapshot.phase === "playoffs" ? "playoffs" : "swiss";
+  if (screen === "result" && !snapshot.match) return snapshot.phase === "playoffs" ? "playoffs" : "swiss";
+  if (screen === "series-detail" && !snapshot.selectedResultId) return snapshot.phase === "playoffs" ? "playoffs" : "swiss";
+  if (screen === "player-detail" || screen === "team-detail") return snapshot.phase === "playoffs" ? "playoffs" : "swiss";
+  if (screen === "coach" && snapshot.runKind === "spectator") return "swiss";
+  return screen;
 }
 
 function clampNumber(value: number, min: number, max: number) {

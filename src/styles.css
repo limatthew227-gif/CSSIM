@@ -269,6 +269,7 @@ button:hover:not(:disabled) {
 
 .hero-panel,
 .field-panel,
+.run-db-panel,
 .team-lab-hero,
 .team-editor-panel,
 .team-scout-panel,
@@ -293,6 +294,7 @@ button:hover:not(:disabled) {
 
 .hero-panel,
 .field-panel,
+.run-db-panel,
 .match-card,
 .standings,
 .veto-board,
@@ -346,6 +348,102 @@ button:hover:not(:disabled) {
 
 .database-callout button {
   flex: 0 0 auto;
+}
+
+.run-db-panel {
+  display: grid;
+  grid-column: 1 / -1;
+  gap: 12px;
+  align-content: start;
+}
+
+.run-db-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.run-db-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.run-db-actions > span {
+  max-width: 260px;
+  overflow: hidden;
+  color: var(--green);
+  font-size: 12px;
+  font-weight: 900;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.run-slot-list {
+  display: grid;
+  gap: 8px;
+}
+
+.run-slot {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto 34px;
+  align-items: center;
+  gap: 10px;
+  min-height: 58px;
+  padding: 9px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #171a1f;
+}
+
+.run-slot.active {
+  border-color: color-mix(in srgb, var(--accent), white 8%);
+  background: color-mix(in srgb, var(--accent), transparent 90%);
+}
+
+.run-slot strong,
+.run-slot span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.run-slot strong {
+  text-transform: uppercase;
+}
+
+.run-slot span,
+.run-slot em,
+.run-slot-empty span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.run-slot em {
+  font-style: normal;
+  white-space: nowrap;
+}
+
+.run-slot button {
+  min-height: 34px;
+}
+
+.run-slot-empty {
+  display: grid;
+  gap: 3px;
+  min-height: 58px;
+  padding: 12px;
+  border: 1px dashed var(--line);
+  border-radius: var(--radius);
+  background: #171a1f;
+}
+
+.run-slot-empty strong {
+  text-transform: uppercase;
 }
 
 label,
@@ -6846,6 +6944,8 @@ input[type="range"] {
   .live-top,
   .roster-spotlight,
   .team-lab-hero,
+  .run-db-head,
+  .run-slot,
   .team-editor-toolbar {
     grid-template-columns: 1fr;
     display: grid;
@@ -6857,6 +6957,16 @@ input[type="range"] {
 
   .top-actions button {
     flex: 1;
+  }
+
+  .run-db-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+    justify-content: stretch;
+  }
+
+  .run-db-actions > span {
+    max-width: none;
   }
 
   .roster-grid,
