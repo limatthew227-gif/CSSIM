@@ -92,6 +92,7 @@ import { eventLogFromMatchState, type MatchEventLog, type MatchEventTeam } from 
 import {
   analyzeEventLogs,
   matchInsightLeaders,
+  mergePlayerAnalytics,
   formatMultiKills,
   formatClutches,
   type PlayerAnalytics,
@@ -5592,6 +5593,92 @@ function RunStatsPage({
   );
 }
 
+// A player's whole-run "career": event-log advanced stats summed across every team they appeared on.
+function PlayerCareerPanel({
+  player,
+  career,
+  activeTeam,
+  onOpenTeam,
+}: {
+  player: Player;
+  career: PlayerCareer;
+  activeTeam: FieldTeam;
+  onOpenTeam: (team: FieldTeam) => void;
+}) {
+  if (career.totalMaps === 0) return null;
+  const advanced = career.advanced;
+  const openingDiff = advanced ? advanced.openingKills - advanced.openingDeaths : 0;
+  const tiles: Array<{ label: string; value: string; tone?: string; title?: string }> = [
+    { label: "Maps", value: `${career.totalMaps}` },
+    { label: "Rating", value: career.line.rating.toFixed(2), tone: ratingTone(career.line.rating) },
+    { label: "K–D", value: `${career.line.kills}–${career.line.deaths}` },
+  ];
+  if (advanced) {
+    tiles.push(
+      {
+        label: "Open +/–",
+        value: fmtDiff(openingDiff),
+        tone: openingDiff > 0 ? "good" : openingDiff < 0 ? "bad" : "",
+        title: `${advanced.openingKills} opening kills / ${advanced.openingDeaths} opening deaths`,
+      },
+      { label: "Multi-kills", value: `${advanced.multiKillRounds}`, title: formatMultiKills(advanced.multiKills) },
+      { label: "Aces", value: `${advanced.aces}`, tone: advanced.aces > 0 ? "good" : "" },
+      {
+        label: "Clutches",
+        value: `${advanced.clutches.won}-${advanced.clutches.lost}`,
+        tone: advanced.clutches.won ? "good" : "",
+        title: formatClutches(advanced),
+      },
+      { label: "Trades", value: `${advanced.tradeKills}`, title: `Avenged ${advanced.tradeKills} teammate deaths` },
+      { label: "HS%", value: advanced.kills ? `${Math.round(advanced.headshotPct * 100)}%` : "–" },
+    );
+  }
+
+  return (
+    <section className="player-career-panel">
+      <div className="match-insights-head">
+        <div className="section-title">
+          <Sparkles size={18} />
+          <span>Career — this run</span>
+        </div>
+        <span>
+          {career.totalMaps} {career.totalMaps === 1 ? "map" : "maps"}
+          {career.stints.length > 1 ? ` · ${career.stints.length} teams` : ""}
+          {advanced ? "" : " · advanced stats unavailable"}
+        </span>
+      </div>
+      <div className="career-tile-row">
+        {tiles.map((tile) => (
+          <div className="career-tile" key={tile.label} title={tile.title}>
+            <strong className={tile.tone}>{tile.value}</strong>
+            <span>{tile.label}</span>
+          </div>
+        ))}
+      </div>
+      {career.stints.length > 1 && (
+        <div className="career-stint-row">
+          {career.stints.map((stint) => (
+            <button
+              type="button"
+              key={stint.team.id}
+              className={`career-stint${stint.team.id === activeTeam.id ? " active" : ""}`}
+              style={{ "--crest": stint.team.accent } as React.CSSProperties}
+              onClick={() => onOpenTeam(stint.team)}
+              title={`${stint.team.name} — ${stint.maps} maps`}
+            >
+              <TeamLogo team={stint.team} small />
+              <b>{stint.team.name}</b>
+              <em>
+                {stint.maps} {stint.maps === 1 ? "map" : "maps"} · {stint.line.rating.toFixed(2)}
+              </em>
+            </button>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
 function PlayerDetailPage({
   player,
   team,
@@ -5639,6 +5726,7 @@ function PlayerDetailPage({
   });
   const display = [...maps].reverse(); // most recent first
   const photo = playerPhoto(player.handle);
+  const career = useMemo(() => buildPlayerCareer(results, canonicalPlayerKey(player)), [results, player]);
 
   return (
     <main className="layout fullscreen-page">
@@ -5688,6 +5776,8 @@ function PlayerDetailPage({
           </div>
         </section>
       )}
+
+      <PlayerCareerPanel player={player} career={career} activeTeam={team} onOpenTeam={onOpenTeam} />
 
       <section className="full-table-card">
         <div className="full-table-head player-map-grid">
@@ -6900,6 +6990,62 @@ function latestResultForPair(results: SwissResult[], pairId: string) {
     if (results[index].pairId === pairId) return results[index];
   }
   return undefined;
+}
+
+interface CareerTeamStint {
+  team: FieldTeam;
+  maps: number;
+  line: MatchState["yourStats"][string];
+}
+
+interface PlayerCareer {
+  advanced: PlayerAnalytics | null; // event-log stats summed across every appearance
+  stints: CareerTeamStint[]; // one per team the player turned out for this run
+  totalMaps: number;
+  line: MatchState["yourStats"][string]; // PlayerLine summed across all stints
+}
+
+// Aggregate one human's whole run by CANONICAL identity, not by team — so a pro drafted onto your
+// roster and the same pro on their real HLTV team fold into a single career line.
+function buildPlayerCareer(results: SwissResult[], canonicalKey: string): PlayerCareer {
+  const logs: MatchEventLog[] = [];
+  const idToPlayer = new Map<string, Player>();
+  const stintByTeam = new Map<string, CareerTeamStint>();
+  const line = emptyLine();
+
+  results.forEach((result) => {
+    ([
+      [result.left, result.leftStats],
+      [result.right, result.rightStats],
+    ] as const).forEach(([team, stats]) => {
+      team.players.forEach((player) => idToPlayer.set(player.id, player));
+      const member = team.players.find((player) => canonicalPlayerKey(player) === canonicalKey);
+      const incoming = member ? stats[member.id] : undefined;
+      if (!member || !incoming) return;
+      const stint = stintByTeam.get(team.id) ?? { team, maps: 0, line: emptyLine() };
+      stint.maps += result.maps.length;
+      addPlayerLine(stint.line, incoming);
+      addPlayerLine(line, incoming);
+      stintByTeam.set(team.id, stint);
+    });
+    result.maps.forEach((map) => {
+      if (map.eventLog) logs.push(map.eventLog);
+    });
+  });
+
+  const analytics = logs.length ? analyzeEventLogs(logs) : null;
+  const advanced = analytics
+    ? mergePlayerAnalytics(
+        analytics.players.filter((row) => {
+          const player = idToPlayer.get(row.playerId);
+          return player ? canonicalPlayerKey(player) === canonicalKey : false;
+        }),
+      )
+    : null;
+
+  const stints = [...stintByTeam.values()].sort((a, b) => b.maps - a.maps);
+  const totalMaps = stints.reduce((sum, stint) => sum + stint.maps, 0);
+  return { advanced, stints, totalMaps, line };
 }
 
 function buildPlayerDatabase(results: SwissResult[]): PlayerDatabaseRow[] {

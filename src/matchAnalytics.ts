@@ -91,6 +91,38 @@ export function analyzeEventLogs(logs: MatchEventLog[]): MatchAnalytics {
   };
 }
 
+// Sum several per-instance analytics rows into one — used for a player's CAREER across a run, where
+// the same human can appear under different ids (a drafted copy vs their real-team roster). Callers
+// resolve which rows belong together (by canonical identity) and hand them here.
+export function mergePlayerAnalytics(rows: PlayerAnalytics[]): PlayerAnalytics | null {
+  if (!rows.length) return null;
+  const merged = emptyPlayer(rows[0].playerId, rows[0].name, rows[0].team);
+  for (const row of rows) {
+    merged.kills += row.kills;
+    merged.deaths += row.deaths;
+    merged.assists += row.assists;
+    merged.headshotKills += row.headshotKills;
+    merged.openingKills += row.openingKills;
+    merged.openingDeaths += row.openingDeaths;
+    merged.openingAttempts += row.openingAttempts;
+    merged.multiKillRounds += row.multiKillRounds;
+    merged.tradeKills += row.tradeKills;
+    merged.tradedDeaths += row.tradedDeaths;
+    merged.multiKills.k2 += row.multiKills.k2;
+    merged.multiKills.k3 += row.multiKills.k3;
+    merged.multiKills.k4 += row.multiKills.k4;
+    merged.multiKills.k5 += row.multiKills.k5;
+    merged.clutches.won += row.clutches.won;
+    merged.clutches.lost += row.clutches.lost;
+    for (const size of [1, 2, 3, 4, 5] as ClutchSize[]) {
+      merged.clutchesByType[size].won += row.clutchesByType[size].won;
+      merged.clutchesByType[size].lost += row.clutchesByType[size].lost;
+    }
+  }
+  finalizeRates(merged);
+  return merged;
+}
+
 interface PlayerMeta {
   team: Map<string, MatchEventTeam>;
   name: Map<string, string>;

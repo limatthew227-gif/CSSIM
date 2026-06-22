@@ -7505,3 +7505,92 @@ input[type="range"] {
   font-style: normal;
   letter-spacing: 0.04em;
 }
+
+/* Player career panel (run-wide, cross-team) ------------------------------- */
+.player-career-panel {
+  display: grid;
+  gap: 8px;
+  margin: 0 0 10px;
+  padding: 8px;
+  border: 1px solid color-mix(in srgb, var(--accent), var(--line) 60%);
+  border-radius: var(--radius);
+  background:
+    radial-gradient(circle at 10% 0%, color-mix(in srgb, var(--accent), transparent 86%), transparent 36%),
+    linear-gradient(180deg, #20242b, #171b21);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.2);
+}
+
+.career-tile-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(78px, 1fr));
+  gap: 6px;
+}
+
+.career-tile {
+  display: grid;
+  gap: 2px;
+  padding: 7px 8px;
+  border: 1px solid rgba(109, 130, 157, 0.34);
+  border-radius: 8px;
+  background: #151a20;
+  text-align: center;
+}
+
+.career-tile strong {
+  color: var(--text);
+  font-size: 18px;
+  line-height: 1;
+}
+
+.career-tile strong.good {
+  color: var(--green);
+}
+
+.career-tile strong.bad {
+  color: #ff8d8d;
+}
+
+.career-tile span {
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 950;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.career-stint-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.career-stint {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 9px;
+  border: 1px solid color-mix(in srgb, var(--crest), var(--line) 50%);
+  border-radius: 999px;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--crest), transparent 84%), transparent 60%), #151a20;
+  color: #e7edf4;
+  cursor: pointer;
+}
+
+.career-stint.active {
+  border-color: color-mix(in srgb, var(--crest), var(--gold) 40%);
+}
+
+.career-stint:hover {
+  border-color: color-mix(in srgb, var(--crest), white 18%);
+}
+
+.career-stint b {
+  font-size: 12px;
+}
+
+.career-stint em {
+  color: var(--muted);
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 800;
+}

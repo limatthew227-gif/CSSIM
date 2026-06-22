@@ -2,7 +2,12 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import { eventLogFromFeed } from "../src/matchEvents";
-import { analyzeEventLog, analyzeEventLogs, matchInsightLeaders } from "../src/matchAnalytics";
+import {
+  analyzeEventLog,
+  analyzeEventLogs,
+  matchInsightLeaders,
+  mergePlayerAnalytics,
+} from "../src/matchAnalytics";
 import type { FeedLine } from "../src/sim";
 
 // L1 single-handedly turns a 1v4 into an ace clutch, trading two teammate deaths on the way.
@@ -106,6 +111,34 @@ test("match analytics: surfaces highlight leaders only for categories with a rea
   // Nobody clutched or traded here, so those cards are omitted entirely.
   assert.ok(!keys.includes("clutch"));
   assert.ok(!keys.includes("trade"));
+});
+
+// Career aggregation: the same human under two ids (a drafted copy + a real-team roster) sums up.
+test("match analytics: merges a player's analytics across instances for a career view", () => {
+  const stint1 = analyzeEventLog(
+    eventLogFromFeed("mirage", [
+      start(1),
+      kill(1, { killer: "L1", victim: "R1", first: true, headshot: true }),
+      kill(1, { killer: "L1", victim: "R2" }),
+      over(1, "you"),
+    ]),
+  ).byId["L1"];
+  const stint2 = analyzeEventLog(
+    eventLogFromFeed("nuke", [
+      start(1),
+      kill(1, { killer: "L1copy", victim: "R3", first: true }),
+      over(1, "you"),
+    ]),
+  ).byId["L1copy"];
+
+  const career = mergePlayerAnalytics([stint1, stint2])!;
+  assert.equal(career.kills, 3);
+  assert.equal(career.openingKills, 2);
+  assert.equal(career.openingWinRate, 1);
+  assert.equal(career.multiKills.k2, 1);
+  assert.equal(career.headshotKills, 1);
+  assert.equal(Number(career.headshotPct.toFixed(4)), Number((1 / 3).toFixed(4)));
+  assert.equal(mergePlayerAnalytics([]), null);
 });
 
 function start(round: number): FeedLine {
