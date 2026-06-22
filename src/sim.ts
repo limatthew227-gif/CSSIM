@@ -145,6 +145,7 @@ export interface MatchState {
   economy: "ECO" | "FORCE" | "FULL";
   opponentEconomy: "ECO" | "FORCE" | "FULL";
   feed: FeedLine[];
+  eventFeed?: FeedLine[];
   // Mirage spatial replay: per-player position frames for the active round, so the radar plays the
   // engine's REAL trajectories (not a reconstruction). roundTimelineRound says which round it covers.
   roundTimeline?: TimelineFrame[];
@@ -604,6 +605,7 @@ export function initMatch(map: MapId, you: FieldTeam, opponent: FieldTeam, conte
     economy: "ECO",
     opponentEconomy: "ECO",
     feed: [],
+    eventFeed: [],
     yourStats: makeLines(you.players),
     opponentStats: makeLines(opponent.players),
     yourSideStats: makeSideLines(you.players),
@@ -1298,6 +1300,7 @@ export function playRound(
       opponentEconomy: nextOpponentEconomyState,
       side: nextSide,
       feed: [...[...state.pendingEvents].reverse(), ...state.feed].slice(0, 60),
+      eventFeed: [...(state.eventFeed ?? []), ...state.pendingEvents],
       yourStats,
       opponentStats,
       yourSideStats,
@@ -1342,6 +1345,7 @@ export function playRound(
     const event = state.pendingEvents[0];
     const nextPending = state.pendingEvents.slice(1);
     const nextFeed = [event, ...state.feed].slice(0, 60);
+    const nextEventFeed = [...(state.eventFeed ?? []), event];
 
     let yourStats = cloneStats(state.yourStats);
     let opponentStats = cloneStats(state.opponentStats);
@@ -1496,6 +1500,7 @@ export function playRound(
         opponentEconomy: nextOpponentEconomyState,
         side: nextSide,
         feed: nextFeed,
+        eventFeed: nextEventFeed,
         yourStats: finalYourStats,
         opponentStats: finalOpponentStats,
         yourSideStats: finalYourSideStats,
@@ -1536,6 +1541,7 @@ export function playRound(
     return {
       ...state,
       feed: nextFeed,
+      eventFeed: nextEventFeed,
       yourStats,
       opponentStats,
       yourSideStats,
@@ -1960,6 +1966,7 @@ export function playRound(
       opponentEconomy: nextOpponentEconomyState,
       side: nextSide,
       feed: [...[...feed].reverse(), ...state.feed].slice(0, 60),
+      eventFeed: [...(state.eventFeed ?? []), ...feed],
       roundTimeline,
       roundTimelineRound: state.round,
       yourStats: finalYourStats,

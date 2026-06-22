@@ -84,6 +84,8 @@ import {
   type RunSummary,
   type SavedRunSlot,
 } from "./runDatabase";
+import { eventLogFromMatchState, type MatchEventLog } from "./matchEvents";
+import { canonicalPlayerKey, playerInstanceKey, playerVersionKey } from "./playerIdentity";
 import "./styles.css";
 
 import mirageRadar from "./assets/radar/mirage.png";
@@ -218,6 +220,7 @@ interface SeriesMapResult {
   leftScore: number;
   rightScore: number;
   winnerId: string;
+  eventLog?: MatchEventLog;
   roundWinners?: TimelineSide[];
   leftStats: MatchState["yourStats"];
   rightStats: MatchState["yourStats"];
@@ -275,6 +278,8 @@ interface ActiveSeries {
 
 interface PlayerDatabaseRow {
   databaseKey: string;
+  canonicalKey: string;
+  versionKey: string;
   player: Player;
   team: FieldTeam;
   matches: number;
@@ -5855,6 +5860,7 @@ function SeriesDetailPage({
           <span key={`${result.id}-detail-${map.map}-${index}`}>
             <b>{mapName(map.map)}</b>
             {map.leftScore}:{map.rightScore}
+            {map.eventLog && <small>{map.eventLog.events.length} events</small>}
           </span>
         ))}
       </section>
@@ -6620,6 +6626,7 @@ function mapResultFromState(map: MapId, state: MatchState, left: FieldTeam, righ
     leftScore: state.you,
     rightScore: state.opponent,
     winnerId: state.winner === "you" ? left.id : state.winner === "opponent" ? right.id : state.you >= state.opponent ? left.id : right.id,
+    eventLog: eventLogFromMatchState(map, state),
     roundWinners: state.roundWinners.map((winner) => (winner === "you" ? "left" : "right")),
     leftStats: state.yourStats,
     rightStats: state.opponentStats,
@@ -6747,11 +6754,13 @@ function addTeamToPlayerDatabase(rows: Map<string, PlayerDatabaseRow>, team: Fie
   team.players.forEach((player) => {
     const incoming = stats[player.id];
     if (!incoming) return;
-    const databaseKey = `${team.id}:${player.id}`;
+    const databaseKey = playerInstanceKey(team, player);
     const current = rows.get(databaseKey);
     if (!current) {
       rows.set(databaseKey, {
         databaseKey,
+        canonicalKey: canonicalPlayerKey(player),
+        versionKey: playerVersionKey(player),
         player,
         team,
         matches: mapCount,

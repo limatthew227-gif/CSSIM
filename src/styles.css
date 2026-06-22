@@ -3446,6 +3446,14 @@ button.full-table-row {
   color: var(--text);
 }
 
+.series-map-summary small {
+  margin-left: 7px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
 .series-result-card small {
   color: var(--muted);
   font-weight: 850;
