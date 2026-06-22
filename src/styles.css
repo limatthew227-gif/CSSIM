@@ -7290,3 +7290,218 @@ input[type="range"] {
     min-height: 0;
   }
 }
+
+/* Advanced insights (event-log analytics) ---------------------------------- */
+.match-insights-panel {
+  display: grid;
+  gap: 8px;
+  margin: 0 0 8px;
+  padding: 8px;
+  border: 1px solid color-mix(in srgb, var(--accent), var(--line) 60%);
+  border-radius: var(--radius);
+  background:
+    radial-gradient(circle at 10% 0%, color-mix(in srgb, var(--accent), transparent 86%), transparent 36%),
+    linear-gradient(180deg, #20242b, #171b21);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.2);
+}
+
+.match-insights-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.match-insights-head > span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.insight-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 7px;
+}
+
+.insight-card {
+  position: relative;
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  overflow: hidden;
+  padding: 8px;
+  border: 1px solid rgba(109, 130, 157, 0.42);
+  border-radius: 9px;
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--crest), transparent 80%), transparent 46%),
+    #151a20;
+}
+
+.insight-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.insight-card-stat {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--gold);
+  font-size: 10px;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.insight-card-stat svg {
+  flex: none;
+}
+
+.insight-card-player {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+
+.insight-card-player .flat-flag {
+  width: 18px;
+  height: 12px;
+  border-radius: 3px;
+}
+
+.insight-card-player strong {
+  min-width: 0;
+  overflow: hidden;
+  color: #fff;
+  font-size: 15px;
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.insight-face {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  object-fit: cover;
+  object-position: top center;
+  background: #0e1116;
+}
+
+.insight-card-value {
+  color: var(--text);
+  font-size: 20px;
+  line-height: 0.95;
+}
+
+.insight-card p {
+  margin: 0;
+  overflow: hidden;
+  color: #d6dee9;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1.15;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.insight-team-stack {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 8px;
+}
+
+.insight-team-block {
+  border: 1px solid color-mix(in srgb, var(--crest), var(--line) 55%);
+  border-radius: 9px;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--crest), transparent 88%), transparent 60%), #151a20;
+  overflow: hidden;
+}
+
+.insight-team-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--line);
+}
+
+.insight-team-head strong {
+  color: #fff;
+  font-size: 12px;
+}
+
+.insight-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+}
+
+.insight-table th,
+.insight-table td {
+  padding: 4px 8px;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.insight-table thead th {
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 950;
+  text-transform: uppercase;
+  cursor: help;
+}
+
+.insight-table th:first-child,
+.insight-table td:first-child {
+  text-align: left;
+}
+
+.insight-table tbody tr + tr td {
+  border-top: 1px solid color-mix(in srgb, var(--line), transparent 40%);
+}
+
+.insight-table td {
+  color: #cfd7e2;
+  font-weight: 800;
+}
+
+.insight-table td.good {
+  color: var(--green);
+}
+
+.insight-table td.bad {
+  color: #ff8d8d;
+}
+
+.insight-name {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.insight-name span {
+  color: #fff;
+}
+
+.insight-name .flat-flag {
+  width: 16px;
+  height: 11px;
+  border-radius: 2px;
+  flex: none;
+}
+
+.insight-ace {
+  padding: 0 4px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--gold), transparent 76%);
+  color: var(--gold);
+  font-size: 8px;
+  font-weight: 950;
+  font-style: normal;
+  letter-spacing: 0.04em;
+}

@@ -6,11 +6,13 @@ import {
   Ban,
   CheckCircle2,
   Clock3,
+  Crosshair,
   Database,
   Dice5,
   Download,
   Eye,
   FastForward,
+  Flame,
   Gauge,
   Pause,
   Play,
@@ -21,12 +23,14 @@ import {
   Shield,
   SkipForward,
   SlidersHorizontal,
+  Sparkles,
   Swords,
   Target,
   Trophy,
   Trash2,
   Upload,
   Users,
+  Zap,
 } from "lucide-react";
 import {
   Coach,
@@ -84,7 +88,14 @@ import {
   type RunSummary,
   type SavedRunSlot,
 } from "./runDatabase";
-import { eventLogFromMatchState, type MatchEventLog } from "./matchEvents";
+import { eventLogFromMatchState, type MatchEventLog, type MatchEventTeam } from "./matchEvents";
+import {
+  analyzeEventLogs,
+  matchInsightLeaders,
+  formatMultiKills,
+  formatClutches,
+  type PlayerAnalytics,
+} from "./matchAnalytics";
 import { canonicalPlayerKey, playerInstanceKey, playerVersionKey } from "./playerIdentity";
 import "./styles.css";
 
@@ -5222,6 +5233,154 @@ function LineupColumn({ title, players }: { title: string; players: Player[] }) 
   );
 }
 
+// Advanced stats the box score can't show — opening duels, multi-kills/aces, real clutch outcomes,
+// trade kills, headshot rate — all reconstructed from the structured event log (matchAnalytics.ts).
+function MatchInsightsPanel({
+  left,
+  right,
+  mapResults,
+}: {
+  left: FieldTeam;
+  right: FieldTeam;
+  mapResults: SeriesMapResult[];
+}) {
+  const logs = useMemo(
+    () => mapResults.map((map) => map.eventLog).filter((log): log is MatchEventLog => Boolean(log)),
+    [mapResults],
+  );
+  const analytics = useMemo(() => analyzeEventLogs(logs), [logs]);
+  const leaders = useMemo(() => matchInsightLeaders(analytics), [analytics]);
+
+  if (!logs.length || !analytics.players.length) return null;
+
+  const playerById = new Map<string, Player>();
+  [...left.players, ...right.players].forEach((player) => playerById.set(player.id, player));
+  const teamForSide = (side: MatchEventTeam) => (side === "right" ? right : left);
+
+  return (
+    <section className="match-insights-panel">
+      <div className="match-insights-head">
+        <div className="section-title">
+          <Sparkles size={18} />
+          <span>Advanced insights</span>
+        </div>
+        <span>{analytics.rounds} rounds analysed · from the round-by-round event log</span>
+      </div>
+
+      {leaders.length > 0 && (
+        <div className="insight-card-grid">
+          {leaders.map((leader) => {
+            const team = teamForSide(leader.player.team);
+            const player = playerById.get(leader.player.playerId);
+            const photo = player ? playerPhoto(player.handle) : undefined;
+            return (
+              <article className="insight-card" key={leader.key} style={{ "--crest": team.accent } as React.CSSProperties}>
+                <div className="insight-card-top">
+                  <span className="insight-card-stat">
+                    <InsightIcon kind={leader.key} />
+                    {leader.title}
+                  </span>
+                  <TeamLogo team={team} small />
+                </div>
+                <div className="insight-card-player">
+                  {photo && <img className="insight-face" src={photo} alt={leader.player.name} loading="lazy" />}
+                  {player && <Flag country={player.country} />}
+                  <strong>{player?.handle ?? leader.player.name}</strong>
+                </div>
+                <b className="insight-card-value">{leader.display}</b>
+                <p>{leader.detail}</p>
+              </article>
+            );
+          })}
+        </div>
+      )}
+
+      <div className="insight-team-stack">
+        {([left, right] as FieldTeam[]).map((team, index) => {
+          const side: MatchEventTeam = index === 0 ? "left" : "right";
+          const rows = analytics.players
+            .filter((row) => row.team === side)
+            .sort((a, b) => insightSort(b) - insightSort(a));
+          if (!rows.length) return null;
+          return (
+            <div className="insight-team-block" key={team.id} style={{ "--crest": team.accent } as React.CSSProperties}>
+              <div className="insight-team-head">
+                <TeamLogo team={team} small />
+                <strong>{team.name}</strong>
+              </div>
+              <table className="insight-table">
+                <thead>
+                  <tr>
+                    <th>Player</th>
+                    <th title="Kills / deaths">K–D</th>
+                    <th title="Opening kills minus opening deaths">Open</th>
+                    <th title="Rounds with 2 or more kills">MK</th>
+                    <th title="Clutches won / lost">CL</th>
+                    <th title="Trade kills (avenged a teammate)">TK</th>
+                    <th title="Headshot percentage">HS%</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((row) => {
+                    const player = playerById.get(row.playerId);
+                    return (
+                      <tr key={row.playerId}>
+                        <td className="insight-name">
+                          {player && <Flag country={player.country} />}
+                          <span>{player?.handle ?? row.name}</span>
+                          {row.aces > 0 && (
+                            <em className="insight-ace" title={`${row.aces} ace${row.aces === 1 ? "" : "s"}`}>ACE</em>
+                          )}
+                        </td>
+                        <td>{row.kills}–{row.deaths}</td>
+                        <td className={openTone(row)}>{fmtDiff(row.openingKills - row.openingDeaths)}</td>
+                        <td title={formatMultiKills(row.multiKills)}>{row.multiKillRounds || "–"}</td>
+                        <td title={formatClutches(row)} className={row.clutches.won ? "good" : ""}>
+                          {row.clutches.won}-{row.clutches.lost}
+                        </td>
+                        <td>{row.tradeKills || "–"}</td>
+                        <td>{row.kills ? `${Math.round(row.headshotPct * 100)}%` : "–"}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function InsightIcon({ kind }: { kind: string }) {
+  const size = 14;
+  if (kind === "opening") return <Crosshair size={size} />;
+  if (kind === "multikill") return <Flame size={size} />;
+  if (kind === "clutch") return <Swords size={size} />;
+  if (kind === "trade") return <Zap size={size} />;
+  if (kind === "headshot") return <Target size={size} />;
+  return <Award size={size} />;
+}
+
+function insightSort(row: PlayerAnalytics) {
+  return (
+    row.kills +
+    row.tradeKills * 0.5 +
+    row.clutches.won * 1.5 +
+    (row.openingKills - row.openingDeaths) * 0.5
+  );
+}
+
+function openTone(row: PlayerAnalytics) {
+  const diff = row.openingKills - row.openingDeaths;
+  return diff > 0 ? "good" : diff < 0 ? "bad" : "";
+}
+
+function fmtDiff(value: number) {
+  return value > 0 ? `+${value}` : `${value}`;
+}
+
 function MatchStatsPanel({
   maps,
   mapResults = [],
@@ -5883,6 +6042,8 @@ function SeriesDetailPage({
         onOpenPlayer={onOpenPlayer}
         onOpenTeam={onOpenTeam}
       />
+
+      <MatchInsightsPanel left={result.left} right={result.right} mapResults={result.maps} />
 
       <MatchLineups
         teams={[
