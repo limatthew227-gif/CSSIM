@@ -2348,6 +2348,11 @@ function App() {
                 <span>{yourTeam.tag}: {match.economy} {match.yourMoney && `($${totalYourMoney.toLocaleString()})`}</span>
                 <span>{opponent.tag}: {match.opponentEconomy} {match.opponentMoney && `($${totalOpponentMoney.toLocaleString()})`}</span>
               </div>
+              <RoundReadPanel
+                read={buildRoundRead(match, yourTeam, opponent, settings, totalYourMoney, totalOpponentMoney)}
+                currentTactic={tactic}
+                onApply={setTactic}
+              />
               <div className="tactic-grid">
                 {(["standard", "aggressive", "cautious", "force", "save"] as Tactic[]).map((item) => (
                   <button className={tactic === item ? "selected" : ""} key={item} onClick={() => setTactic(item)}>
@@ -3391,6 +3396,117 @@ function buildMatchSpotlights(teams: Array<{ team: FieldTeam; players: Player[];
   );
 
   return cards;
+}
+
+function RoundReadPanel({
+  read,
+  currentTactic,
+  onApply,
+}: {
+  read: ReturnType<typeof buildRoundRead>;
+  currentTactic: Tactic;
+  onApply: (tactic: Tactic) => void;
+}) {
+  return (
+    <div className={`round-read-panel ${read.tone}`}>
+      <div className="round-read-main">
+        <span>Read</span>
+        <strong>{read.label}</strong>
+        <b>{read.pressure}</b>
+      </div>
+      <p>{read.reason}</p>
+      <div className="round-read-actions">
+        {read.chips.map((chip) => (
+          <span key={chip}>{chip}</span>
+        ))}
+        <button type="button" disabled={currentTactic === read.tactic} onClick={() => onApply(read.tactic)}>
+          {currentTactic === read.tactic ? "Set" : `Use ${read.tactic}`}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function buildRoundRead(
+  match: MatchState,
+  you: FieldTeam,
+  opponent: FieldTeam,
+  settings: CustomSettings,
+  yourMoney: number,
+  opponentMoney: number,
+) {
+  const opponentStreak = trailingRoundWins(match.roundWinners, "opponent");
+  const yourStreak = trailingRoundWins(match.roundWinners, "you");
+  const threshold = liveWinThreshold(match.round);
+  const opponentAtMapPoint = match.opponent >= threshold - 1;
+  const youAtMapPoint = match.you >= threshold - 1;
+  const scoreGap = match.you - match.opponent;
+  const moneyGap = yourMoney - opponentMoney;
+  const mapGap = mapEdge(you, opponent, match.map, settings);
+
+  let tactic: Tactic = "standard";
+  let label = "Default";
+  let reason = "Keep the round clean and avoid giving away first contact.";
+  let tone: "good" | "bad" | "neutral" = "neutral";
+
+  if (match.economy === "ECO" && match.opponentEconomy === "FULL") {
+    tactic = opponentAtMapPoint || scoreGap <= -4 ? "force" : "save";
+    label = tactic === "force" ? "Last stand" : "Bank";
+    reason = tactic === "force" ? "Low buy in danger territory; fight for space early." : "Full-save spot: preserve money and dodge a low-value gamble.";
+    tone = "bad";
+  } else if (match.opponentEconomy === "ECO" && match.economy === "FULL") {
+    tactic = "cautious";
+    label = "Anti-eco";
+    reason = "They are light on weapons, so avoid solo duels and trade it out.";
+    tone = "good";
+  } else if (opponentStreak >= 3 || opponentAtMapPoint) {
+    tactic = "cautious";
+    label = opponentAtMapPoint ? "Map point hold" : "Stop run";
+    reason = opponentAtMapPoint ? "Opponent can close the map; slow the opener." : `Opponent has ${opponentStreak} straight; stabilize first contact.`;
+    tone = "bad";
+  } else if (scoreGap <= -4 && match.economy !== "ECO") {
+    tactic = "aggressive";
+    label = "Steal tempo";
+    reason = "You are trailing; a faster call can break their defaults.";
+    tone = "bad";
+  } else if (yourStreak >= 3 && moneyGap >= 0) {
+    tactic = "standard";
+    label = "Keep shape";
+    reason = `You have ${yourStreak} straight with stable money.`;
+    tone = "good";
+  } else if (mapGap >= 1.5 && match.economy === "FULL") {
+    tactic = "aggressive";
+    label = "Map edge";
+    reason = `${mapName(match.map)} leans your way (${signedValue(mapGap)}).`;
+    tone = "good";
+  }
+
+  const pressure = Math.min(
+    99,
+    Math.max(
+      8,
+      28 +
+        Math.abs(scoreGap) * 5 +
+        opponentStreak * 8 +
+        (opponentAtMapPoint || youAtMapPoint ? 20 : 0) +
+        (match.economy === "ECO" ? 12 : 0) -
+        (yourStreak >= 3 ? 8 : 0),
+    ),
+  );
+
+  return {
+    tactic,
+    label,
+    reason,
+    tone,
+    pressure,
+    chips: [`${match.economy}/${match.opponentEconomy}`, `streak ${yourStreak}-${opponentStreak}`, signedValue(mapGap)],
+  };
+}
+
+function liveWinThreshold(round: number) {
+  if (round < 25) return 13;
+  return 13 + (Math.floor((round - 25) / 6) + 1) * 3;
 }
 
 function Avatar({ label, accent, photo }: { label: string; accent: string; photo?: string }) {
