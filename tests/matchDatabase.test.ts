@@ -1,8 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { initMatch, playRound, type FieldTeam } from "../src/sim";
-import { eventLogFromMatchState } from "../src/matchEvents";
+import { initMatch, playRound, recalculateHltvStyleRating, type FieldTeam, type PlayerLine } from "../src/sim";
 import { MatchDatabase, memoryStorage, teamRef, type RecordMatchInput } from "../src/matchDatabase";
 import { defaultSettings, difficulties, mapPool, type MapId, type Player, type Role } from "../src/gameData";
 
@@ -50,23 +49,38 @@ test("MatchDatabase: playerCareer folds a canonical player across teams and runs
   assert.equal(career.matches, 2);
   assert.equal(career.teamIds.length, 2); // appeared for two teams
 
-  // career counting stats == sum of the two matches' stored box scores for that player
-  const expected = ["r1", "r2"].reduce(
-    (acc, id) => {
-      const match = db.getMatch(id)!;
-      const ref = match.players.find((entry) => entry.canonicalKey === canonical)!;
-      const line = match.box[ref.id];
-      acc.kills += line.kills;
-      acc.deaths += line.deaths;
-      acc.rounds += line.rounds;
-      return acc;
-    },
-    { kills: 0, deaths: 0, rounds: 0 },
-  );
+  // The career line must equal a manual per-map aggregation of the stored stats — same data, same
+  // rating formula — so the all-time vault agrees with the player card and "career this run" panels.
+  const expected = emptyLine();
+  ["r1", "r2"].forEach((id) => {
+    const match = db.getMatch(id)!;
+    const ref = match.players.find((entry) => entry.canonicalKey === canonical)!;
+    addLine(expected, match.box[ref.id]);
+  });
   assert.equal(career.line.kills, expected.kills);
   assert.equal(career.line.deaths, expected.deaths);
   assert.equal(career.line.rounds, expected.rounds);
+  assert.equal(career.line.adr, expected.adr);
+  assert.equal(career.line.rating, expected.rating);
 });
+
+function emptyLine(): PlayerLine {
+  return { kills: 0, deaths: 0, assists: 0, damage: 0, adr: 0, kastRounds: 0, rounds: 0, impact: 0, firstKills: 0, firstDeaths: 0, multiKills: 0, clutchWins: 0, rating: 1 };
+}
+
+function addLine(target: PlayerLine, incoming: PlayerLine) {
+  target.kills += incoming.kills;
+  target.deaths += incoming.deaths;
+  target.assists += incoming.assists;
+  target.damage += incoming.damage;
+  target.kastRounds += incoming.kastRounds;
+  target.rounds += incoming.rounds;
+  target.firstKills += incoming.firstKills;
+  target.firstDeaths += incoming.firstDeaths;
+  target.multiKills += incoming.multiKills;
+  target.clutchWins += incoming.clutchWins;
+  recalculateHltvStyleRating(target);
+}
 
 test("MatchDatabase: clear empties the store", () => {
   const db = new MatchDatabase(memoryStorage());
@@ -87,7 +101,7 @@ function matchInput(id: string, recordedAt: string, left: FieldTeam, right: Fiel
     leftScore: state.you,
     rightScore: state.opponent,
     winnerId: state.winner === "you" ? left.id : right.id,
-    eventLog: eventLogFromMatchState("inferno", state),
+    stats: { ...state.yourStats, ...state.opponentStats },
   };
 }
 

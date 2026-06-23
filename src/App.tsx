@@ -468,7 +468,7 @@ function recordResultsToDb(results: SwissResult[]) {
         leftScore: map.leftScore,
         rightScore: map.rightScore,
         winnerId: map.winnerId,
-        eventLog: map.eventLog,
+        stats: { ...map.leftStats, ...map.rightStats },
       });
     });
   });
@@ -6233,7 +6233,16 @@ function PlayerDetailPage({
     .filter((m) => m.line);
 
   const total = maps.length;
-  const avgRating = total ? maps.reduce((sum, m) => sum + m.line.rating, 0) / total : 0;
+  // Headline rating = rating of the SUMMED stats (the HLTV career method), so it agrees with the
+  // "Career — this run" and all-time panels instead of averaging per-map ratings.
+  const aggregateLine = (() => {
+    const line = emptyLine();
+    maps.forEach((m) => {
+      if (m.line) addPlayerLine(line, m.line);
+    });
+    return line;
+  })();
+  const avgRating = aggregateLine.rating;
   const mapsWonPct = total ? (maps.filter((m) => m.won).length / total) * 100 : 0;
   const onePlusPct = total ? (maps.filter((m) => m.line.rating >= 1).length / total) * 100 : 0;
   let streak = 0;
@@ -6278,7 +6287,7 @@ function PlayerDetailPage({
         <section className="player-summary-cards">
           <div>
             <strong className={ratingTone(avgRating)}>{avgRating.toFixed(2)}</strong>
-            <span>Avg. Rating</span>
+            <span>Rating</span>
           </div>
           <div>
             <strong>{mapsWonPct.toFixed(1)}%</strong>
@@ -7535,18 +7544,25 @@ function buildPlayerCareer(results: SwissResult[], canonicalKey: string): Player
 
   results.forEach((result) => {
     ([
-      [result.left, result.leftStats],
-      [result.right, result.rightStats],
-    ] as const).forEach(([team, stats]) => {
+      ["left", result.left],
+      ["right", result.right],
+    ] as const).forEach(([sideKey, team]) => {
       team.players.forEach((player) => idToPlayer.set(player.id, player));
       const member = team.players.find((player) => canonicalPlayerKey(player) === canonicalKey);
-      const incoming = member ? stats[member.id] : undefined;
-      if (!member || !incoming) return;
+      if (!member) return;
+      // Sum PER-MAP stats (not the series-level aggregate) so this career line matches the player-card
+      // and all-time vault, which both aggregate per-map lines.
       const stint = stintByTeam.get(team.id) ?? { team, maps: 0, line: emptyLine() };
-      stint.maps += result.maps.length;
-      addPlayerLine(stint.line, incoming);
-      addPlayerLine(line, incoming);
-      stintByTeam.set(team.id, stint);
+      let appeared = false;
+      result.maps.forEach((map) => {
+        const incoming = (sideKey === "left" ? map.leftStats : map.rightStats)?.[member.id];
+        if (!incoming) return;
+        stint.maps += 1;
+        addPlayerLine(stint.line, incoming);
+        addPlayerLine(line, incoming);
+        appeared = true;
+      });
+      if (appeared) stintByTeam.set(team.id, stint);
     });
     result.maps.forEach((map) => {
       if (map.eventLog) logs.push(map.eventLog);

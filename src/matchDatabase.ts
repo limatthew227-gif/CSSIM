@@ -1,6 +1,5 @@
 import type { MapId, Player, Role } from "./gameData";
 import type { MatchEventLog } from "./matchEvents";
-import { boxScoreFromEventLog } from "./eventSourcing";
 import { canonicalPlayerKey, playerVersionKey } from "./playerIdentity";
 import { recalculateHltvStyleRating, type PlayerLine } from "./sim";
 
@@ -71,7 +70,11 @@ export interface RecordMatchInput {
   leftScore: number;
   rightScore: number;
   winnerId: string;
-  eventLog: MatchEventLog;
+  // The authoritative live PlayerLine stats keyed by per-match player id (both teams). We store these
+  // verbatim — NOT a re-derivation — so a player's all-time line matches exactly what the rest of the
+  // app shows for the same maps. The event log is optional (replay payload), not the stat source.
+  stats: Record<string, PlayerLine>;
+  eventLog?: MatchEventLog;
   keepEventLog?: boolean;
 }
 
@@ -124,11 +127,16 @@ export class MatchDatabase {
   }
 
   recordMatch(input: RecordMatchInput): MatchRecord {
-    const box = boxScoreFromEventLog(input.eventLog, input.left.players, input.right.players);
     const players: StoredPlayerRef[] = [
       ...input.left.players.map((player) => playerRef(player, "left", input.left.team.id)),
       ...input.right.players.map((player) => playerRef(player, "right", input.right.team.id)),
     ];
+    // Keep only the lines for players actually in this match.
+    const box: Record<string, PlayerLine> = {};
+    players.forEach((ref) => {
+      const line = input.stats[ref.id];
+      if (line) box[ref.id] = line;
+    });
     const record: MatchRecord = {
       id: input.id,
       recordedAt: input.recordedAt,
@@ -141,7 +149,7 @@ export class MatchDatabase {
       rightScore: input.rightScore,
       winnerId: input.winnerId,
       players,
-      box: { ...box.left, ...box.right },
+      box,
       eventLog: input.keepEventLog ? input.eventLog : undefined,
     };
 
