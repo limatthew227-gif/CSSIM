@@ -96,12 +96,16 @@ export interface CareerMeta {
   potential: number; // the OVR ceiling this player can develop toward
 }
 
-// Synthesised when a player joins your career (no real birthdates in the dataset). Younger players get
-// more headroom toward a higher ceiling; veterans are at or near their peak.
-export function rollCareerMeta(ovr: number, rng: () => number = Math.random): CareerMeta {
-  const age = 18 + Math.floor(rng() * 15); // 18..32
-  const headroom = age <= 20 ? 6 : age <= 23 ? 4 : age <= 26 ? 3 : age <= 29 ? 1 : 0;
-  return { age, potential: Math.min(OVR_CAP, ovr + headroom) };
+// Potential headroom by age: younger players can develop toward a higher ceiling, veterans are at peak.
+function potentialHeadroom(age: number): number {
+  return age <= 20 ? 6 : age <= 23 ? 4 : age <= 26 ? 3 : age <= 29 ? 1 : 0;
+}
+
+// Career meta when a player joins your roster. Uses the player's real (Liquipedia-derived, era-adjusted)
+// age when known; otherwise synthesises one (e.g. custom-team players with no birth year on record).
+export function rollCareerMeta(ovr: number, knownAge?: number, rng: () => number = Math.random): CareerMeta {
+  const age = knownAge ?? 18 + Math.floor(rng() * 15); // 18..32
+  return { age, potential: Math.min(OVR_CAP, ovr + potentialHeadroom(age)) };
 }
 
 // The HLTV-style rating a player of this OVR is "supposed" to put up. Beating it trends their OVR up,

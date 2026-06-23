@@ -51,12 +51,16 @@ test("placementTier maps run end-state to a finish", () => {
 });
 
 test("rollCareerMeta: younger players get more headroom toward a higher potential", () => {
-  const young = rollCareerMeta(80, () => 0); // age 18 -> +6
-  const old = rollCareerMeta(80, () => 0.99); // age ~32 -> +0
+  const young = rollCareerMeta(80, undefined, () => 0); // age 18 -> +6
+  const old = rollCareerMeta(80, undefined, () => 0.99); // age ~32 -> +0
   assert.ok(young.age < old.age);
   assert.ok(young.potential > old.potential);
   assert.equal(old.potential, 80, "a veteran is at his ceiling");
-  assert.ok(rollCareerMeta(95, () => 0).potential <= 96, "global cap respected");
+  assert.ok(rollCareerMeta(95, undefined, () => 0).potential <= 96, "global cap respected");
+  // A known (real) age is used verbatim rather than randomised.
+  assert.equal(rollCareerMeta(82, 19).age, 19);
+  assert.equal(rollCareerMeta(82, 19).potential, 88); // 19 -> +6
+  assert.equal(rollCareerMeta(82, 31).potential, 82); // veteran -> no headroom
 });
 
 test("expectedRating rises with OVR", () => {
