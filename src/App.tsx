@@ -2511,6 +2511,7 @@ function App() {
               disabled={Boolean(veto.ready || veto.pendingOpponent)}
               onApply={(map) => ban(map)}
             />
+            <ScoutingReport you={yourTeam} opponent={opponent} settings={settings} />
             <div className="map-edges">
               {mapPool
                 .map((map) => ({ ...map, edge: mapEdge(yourTeam, opponent, map.id, settings) }))
@@ -5014,6 +5015,149 @@ function PaperStrengthCard({
         <em>Coach {signedValue(breakdown.coach)}</em>
         {breakdown.difficulty !== 0 && <em>Diff {signedValue(breakdown.difficulty)}</em>}
       </div>
+    </div>
+  );
+}
+
+interface ScoutMapRow {
+  map: MapId;
+  name: string;
+  oppStrength: number; // 0–100, opponent's avg per-player rating on this map
+  yourEdge: number; // mapEdge — positive means you're favoured
+  vaultRecord?: { wins: number; losses: number }; // opponent's real all-time W-L on this map, if known
+}
+
+interface ScoutReport {
+  opponent: FieldTeam;
+  maps: ScoutMapRow[]; // sorted by opponent strength, descending
+  comfort: MapId[]; // their best maps
+  weak: MapId[]; // their worst maps
+  star: Player;
+  starRating?: number; // their star's all-time Vault rating, if recorded
+  form?: { streak: { type: "W" | "L"; count: number } | null; last5: Array<"W" | "L"> };
+  headToHead?: { wins: number; losses: number }; // YOUR record vs them
+  banSuggestion: MapId; // their strongest map
+  targetSuggestion: MapId; // where you hold the biggest edge
+}
+
+// Build an opponent dossier from always-available roster data, enriched with Vault history when you've
+// faced them before. Pure read — no UI.
+function buildScoutingReport(you: FieldTeam, opponent: FieldTeam, settings: CustomSettings): ScoutReport {
+  const db = getMatchDb();
+  const oppVault = db.teamProfile(opponent.id);
+  const youVault = db.teamProfile(you.id);
+
+  const maps: ScoutMapRow[] = mapPool
+    .map((map) => {
+      const oppStrength = opponent.players.reduce((sum, player) => sum + (player.maps[map.id] ?? 0), 0) / Math.max(1, opponent.players.length);
+      const record = oppVault?.byMap.find((entry) => entry.map === map.id);
+      return {
+        map: map.id,
+        name: map.name,
+        oppStrength,
+        yourEdge: mapEdge(you, opponent, map.id, settings),
+        vaultRecord: record ? { wins: record.wins, losses: record.losses } : undefined,
+      };
+    })
+    .sort((a, b) => b.oppStrength - a.oppStrength);
+
+  const star = [...opponent.players].sort((a, b) => b.ovr - a.ovr)[0];
+  const targetSuggestion = [...maps].sort((a, b) => b.yourEdge - a.yourEdge)[0].map;
+
+  return {
+    opponent,
+    maps,
+    comfort: maps.slice(0, 2).map((m) => m.map),
+    weak: maps.slice(-2).map((m) => m.map),
+    star,
+    starRating: oppVault?.roster.find((row) => row.handle === star.handle)?.line.rating,
+    form: oppVault ? { streak: oppVault.streak, last5: oppVault.history.slice(0, 5).map((h) => (h.won ? "W" : "L")) } : undefined,
+    headToHead: youVault?.headToHead.find((h) => h.team.id === opponent.id),
+    banSuggestion: maps[0].map,
+    targetSuggestion,
+  };
+}
+
+// Opt-in opponent scouting report on the veto screen (behind a "Scout" button).
+function ScoutingReport({ you, opponent, settings }: { you: FieldTeam; opponent: FieldTeam; settings: CustomSettings }) {
+  const [open, setOpen] = useState(false);
+  const report = useMemo(() => (open ? buildScoutingReport(you, opponent, settings) : null), [open, you, opponent, settings]);
+  const maxStrength = report ? Math.max(...report.maps.map((m) => m.oppStrength), 1) : 1;
+  const photo = report ? playerPhoto(report.star.handle) : undefined;
+
+  return (
+    <div className="scout-card">
+      <button type="button" className="scout-toggle" aria-expanded={open} onClick={() => setOpen((value) => !value)}>
+        <Search size={15} />
+        {open ? "Hide scouting report" : `Scout ${opponent.name}`}
+      </button>
+      {open && report && (
+        <div className="scout-body">
+          <p className="scout-tip">
+            Ban <b>{mapName(report.banSuggestion)}</b> (their best); steer toward <b>{mapName(report.targetSuggestion)}</b> (your biggest edge).
+          </p>
+
+          <div className="scout-section-title">Map threat board</div>
+          <div className="scout-maps">
+            {report.maps.map((row) => (
+              <div className="scout-map-row" key={row.map}>
+                <span className="scout-map-name">
+                  {row.name}
+                  {report.comfort.includes(row.map) && <em className="scout-flag comfort">comfort</em>}
+                  {report.weak.includes(row.map) && <em className="scout-flag weak">weak</em>}
+                </span>
+                <span className="scout-bar-track">
+                  <span className="scout-bar" style={{ width: `${(row.oppStrength / maxStrength) * 100}%` }} />
+                </span>
+                <span className={`scout-edge ${row.yourEdge >= 0 ? "good" : "bad"}`}>{fmtDiff(Math.round(row.yourEdge))}</span>
+                {row.vaultRecord && (
+                  <span className="scout-map-rec">
+                    {row.vaultRecord.wins}-{row.vaultRecord.losses}
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+
+          <div className="scout-section-title">Watch out for</div>
+          <div className="scout-star">
+            {photo && <img className="scout-star-face" src={photo} alt={report.star.handle} loading="lazy" />}
+            <Flag country={report.star.country} />
+            <div className="scout-star-id">
+              <strong>{report.star.handle}</strong>
+              <span>{report.star.role} · OVR {report.star.ovr}{report.starRating ? ` · ${report.starRating.toFixed(2)} vault` : ""}</span>
+            </div>
+          </div>
+
+          <div className="scout-foot">
+            <div>
+              <span className="scout-foot-label">Recent form</span>
+              {report.form && report.form.last5.length ? (
+                <span className="scout-form">
+                  {report.form.last5.map((result, index) => (
+                    <em key={index} className={result === "W" ? "good" : "bad"}>
+                      {result}
+                    </em>
+                  ))}
+                  {report.form.streak && <small>{report.form.streak.count}{report.form.streak.type} streak</small>}
+                </span>
+              ) : (
+                <span className="scout-none">no prior matches</span>
+              )}
+            </div>
+            <div>
+              <span className="scout-foot-label">Head-to-head</span>
+              {report.headToHead ? (
+                <span className="scout-h2h">
+                  <b className="good">{report.headToHead.wins}</b>–<b className="bad">{report.headToHead.losses}</b> for you
+                </span>
+              ) : (
+                <span className="scout-none">first meeting</span>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
