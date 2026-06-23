@@ -8284,17 +8284,42 @@ input[type="range"] {
 
 .vault-leader-list {
   display: grid;
-  gap: 3px;
+  grid-template-columns: repeat(auto-fit, minmax(330px, 1fr));
+  gap: 3px 12px;
+  align-content: start;
 }
 
 .vault-leader-row {
   display: grid;
-  grid-template-columns: 26px 24px 22px 1fr auto auto;
+  grid-template-columns: 24px 22px 1fr auto;
   align-items: center;
   gap: 8px;
   padding: 5px 8px;
   border-radius: 8px;
   background: #151a20;
+}
+
+/* Identity block: handle on top, the "N maps · rating" sub directly beneath — a compact left cluster
+   so the stat value sits close beside it instead of across a wide empty row. */
+.vault-leader-id {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+
+.vault-leader-id strong {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  color: #fff;
+  font-size: 13px;
+}
+
+.vault-leader-id strong .vault-handle {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .vault-leader-row.medal {
@@ -8358,7 +8383,6 @@ input[type="range"] {
   color: var(--muted);
   font-size: 10px;
   font-weight: 700;
-  text-align: right;
 }
 
 .vault-stat-val {

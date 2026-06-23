@@ -5861,14 +5861,16 @@ function VaultPage({ onBack, onOpenReplay }: { onBack: () => void; onOpenReplay:
                   ) : (
                     <span className="vault-face placeholder" aria-hidden="true" />
                   )}
-                  <Flag country={player.country} />
-                  <strong>
-                    {player.handle}
-                    {player.year && <em className="vault-era">'{player.year.slice(-2)}</em>}
-                  </strong>
-                  <span className="vault-sub">
-                    {player.matches} map{player.matches === 1 ? "" : "s"} · {player.line.rating.toFixed(2)} rating
-                  </span>
+                  <div className="vault-leader-id">
+                    <strong>
+                      <Flag country={player.country} />
+                      <span className="vault-handle">{player.handle}</span>
+                      {player.year && <em className="vault-era">'{player.year.slice(-2)}</em>}
+                    </strong>
+                    <span className="vault-sub">
+                      {player.matches} map{player.matches === 1 ? "" : "s"} · {player.line.rating.toFixed(2)} rating
+                    </span>
+                  </div>
                   <b className="vault-stat-val">{stat.fmt(player.line)}</b>
                 </div>
               );
