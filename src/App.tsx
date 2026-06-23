@@ -195,7 +195,7 @@ const BUY_CALL_OPTIONS: Array<{ id: BuyCall; label: string }> = [
   { id: "save", label: "Save" },
 ];
 
-type Screen = "setup" | "teams" | "draft" | "coach" | "swiss" | "playoffs" | "veto" | "match" | "result" | "stats" | "results" | "series-detail" | "player-detail" | "team-detail" | "balance-lab" | "vault" | "vault-replay" | "vault-team";
+type Screen = "setup" | "teams" | "draft" | "coach" | "swiss" | "playoffs" | "veto" | "match" | "result" | "stats" | "results" | "series-detail" | "player-detail" | "team-detail" | "balance-lab" | "vault" | "vault-replay" | "vault-team" | "compare";
 type Mode = "classic" | "blind" | "random" | "spectator";
 type RunKind = "player" | "spectator";
 type SwissRecord = { wins: number; losses: number };
@@ -694,6 +694,7 @@ function App() {
   const [detailTeam, setDetailTeam] = useState<FieldTeam | null>(null);
   const [vaultReplayId, setVaultReplayId] = useState<string | null>(null); // match id opened from the Vault
   const [vaultTeamId, setVaultTeamId] = useState<string | null>(null); // team id opened from the Vault standings
+  const [compareAId, setCompareAId] = useState<string | null>(null); // player A pre-filled when opening Compare
   const [navStack, setNavStack] = useState<Screen[]>([]); // back-stack for the detail pages
   const [statsScope, setStatsScope] = useState<StatsScope>("all");
   const [record, setRecord] = useState({ wins: 0, losses: 0 });
@@ -714,6 +715,7 @@ function App() {
   const builtInRosterCount = hltvTop20Rosters.length;
   const rosterPool = useMemo(() => [...hltvTop20Rosters, ...customRosters], [customRosters]);
   const labTeams = useMemo(() => rosterPool.map(toTournamentTeam), [rosterPool]);
+  const comparePool = useMemo(() => rosterPool.flatMap((roster) => roster.players.map((player) => ({ player, team: roster }))), [rosterPool]);
   const coachPool = useMemo(() => hltvTop20Coaches, []);
   const visibleCoachOptions = coachOptions.length ? coachOptions : coachPool.slice(0, COACH_SHORTLIST_SIZE);
   const activeCall = parseTactic(tactic);
@@ -2339,8 +2341,14 @@ function App() {
           onBack={goBackScreen}
           onOpenSeries={openSeriesResult}
           onOpenTeam={openTeamDetail}
+          onCompare={(p) => {
+            setCompareAId(p.id);
+            pushScreen("compare");
+          }}
         />
       )}
+
+      {screen === "compare" && <ComparePage pool={comparePool} initialAId={compareAId} onBack={goBackScreen} />}
 
       {screen === "team-detail" && detailTeam && (
         <TeamDetailPage
@@ -7377,6 +7385,222 @@ function PlayerCareerPanel({
   );
 }
 
+// ---- Player comparison ---------------------------------------------------------------------------
+
+interface CompareEntry {
+  player: Player;
+  team: Roster;
+}
+
+const RADAR_AXES: Array<{ key: keyof PlayerStats; label: string }> = [
+  { key: "aim", label: "AIM" },
+  { key: "awp", label: "AWP" },
+  { key: "clutch", label: "CLUTCH" },
+  { key: "consistency", label: "CONSIST" },
+  { key: "igl", label: "IGL" },
+];
+
+// A 5-axis radar of the two players' attributes, overlaid in their team accents.
+function StatRadar({ a, b }: { a: { stats: PlayerStats; accent: string }; b: { stats: PlayerStats; accent: string } }) {
+  const cx = 50;
+  const cy = 52;
+  const R = 33;
+  const N = RADAR_AXES.length;
+  const ang = (i: number) => -Math.PI / 2 + (i * 2 * Math.PI) / N;
+  const norm = (v: number) => Math.max(0, Math.min(1, (v - 40) / 59)); // 40..99 -> 0..1
+  const pt = (i: number, f: number) => [cx + R * f * Math.cos(ang(i)), cy + R * f * Math.sin(ang(i))] as const;
+  const poly = (stats: PlayerStats) => RADAR_AXES.map((axis, i) => pt(i, norm(stats[axis.key])).map((n) => n.toFixed(2)).join(",")).join(" ");
+  const ring = (f: number) => RADAR_AXES.map((_, i) => pt(i, f).map((n) => n.toFixed(2)).join(",")).join(" ");
+
+  return (
+    <svg viewBox="0 0 100 100" className="stat-radar" role="img" aria-label="Attribute radar">
+      {[0.25, 0.5, 0.75, 1].map((f) => (
+        <polygon key={f} points={ring(f)} className="radar-grid" />
+      ))}
+      {RADAR_AXES.map((_, i) => {
+        const [x, y] = pt(i, 1);
+        return <line key={i} x1={cx} y1={cy} x2={x.toFixed(2)} y2={y.toFixed(2)} className="radar-axis" />;
+      })}
+      <polygon points={poly(b.stats)} className="radar-poly" style={{ "--c": b.accent } as React.CSSProperties} />
+      <polygon points={poly(a.stats)} className="radar-poly" style={{ "--c": a.accent } as React.CSSProperties} />
+      {RADAR_AXES.map((axis, i) => {
+        const [x, y] = pt(i, 1.2);
+        return (
+          <text key={axis.key} x={x.toFixed(2)} y={y.toFixed(2)} className="radar-label">
+            {axis.label}
+          </text>
+        );
+      })}
+    </svg>
+  );
+}
+
+function ComparePicker({ value, pool, onChange }: { value: string; pool: CompareEntry[]; onChange: (id: string) => void }) {
+  const groups = new Map<string, CompareEntry[]>();
+  pool.forEach((entry) => {
+    const list = groups.get(entry.team.id) ?? [];
+    list.push(entry);
+    groups.set(entry.team.id, list);
+  });
+  return (
+    <select className="compare-select" value={value} onChange={(event) => onChange(event.target.value)} aria-label="Pick a player">
+      {[...groups.values()].map((group) => (
+        <optgroup key={group[0].team.id} label={group[0].team.name}>
+          {group.map((entry) => (
+            <option key={entry.player.id} value={entry.player.id}>
+              {entry.player.handle} ({entry.player.ovr})
+            </option>
+          ))}
+        </optgroup>
+      ))}
+    </select>
+  );
+}
+
+function ComparePage({ pool, initialAId, onBack }: { pool: CompareEntry[]; initialAId: string | null; onBack: () => void }) {
+  const fallbackA = initialAId ?? pool[0]?.player.id ?? "";
+  const [aId, setAId] = useState(fallbackA);
+  const [bId, setBId] = useState(() => pool.find((entry) => entry.player.id !== fallbackA)?.player.id ?? fallbackA);
+  useEffect(() => {
+    if (initialAId) setAId(initialAId);
+  }, [initialAId]);
+
+  const db = useMemo(() => getMatchDb(), []);
+  const a = pool.find((entry) => entry.player.id === aId) ?? pool[0];
+  const b = pool.find((entry) => entry.player.id === bId) ?? pool[0];
+  const aCareer = a ? db.playerCareer(playerVersionKey(a.player)) : undefined;
+  const bCareer = b ? db.playerCareer(playerVersionKey(b.player)) : undefined;
+
+  if (!a || !b) {
+    return (
+      <main className="layout fullscreen-page">
+        <section className="fullscreen-head">
+          <div>
+            <div className="section-title">
+              <Users size={18} />
+              <span>Compare</span>
+            </div>
+            <h1>No players to compare</h1>
+          </div>
+          <button className="secondary" onClick={onBack}>
+            <ArrowLeft size={16} />
+            Back
+          </button>
+        </section>
+      </main>
+    );
+  }
+
+  const statRows: Array<{ label: string; a: number; b: number; dp?: number }> = [
+    { label: "Overall", a: a.player.ovr, b: b.player.ovr },
+    ...RADAR_AXES.map((axis) => ({ label: axis.label.charAt(0) + axis.label.slice(1).toLowerCase(), a: a.player.stats[axis.key], b: b.player.stats[axis.key] })),
+  ];
+  const careerRows: Array<{ label: string; a: number; b: number; dp?: number }> =
+    aCareer && bCareer
+      ? [
+          { label: "Vault rating", a: aCareer.line.rating, b: bCareer.line.rating, dp: 2 },
+          { label: "K–D diff", a: aCareer.line.kills - aCareer.line.deaths, b: bCareer.line.kills - bCareer.line.deaths },
+          { label: "ADR", a: aCareer.line.adr, b: bCareer.line.adr, dp: 0 },
+          { label: "Maps", a: aCareer.matches, b: bCareer.matches },
+        ]
+      : [];
+  const fmt = (value: number, dp = 0) => value.toFixed(dp);
+  const aPhoto = playerPhoto(a.player.handle);
+  const bPhoto = playerPhoto(b.player.handle);
+
+  const head = (entry: CompareEntry, photo: string | undefined, onChange: (id: string) => void, value: string) => (
+    <div className="compare-slot" style={{ "--crest": entry.team.accent } as React.CSSProperties}>
+      {photo && <img className="compare-face" src={photo} alt={entry.player.handle} loading="lazy" />}
+      <div className="compare-id">
+        <strong>
+          <Flag country={entry.player.country} /> {entry.player.handle}
+        </strong>
+        <span>
+          {entry.team.tag} · {entry.player.role} · OVR {entry.player.ovr}
+        </span>
+      </div>
+      <ComparePicker value={value} pool={pool} onChange={onChange} />
+    </div>
+  );
+
+  return (
+    <main className="layout fullscreen-page compare-page">
+      <section className="fullscreen-head">
+        <div>
+          <div className="section-title">
+            <Users size={18} />
+            <span>Compare players</span>
+          </div>
+          <h1>
+            {a.player.handle} <em>vs</em> {b.player.handle}
+          </h1>
+        </div>
+        <button className="secondary" onClick={onBack}>
+          <ArrowLeft size={16} />
+          Back
+        </button>
+      </section>
+
+      <div className="compare-heads">
+        {head(a, aPhoto, setAId, aId)}
+        {head(b, bPhoto, setBId, bId)}
+      </div>
+
+      <section className="compare-card">
+        <div className="section-title">
+          <Target size={18} />
+          <span>Attributes</span>
+        </div>
+        <StatRadar a={{ stats: a.player.stats, accent: a.team.accent }} b={{ stats: b.player.stats, accent: b.team.accent }} />
+        <div className="radar-legend">
+          <span style={{ color: a.team.accent }}>● {a.player.handle}</span>
+          <span style={{ color: b.team.accent }}>● {b.player.handle}</span>
+        </div>
+      </section>
+
+      <section className="compare-card">
+        <div className="section-title">
+          <Award size={18} />
+          <span>Numbers{careerRows.length ? "" : " · play both to unlock Vault stats"}</span>
+        </div>
+        <table className="compare-table">
+          <tbody>
+            {[...statRows, ...careerRows].map((row) => (
+              <tr key={row.label}>
+                <td className={row.a > row.b ? "win" : ""}>{fmt(row.a, row.dp)}</td>
+                <th>{row.label}</th>
+                <td className={row.b > row.a ? "win" : ""}>{fmt(row.b, row.dp)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </section>
+
+      <section className="compare-card">
+        <div className="section-title">
+          <Gauge size={18} />
+          <span>Map strengths</span>
+        </div>
+        <table className="compare-table">
+          <tbody>
+            {mapPool.map((map) => {
+              const av = a.player.maps[map.id] ?? 0;
+              const bv = b.player.maps[map.id] ?? 0;
+              return (
+                <tr key={map.id}>
+                  <td className={av > bv ? "win" : ""}>{av}</td>
+                  <th>{map.name}</th>
+                  <td className={bv > av ? "win" : ""}>{bv}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </section>
+    </main>
+  );
+}
+
 function PlayerDetailPage({
   player,
   team,
@@ -7384,6 +7608,7 @@ function PlayerDetailPage({
   onBack,
   onOpenSeries,
   onOpenTeam,
+  onCompare,
 }: {
   player: Player;
   team: FieldTeam;
@@ -7391,6 +7616,7 @@ function PlayerDetailPage({
   onBack: () => void;
   onOpenSeries: (id: string) => void;
   onOpenTeam: (team: FieldTeam) => void;
+  onCompare?: (player: Player) => void;
 }) {
   // one row per MAP the player featured in (HLTV-style match history), in chronological order
   const maps = results
@@ -7458,10 +7684,18 @@ function PlayerDetailPage({
             </p>
           </div>
         </div>
-        <button className="secondary" onClick={onBack}>
-          <ArrowLeft size={16} />
-          Back
-        </button>
+        <div className="fullscreen-actions">
+          {onCompare && (
+            <button className="secondary" onClick={() => onCompare(player)}>
+              <Users size={16} />
+              Compare
+            </button>
+          )}
+          <button className="secondary" onClick={onBack}>
+            <ArrowLeft size={16} />
+            Back
+          </button>
+        </div>
       </section>
 
       {total > 0 && (
