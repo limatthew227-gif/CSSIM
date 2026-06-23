@@ -1581,7 +1581,7 @@ function App() {
     const ratings = majorPlayerRatings(matchResults);
     const summary: Array<{ handle: string; before: number; after: number; iglDelta: number }> = [];
     const developed = selected.map((player) => {
-      const meta = player.potential != null && player.age != null ? { age: player.age, potential: player.potential } : rollCareerMeta(player.ovr);
+      const meta = player.potential != null && player.age != null ? { age: player.age, potential: player.potential } : rollCareerMeta(player.ovr, player.age);
       const rating = ratings.get(player.id) ?? expectedRating(player.ovr); // no data -> treat as par (no change)
       const dev = developPlayer({ player, rating, placement: tier, potential: meta.potential });
       summary.push({ handle: player.handle, before: player.ovr, after: dev.ovr, iglDelta: dev.iglDelta });
@@ -1693,6 +1693,15 @@ function App() {
   }
 
   function buildRunSnapshot(): RunSnapshot {
+    // Strip the heavy replay data from the persisted snapshot: per-map event logs and the live match's
+    // position timeline / feed buffers. The Vault is the canonical replay store (keyed by match id), so
+    // duplicating it here would balloon every save/autosave and starve the Vault out of its localStorage
+    // quota — which empties it over a few Majors. Resume keeps full scores, box stats, and structure.
+    const slimResults = matchResults.map((result) => ({
+      ...result,
+      maps: result.maps.map((mapResult) => ({ ...mapResult, eventLog: undefined })),
+    }));
+    const slimMatch = match ? { ...match, eventFeed: undefined, roundTimeline: undefined, feed: [], pendingEvents: undefined } : undefined;
     return {
       settings,
       screen,
@@ -1716,7 +1725,7 @@ function App() {
       swissRecords,
       spectatorSwissRound,
       playedOpponentIds,
-      matchResults,
+      matchResults: slimResults,
       selectedResultId,
       statsScope,
       record,
@@ -1727,7 +1736,7 @@ function App() {
       achievements,
       playerForm,
       veto,
-      match,
+      match: slimMatch,
       series,
       speed,
       tactic,

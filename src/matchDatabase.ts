@@ -301,10 +301,17 @@ export class MatchDatabase {
     try {
       this.write({ schemaVersion: SCHEMA_VERSION, matches: next });
     } catch {
+      // Out of quota. Replay logs are cosmetic and the heaviest thing the Vault owns — drop them to make
+      // room and keep the FULL match registry (stats/leaderboards) before sacrificing any records.
       try {
-        this.write({ schemaVersion: SCHEMA_VERSION, matches: next.slice(-Math.floor(next.length / 2)) });
+        this.storage.removeItem(this.logKey);
+        this.write({ schemaVersion: SCHEMA_VERSION, matches: next });
       } catch {
-        /* give up — keep whatever was already persisted */
+        try {
+          this.write({ schemaVersion: SCHEMA_VERSION, matches: next.slice(-Math.floor(next.length / 2)) });
+        } catch {
+          /* give up — keep whatever was already persisted */
+        }
       }
     }
     inputs.forEach((input, index) => {
