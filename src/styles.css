@@ -9118,3 +9118,199 @@ input[type="range"] {
   font-variant-numeric: tabular-nums;
   cursor: pointer;
 }
+
+/* Vault team profile -------------------------------------------------------- */
+.vault-team-page .good {
+  color: var(--green);
+}
+
+.vault-team-page .bad {
+  color: #ff8d8d;
+}
+
+/* Clickable team in the standings table */
+.vault-team-tr:hover {
+  background: color-mix(in srgb, var(--accent), transparent 92%);
+}
+
+.vault-team-link {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.vault-team-link b {
+  color: #fff;
+}
+
+.vault-team-link span {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.vault-team-link:hover b {
+  color: var(--accent);
+}
+
+.team-map-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.team-map-chip {
+  display: grid;
+  gap: 1px;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #151a20;
+  text-align: center;
+}
+
+.team-map-chip b {
+  color: #fff;
+  font-size: 12px;
+}
+
+.team-map-chip em {
+  font-style: normal;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.team-roster-table td:first-child {
+  text-align: left;
+}
+
+.team-roster-table .vault-team-cell {
+  align-items: center;
+}
+
+.team-roster-table .vault-team-cell .flat-flag {
+  width: 16px;
+  height: 11px;
+  border-radius: 2px;
+  flex: none;
+}
+
+.team-roster-table .vault-team-cell b {
+  color: #fff;
+}
+
+.team-roster-table .vault-team-cell span {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.team-mvp-badge {
+  padding: 0 5px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--gold), transparent 76%);
+  color: var(--gold);
+  font-size: 8px;
+  font-weight: 950;
+  font-style: normal;
+  letter-spacing: 0.04em;
+}
+
+.team-h2h-list {
+  display: grid;
+  gap: 3px;
+}
+
+.team-h2h-row {
+  display: flex;
+  align-items: stretch;
+  gap: 3px;
+}
+
+.team-h2h-main {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: #151a20;
+  color: #cfd7e2;
+  cursor: pointer;
+  text-align: left;
+}
+
+.team-h2h-row.active .team-h2h-main,
+.team-h2h-main:hover {
+  border-color: color-mix(in srgb, var(--accent), transparent 55%);
+}
+
+.team-h2h-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+}
+
+.team-h2h-name b {
+  color: #fff;
+}
+
+.team-h2h-name span {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.team-h2h-rec {
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+}
+
+.team-h2h-go {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #151a20;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.team-h2h-go:hover {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent), transparent 55%);
+}
+
+.team-match-row {
+  grid-template-columns: 40px 22px auto 1fr 22px;
+}
+
+.team-match-result {
+  font-weight: 950;
+  text-align: center;
+}
+
+.team-match-result.won {
+  color: var(--green);
+}
+
+.team-match-result.lost {
+  color: #ff8d8d;
+}
+
+.team-match-opp {
+  color: var(--muted);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

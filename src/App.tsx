@@ -194,7 +194,7 @@ const BUY_CALL_OPTIONS: Array<{ id: BuyCall; label: string }> = [
   { id: "save", label: "Save" },
 ];
 
-type Screen = "setup" | "teams" | "draft" | "coach" | "swiss" | "playoffs" | "veto" | "match" | "result" | "stats" | "results" | "series-detail" | "player-detail" | "team-detail" | "balance-lab" | "vault" | "vault-replay";
+type Screen = "setup" | "teams" | "draft" | "coach" | "swiss" | "playoffs" | "veto" | "match" | "result" | "stats" | "results" | "series-detail" | "player-detail" | "team-detail" | "balance-lab" | "vault" | "vault-replay" | "vault-team";
 type Mode = "classic" | "blind" | "random" | "spectator";
 type RunKind = "player" | "spectator";
 type SwissRecord = { wins: number; losses: number };
@@ -691,6 +691,7 @@ function App() {
   const [detailPlayer, setDetailPlayer] = useState<{ player: Player; team: FieldTeam } | null>(null);
   const [detailTeam, setDetailTeam] = useState<FieldTeam | null>(null);
   const [vaultReplayId, setVaultReplayId] = useState<string | null>(null); // match id opened from the Vault
+  const [vaultTeamId, setVaultTeamId] = useState<string | null>(null); // team id opened from the Vault standings
   const [navStack, setNavStack] = useState<Screen[]>([]); // back-stack for the detail pages
   const [statsScope, setStatsScope] = useState<StatsScope>("all");
   const [record, setRecord] = useState({ wins: 0, losses: 0 });
@@ -2366,6 +2367,10 @@ function App() {
             setVaultReplayId(id);
             pushScreen("vault-replay");
           }}
+          onOpenTeam={(id) => {
+            setVaultTeamId(id);
+            pushScreen("vault-team");
+          }}
         />
       )}
 
@@ -2374,6 +2379,21 @@ function App() {
           match={vaultReplayId ? getMatchDb().getMatch(vaultReplayId) : undefined}
           log={vaultReplayId ? getMatchDb().getEventLog(vaultReplayId) : undefined}
           onBack={goBackScreen}
+        />
+      )}
+
+      {screen === "vault-team" && (
+        <VaultTeamPage
+          teamId={vaultTeamId}
+          onBack={goBackScreen}
+          onOpenReplay={(id) => {
+            setVaultReplayId(id);
+            pushScreen("vault-replay");
+          }}
+          onOpenTeam={(id) => {
+            setVaultTeamId(id);
+            pushScreen("vault-team");
+          }}
         />
       )}
 
@@ -5687,7 +5707,242 @@ const SIDE_FILTERS: Array<{ key: StatsSideFilter; label: string }> = [
   { key: "T", label: "T" },
 ];
 
-function VaultPage({ onBack, onOpenReplay }: { onBack: () => void; onOpenReplay: (matchId: string) => void }) {
+// A team's all-time profile from the Vault: record + streak, per-map W-L, roster ranked by per-team
+// rating (with an MVP), head-to-head vs each opponent, and a replayable match history.
+function VaultTeamPage({
+  teamId,
+  onBack,
+  onOpenReplay,
+  onOpenTeam,
+}: {
+  teamId: string | null;
+  onBack: () => void;
+  onOpenReplay: (matchId: string) => void;
+  onOpenTeam: (teamId: string) => void;
+}) {
+  const db = useMemo(() => getMatchDb(), []);
+  const profile = useMemo(() => (teamId ? db.teamProfile(teamId) : undefined), [db, teamId]);
+  const replayIds = useMemo(() => db.eventLogIds(), [db]);
+  const [vsFilter, setVsFilter] = useState<string | null>(null);
+
+  useEffect(() => {
+    setVsFilter(null); // reset the head-to-head filter when navigating to a different team
+  }, [teamId]);
+
+  if (!profile) {
+    return (
+      <main className="layout fullscreen-page">
+        <section className="fullscreen-head">
+          <div>
+            <div className="section-title">
+              <Shield size={18} />
+              <span>Team</span>
+            </div>
+            <h1>No saved matches for this team</h1>
+          </div>
+          <button className="secondary" onClick={onBack}>
+            <ArrowLeft size={16} />
+            Back
+          </button>
+        </section>
+      </main>
+    );
+  }
+
+  const winPct = profile.matches ? (profile.wins / profile.matches) * 100 : 0;
+  const mvp = profile.roster[0];
+  const history = vsFilter ? profile.history.filter((row) => row.opponent.id === vsFilter) : profile.history;
+
+  return (
+    <main className="layout fullscreen-page vault-page vault-team-page" style={{ "--crest": profile.team.accent } as React.CSSProperties}>
+      <section className="fullscreen-head">
+        <div>
+          <div className="section-title">
+            <Shield size={18} />
+            <span>Team profile</span>
+          </div>
+          <h1>
+            {profile.team.name}
+            {profile.team.year && <em className="vault-era">'{profile.team.year.slice(-2)}</em>}
+          </h1>
+          <p>
+            {profile.wins}–{profile.losses} · {winPct.toFixed(0)}% win rate · {profile.matches} maps
+            {profile.streak ? ` · ${profile.streak.count}${profile.streak.type} streak` : ""}
+          </p>
+        </div>
+        <button className="secondary" onClick={onBack}>
+          <ArrowLeft size={16} />
+          Back
+        </button>
+      </section>
+
+      <section className="vault-hero">
+        <div className="vault-hero-tile">
+          <strong>
+            {profile.wins}-{profile.losses}
+          </strong>
+          <span>Record</span>
+        </div>
+        <div className="vault-hero-tile">
+          <strong>{winPct.toFixed(0)}%</strong>
+          <span>Win rate</span>
+        </div>
+        <div className="vault-hero-tile">
+          <strong>{profile.matches}</strong>
+          <span>Maps</span>
+        </div>
+        {mvp && (
+          <div className="vault-hero-leader">
+            <span className="vault-hero-leader-label">Team MVP</span>
+            <div className="vault-hero-leader-body">
+              {playerPhoto(mvp.handle) && <img className="vault-face lg" src={playerPhoto(mvp.handle)} alt={mvp.handle} loading="lazy" />}
+              <div className="vault-hero-leader-id">
+                <strong>
+                  <Flag country={mvp.country} /> {mvp.handle}
+                </strong>
+                <span>
+                  {mvp.line.kills}-{mvp.line.deaths} K–D · {mvp.maps} maps
+                </span>
+              </div>
+              <b className="vault-hero-leader-val">{mvp.line.rating.toFixed(2)}</b>
+            </div>
+          </div>
+        )}
+      </section>
+
+      <section className="vault-card">
+        <div className="section-title">
+          <Gauge size={18} />
+          <span>Map record</span>
+        </div>
+        <div className="team-map-chips">
+          {profile.byMap.map((entry) => (
+            <div className="team-map-chip" key={entry.map}>
+              <b>{mapName(entry.map)}</b>
+              <span>
+                <em className="good">{entry.wins}W</em> <em className="bad">{entry.losses}L</em>
+              </span>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <div className="vault-two-col">
+        <section className="vault-card">
+          <div className="section-title">
+            <Users size={18} />
+            <span>Roster</span>
+          </div>
+          <table className="vault-table team-roster-table">
+            <thead>
+              <tr>
+                <th>Player</th>
+                <th>Maps</th>
+                <th>K–D</th>
+                <th>ADR</th>
+                <th>Rating</th>
+              </tr>
+            </thead>
+            <tbody>
+              {profile.roster.map((row, index) => (
+                <tr key={row.versionKey}>
+                  <td className="vault-team-cell">
+                    <Flag country={row.country} />
+                    <b>{row.handle}</b>
+                    <span>{row.role}</span>
+                    {index === 0 && <em className="team-mvp-badge">MVP</em>}
+                  </td>
+                  <td>{row.maps}</td>
+                  <td>
+                    {row.line.kills}-{row.line.deaths}
+                  </td>
+                  <td>{row.line.adr.toFixed(0)}</td>
+                  <td className={ratingTone(row.line.rating)}>{row.line.rating.toFixed(2)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
+
+        <section className="vault-card">
+          <div className="section-title">
+            <Swords size={18} />
+            <span>Head-to-head</span>
+          </div>
+          <div className="team-h2h-list">
+            {profile.headToHead.map((entry) => (
+              <div className={`team-h2h-row${vsFilter === entry.team.id ? " active" : ""}`} key={entry.team.id}>
+                <button
+                  type="button"
+                  className="team-h2h-main"
+                  onClick={() => setVsFilter(vsFilter === entry.team.id ? null : entry.team.id)}
+                  title={`Filter matches vs ${entry.team.name}`}
+                >
+                  <span className="team-h2h-name">
+                    <b>{entry.team.tag}</b> <span>{entry.team.name}</span>
+                  </span>
+                  <span className="team-h2h-rec">
+                    <em className="good">{entry.wins}</em>–<em className="bad">{entry.losses}</em>
+                  </span>
+                </button>
+                <button type="button" className="team-h2h-go" onClick={() => onOpenTeam(entry.team.id)} title={`${entry.team.name} profile`}>
+                  <ArrowLeft size={13} style={{ transform: "rotate(180deg)" }} />
+                </button>
+              </div>
+            ))}
+          </div>
+        </section>
+      </div>
+
+      <section className="vault-card">
+        <div className="vault-card-head">
+          <div className="section-title">
+            <Clock3 size={18} />
+            <span>Match history</span>
+          </div>
+          {vsFilter && (
+            <button className="secondary" onClick={() => setVsFilter(null)}>
+              Clear filter
+            </button>
+          )}
+        </div>
+        <div className="vault-match-list">
+          {history.map((row) => {
+            const canReplay = replayIds.has(row.matchId);
+            return (
+              <button
+                type="button"
+                className={`vault-match-row team-match-row${canReplay ? "" : " no-replay"}`}
+                key={row.matchId}
+                aria-disabled={!canReplay}
+                onClick={() => canReplay && onOpenReplay(row.matchId)}
+                title={canReplay ? "Watch round replay" : "Replay not saved for this match"}
+              >
+                <span className="vault-match-map">{mapAbbr(row.map)}</span>
+                <span className={`team-match-result ${row.won ? "won" : "lost"}`}>{row.won ? "W" : "L"}</span>
+                <b>
+                  {row.teamScore}–{row.oppScore}
+                </b>
+                <span className="team-match-opp">vs {row.opponent.tag}</span>
+                <span className="vault-match-play">{canReplay ? <Play size={13} /> : null}</span>
+              </button>
+            );
+          })}
+        </div>
+      </section>
+    </main>
+  );
+}
+
+function VaultPage({
+  onBack,
+  onOpenReplay,
+  onOpenTeam,
+}: {
+  onBack: () => void;
+  onOpenReplay: (matchId: string) => void;
+  onOpenTeam: (teamId: string) => void;
+}) {
   const db = useMemo(() => getMatchDb(), []);
   const [refresh, setRefresh] = useState(0);
   const [statKey, setStatKey] = useState(VAULT_STATS[0].key);
@@ -5897,10 +6152,12 @@ function VaultPage({ onBack, onOpenReplay }: { onBack: () => void; onOpenReplay:
             </thead>
             <tbody>
               {teams.map((row: TeamRecordRow) => (
-                <tr key={row.team.id}>
+                <tr key={row.team.id} className="vault-team-tr">
                   <td className="vault-team-cell">
-                    <b>{row.team.tag}</b>
-                    <span>{row.team.name}</span>
+                    <button type="button" className="vault-team-link" onClick={() => onOpenTeam(row.team.id)} title={`${row.team.name} — team profile`}>
+                      <b>{row.team.tag}</b>
+                      <span>{row.team.name}</span>
+                    </button>
                   </td>
                   <td>{row.matches}</td>
                   <td>{row.wins}</td>

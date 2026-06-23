@@ -156,6 +156,34 @@ test("MatchDatabase: a log-store quota failure never aborts the box-score write"
   assert.equal(db.getEventLog("q1"), undefined, "the log was dropped silently");
 });
 
+test("MatchDatabase: teamProfile aggregates record, roster, head-to-head, per-map and history", () => {
+  const db = new MatchDatabase(memoryStorage());
+  const you = makeTeam("you", 88);
+  const oppA = makeTeam("oppA", 78);
+  const oppB = makeTeam("oppB", 80);
+  db.recordMatch(matchInput("t1", "2026-06-01T00:00:00Z", you, oppA, 1, { map: "inferno" }));
+  db.recordMatch(matchInput("t2", "2026-06-02T00:00:00Z", you, oppB, 2, { map: "nuke" }));
+  db.recordMatch(matchInput("t3", "2026-06-03T00:00:00Z", you, oppA, 3, { map: "mirage", keepLog: true }));
+
+  const profile = db.teamProfile("you")!;
+  assert.equal(profile.matches, 3);
+  assert.equal(profile.wins + profile.losses, 3);
+  assert.equal(profile.roster.length, 5); // the five players who turned out
+  assert.ok(profile.roster.every((row) => row.maps === 3));
+  assert.ok(profile.roster.every((row, i, arr) => i === 0 || arr[i - 1].line.rating >= row.line.rating)); // best first
+
+  const vsA = profile.headToHead.find((row) => row.team.id === "oppA")!;
+  assert.equal(vsA.wins + vsA.losses, 2);
+  assert.deepEqual(profile.byMap.map((row) => row.map).sort(), ["inferno", "mirage", "nuke"]);
+
+  assert.equal(profile.history.length, 3);
+  assert.equal(profile.history[0].matchId, "t3"); // newest first
+  assert.equal(profile.history[0].opponent.id, "oppA");
+  assert.ok(profile.streak && profile.streak.count >= 1);
+
+  assert.equal(db.teamProfile("nope"), undefined);
+});
+
 test("MatchDatabase: recordMany commits a batch in one pass, dedupes within it, and keeps logs", () => {
   const db = new MatchDatabase(memoryStorage());
   const you = makeTeam("you", 84);

@@ -111,6 +111,52 @@ export interface TeamRecordRow {
   losses: number;
 }
 
+export interface TeamMatchRow {
+  matchId: string;
+  recordedAt: string;
+  map: MapId;
+  stage?: string;
+  opponent: StoredTeamRef;
+  teamScore: number;
+  oppScore: number;
+  won: boolean;
+}
+
+export interface TeamMapRecord {
+  map: MapId;
+  wins: number;
+  losses: number;
+}
+
+export interface TeamRosterRow {
+  versionKey: string;
+  handle: string;
+  realName: string;
+  country: string;
+  year?: string;
+  role: Role;
+  maps: number;
+  line: PlayerLine; // aggregated for THIS team only
+}
+
+export interface HeadToHeadRow {
+  team: StoredTeamRef;
+  wins: number;
+  losses: number;
+}
+
+export interface TeamProfile {
+  team: StoredTeamRef;
+  matches: number;
+  wins: number;
+  losses: number;
+  streak: { type: "W" | "L"; count: number } | null; // current run, from the most recent match
+  byMap: TeamMapRecord[];
+  roster: TeamRosterRow[]; // players who turned out for the team, best rating first
+  headToHead: HeadToHeadRow[]; // record vs each opponent faced
+  history: TeamMatchRow[]; // newest first
+}
+
 const DB_KEY = "cssim-match-db-v1";
 const LOG_KEY = "cssim-match-logs-v1";
 const SCHEMA_VERSION = 2; // v2 adds sideBox + a separate log store; v1 records still parse (fields optional)
@@ -309,6 +355,100 @@ export class MatchDatabase {
       }
     }
     return [...rows.values()].sort((a, b) => b.wins - a.wins || b.matches - a.matches);
+  }
+
+  // Everything about one team across every saved match: record, current streak, per-map W-L, the
+  // roster aggregated for THIS team, head-to-head vs each opponent, and the (newest-first) match list.
+  teamProfile(teamId: string): TeamProfile | undefined {
+    const games = this.read()
+      .matches.filter((match) => match.left.id === teamId || match.right.id === teamId)
+      .sort((a, b) => a.recordedAt.localeCompare(b.recordedAt));
+    if (!games.length) return undefined;
+
+    let wins = 0;
+    let losses = 0;
+    const mapRec = new Map<MapId, TeamMapRecord>();
+    const h2h = new Map<string, HeadToHeadRow>();
+    const rosterAgg = new Map<string, { ref: StoredPlayerRef; line: PlayerLine; matchIds: Set<string> }>();
+    const history: TeamMatchRow[] = [];
+    let latestRef = games[games.length - 1].left.id === teamId ? games[games.length - 1].left : games[games.length - 1].right;
+
+    for (const match of games) {
+      const isLeft = match.left.id === teamId;
+      const opponent = isLeft ? match.right : match.left;
+      const teamScore = isLeft ? match.leftScore : match.rightScore;
+      const oppScore = isLeft ? match.rightScore : match.leftScore;
+      const won = match.winnerId === teamId;
+      if (won) wins += 1;
+      else losses += 1;
+      latestRef = isLeft ? match.left : match.right;
+
+      const mr = mapRec.get(match.map) ?? { map: match.map, wins: 0, losses: 0 };
+      if (won) mr.wins += 1;
+      else mr.losses += 1;
+      mapRec.set(match.map, mr);
+
+      const hh = h2h.get(opponent.id) ?? { team: opponent, wins: 0, losses: 0 };
+      if (won) hh.wins += 1;
+      else hh.losses += 1;
+      h2h.set(opponent.id, hh);
+
+      match.players
+        .filter((ref) => ref.teamId === teamId)
+        .forEach((ref) => {
+          const agg = rosterAgg.get(ref.versionKey) ?? { ref, line: emptyLine(), matchIds: new Set<string>() };
+          const matchLine = match.box[ref.id];
+          if (matchLine) {
+            addCounters(agg.line, matchLine);
+            agg.matchIds.add(match.id);
+          }
+          agg.ref = ref; // keep the most recent identity for display
+          rosterAgg.set(ref.versionKey, agg);
+        });
+
+      history.push({ matchId: match.id, recordedAt: match.recordedAt, map: match.map, stage: match.stage, opponent, teamScore, oppScore, won });
+    }
+
+    history.reverse(); // newest first
+    let streak: TeamProfile["streak"] = null;
+    if (history.length) {
+      const type = history[0].won ? "W" : "L";
+      let count = 0;
+      for (const row of history) {
+        if ((row.won ? "W" : "L") === type) count += 1;
+        else break;
+      }
+      streak = { type, count };
+    }
+
+    const roster: TeamRosterRow[] = [...rosterAgg.values()]
+      .filter((agg) => agg.matchIds.size > 0)
+      .map((agg) => {
+        recalculateHltvStyleRating(agg.line);
+        return {
+          versionKey: agg.ref.versionKey,
+          handle: agg.ref.handle,
+          realName: agg.ref.realName,
+          country: agg.ref.country,
+          year: agg.ref.year,
+          role: agg.ref.role,
+          maps: agg.matchIds.size,
+          line: agg.line,
+        };
+      })
+      .sort((a, b) => b.line.rating - a.line.rating || b.line.kills - b.line.deaths - (a.line.kills - a.line.deaths));
+
+    return {
+      team: latestRef,
+      matches: games.length,
+      wins,
+      losses,
+      streak,
+      byMap: [...mapRec.values()].sort((a, b) => b.wins + b.losses - (a.wins + a.losses)),
+      roster,
+      headToHead: [...h2h.values()].sort((a, b) => b.wins + b.losses - (a.wins + a.losses) || b.wins - a.wins),
+      history,
+    };
   }
 
   // Career across every stored match, keyed by player VERSION — so a player folds together across
