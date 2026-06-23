@@ -1209,6 +1209,149 @@ function applyEcoUpsetCaps(
   return probability;
 }
 
+// ---- Round-probability explainability (balance debugger) ----------------------------------------
+// The win-prob assembly used by playRound, factored out so it has ONE definition shared by the live
+// sim and the balance debugger. Given the already-computed modifiers it returns the final per-round
+// probability plus a labeled breakdown of every additive contribution.
+
+export interface RoundProbabilityContribution {
+  key: string;
+  label: string;
+  value: number; // additive contribution toward the win probability (pre-clamp)
+}
+
+export interface RoundProbabilityExplanation {
+  yourStrength: number;
+  opponentStrength: number;
+  contributions: RoundProbabilityContribution[];
+  base: number; // 0.5 + every contribution, before the per-round clamp
+  baseClamped: number; // after the [ROUND_CLAMP_LO, ROUND_CLAMP_HI] clamp
+  afterEcoCaps: number; // after applyEcoUpsetCaps
+  comeback: number; // anti-blowout nudge from the score gap
+  final: number; // final per-round win probability
+}
+
+export interface RoundProbabilityInput {
+  yourStrength: number;
+  opponentStrength: number;
+  economyMod: number;
+  sideMod: number;
+  tacticMod: number;
+  timeoutBoost: number;
+  utilMod: number;
+  luck: number;
+  yourLoadout: LoadoutProfile;
+  opponentLoadout: LoadoutProfile;
+  scoreGap: number;
+}
+
+export function assembleRoundProbability(input: RoundProbabilityInput): RoundProbabilityExplanation {
+  const contributions: RoundProbabilityContribution[] = [
+    { key: "base", label: "Coin-flip base", value: 0.5 },
+    { key: "strength", label: "Team strength gap", value: (input.yourStrength - input.opponentStrength) / 58 },
+    { key: "economy", label: "Economy", value: input.economyMod },
+    { key: "side", label: "Side (CT/T)", value: input.sideMod },
+    { key: "tactic", label: "Round call + buy", value: input.tacticMod },
+    { key: "timeout", label: "Coach timeout", value: input.timeoutBoost },
+    { key: "util", label: "Utility edge", value: input.utilMod },
+    { key: "luck", label: "Variance", value: input.luck },
+  ];
+  const base = contributions.reduce((sum, contribution) => sum + contribution.value, 0);
+  const baseClamped = clamp(base, ROUND_CLAMP_LO, ROUND_CLAMP_HI);
+  const afterEcoCaps = applyEcoUpsetCaps(
+    baseClamped,
+    input.yourLoadout,
+    input.opponentLoadout,
+    input.yourStrength,
+    input.opponentStrength,
+  );
+  const comeback = -Math.sign(input.scoreGap) * Math.min(Math.max(0, Math.abs(input.scoreGap) - 2) * 0.035, 0.15);
+  const final = clamp(afterEcoCaps + comeback, 0.05, 0.95);
+  return {
+    yourStrength: input.yourStrength,
+    opponentStrength: input.opponentStrength,
+    contributions,
+    base,
+    baseClamped,
+    afterEcoCaps,
+    comeback,
+    final,
+  };
+}
+
+export type EconomyState = MatchState["economy"]; // "ECO" | "FORCE" | "FULL"
+
+export interface RoundScenario {
+  side: MatchSide; // your team's side this round
+  yourEconomy: EconomyState;
+  opponentEconomy: EconomyState;
+  style?: RoundStyleCall; // default "standard"
+  buy?: BuyCall; // default "normal"
+  timeoutBoost?: number; // default 0
+  scoreGap?: number; // default 0 (your score - opponent score)
+}
+
+// Build the win-prob breakdown for a HYPOTHETICAL round (no live match state, no RNG) so the balance
+// debugger can show why a matchup sits where it does. Mirrors playRound's modifier assembly using the
+// same helpers; the round-call's small live volatility is dropped so the number is deterministic.
+export function explainRoundProbability(
+  you: FieldTeam,
+  opponent: FieldTeam,
+  settings: CustomSettings,
+  difficulty: Difficulty,
+  scenario: RoundScenario,
+): RoundProbabilityExplanation {
+  const yourStrength = teamStrength(you, settings, difficulty, false);
+  const opponentStrength = teamStrength(opponent, settings, difficulty, true);
+
+  const economyMod = economyValue(scenario.yourEconomy) - economyValue(scenario.opponentEconomy);
+  const sideMod = scenario.side === "CT" ? 0.01 : -0.01;
+
+  const style = scenario.style ?? "standard";
+  const buy = scenario.buy ?? "normal";
+  const tacticMod = deterministicStyleMod(you.players, style, scenario.side) + buyIntentMod(buy, scenario.yourEconomy);
+
+  // Utility edge assuming each team threw the nades a buy of its economy affords.
+  const yourNades = scenario.yourEconomy === "FULL" ? 5 : scenario.yourEconomy === "FORCE" ? 2 : 0;
+  const opponentNades = scenario.opponentEconomy === "FULL" ? 5 : scenario.opponentEconomy === "FORCE" ? 2 : 0;
+  const utilEdge = utilityRating(you) * utilFactor(yourNades) - utilityRating(opponent) * utilFactor(opponentNades);
+  const utilMod = clamp(utilEdge * 0.012, -0.04, 0.04);
+
+  return assembleRoundProbability({
+    yourStrength,
+    opponentStrength,
+    economyMod,
+    sideMod,
+    tacticMod,
+    timeoutBoost: scenario.timeoutBoost ?? 0,
+    utilMod,
+    luck: 0,
+    yourLoadout: representativeLoadout(scenario.yourEconomy),
+    opponentLoadout: representativeLoadout(scenario.opponentEconomy),
+    scoreGap: scenario.scoreGap ?? 0,
+  });
+}
+
+// Deterministic part of roundStyleCallMod (drops the per-round random volatility term).
+function deterministicStyleMod(players: Player[], style: RoundStyleCall, side: MatchSide) {
+  if (style === "standard") return 0;
+  const fit = players.reduce((sum, player) => sum + playerCallFitScore(player, style), 0) / Math.max(players.length, 1);
+  const fitEdge = clamp(fit * 0.018, -0.018, 0.028);
+  const sideLean = style === "cautious" ? (side === "CT" ? 0.006 : -0.004) : side === "T" ? 0.003 : 0;
+  return clamp(fitEdge + sideLean, -0.035, 0.04);
+}
+
+// A representative loadout for a buy state, so the eco-upset caps engage the same way they would live.
+function representativeLoadout(economy: EconomyState): LoadoutProfile {
+  if (economy === "FULL") {
+    return { buyState: "FULL", primaryWeapons: 5, midWeapons: 0, upgradedPistols: 0, armor: 5, nakedEco: false };
+  }
+  if (economy === "FORCE") {
+    return { buyState: "FORCE", primaryWeapons: 0, midWeapons: 3, upgradedPistols: 2, armor: 4, nakedEco: false };
+  }
+  return { buyState: "ECO", primaryWeapons: 0, midWeapons: 0, upgradedPistols: 0, armor: 0, nakedEco: true };
+}
+
 function matchWinThreshold(round: number) {
   if (round < 25) return 13;
   const overtimeNumber = Math.floor((round - 25) / 6) + 1;
@@ -1727,14 +1870,25 @@ export function playRound(
   const utilEdge = utilityRating(you) * utilFactor(yourUtilCount) - utilityRating(opponent) * utilFactor(opponentUtilCount);
   const utilMod = clamp(utilEdge * 0.012, -0.04, 0.04);
 
-  const baseProbability = clamp(0.5 + (yourStrength - opponentStrength) / 58 + economyMod + sideMod + tacticMod + timeoutBoost + utilMod + luck, ROUND_CLAMP_LO, ROUND_CLAMP_HI);
-  // Anti-blowout: once a map is decided, ease the leader's per-round edge so games don't snowball to
-  // 13:0/13:1 (the trailing team forces / plays loose, the leader relaxes). Applied AFTER the eco-upset
-  // caps so it also tames the near-automatic eco rounds that drive bagels. Only past a 4-round lead and
-  // symmetric, so it shrinks blowouts without deciding close games.
+  // Assemble the win probability. The clamp, the eco-upset caps, and the anti-blowout comeback nudge
+  // (which eases a >4-round leader's edge so games don't snowball to 13:0) all live in
+  // assembleRoundProbability — ONE definition shared with the balance debugger's explainRoundProbability.
   const scoreGap = state.you - state.opponent;
-  const comebackMod = -Math.sign(scoreGap) * Math.min(Math.max(0, Math.abs(scoreGap) - 2) * 0.035, 0.15);
-  const probability = clamp(applyEcoUpsetCaps(baseProbability, yourLoadout, opponentLoadout, yourStrength, opponentStrength) + comebackMod, 0.05, 0.95);
+  const probabilityExplanation = assembleRoundProbability({
+    yourStrength,
+    opponentStrength,
+    economyMod,
+    sideMod,
+    tacticMod,
+    timeoutBoost,
+    utilMod,
+    luck,
+    yourLoadout,
+    opponentLoadout,
+    scoreGap,
+  });
+  const baseProbability = probabilityExplanation.baseClamped;
+  const probability = probabilityExplanation.final;
 
   const yourPlayerRefs = new Set(you.players);
   const tacticalKillWeight = (player: Player, ctx: MatchContext, oppRank?: number, weapon?: string) =>

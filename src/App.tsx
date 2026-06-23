@@ -48,6 +48,8 @@ import {
   difficulties,
   mapPool,
   rateStatsForRole,
+  ovrBreakdown,
+  type OvrBreakdown,
 } from "./gameData";
 import {
   FieldTeam,
@@ -74,7 +76,11 @@ import {
   recalculateHltvStyleRating,
   teamStrength,
   teamStrengthBreakdown,
+  explainRoundProbability,
   toFieldTeam,
+  type StrengthBreakdown,
+  type RoundProbabilityExplanation,
+  type RoundScenario,
 } from "./sim";
 import { hltvTop20Coaches, hltvTop20Rosters } from "./hltvTop20";
 import { playerPhoto } from "./playerPhotos";
@@ -176,7 +182,7 @@ const BUY_CALL_OPTIONS: Array<{ id: BuyCall; label: string }> = [
   { id: "save", label: "Save" },
 ];
 
-type Screen = "setup" | "teams" | "draft" | "coach" | "swiss" | "playoffs" | "veto" | "match" | "result" | "stats" | "results" | "series-detail" | "player-detail" | "team-detail";
+type Screen = "setup" | "teams" | "draft" | "coach" | "swiss" | "playoffs" | "veto" | "match" | "result" | "stats" | "results" | "series-detail" | "player-detail" | "team-detail" | "balance-lab";
 type Mode = "classic" | "blind" | "random" | "spectator";
 type RunKind = "player" | "spectator";
 type SwissRecord = { wins: number; losses: number };
@@ -647,6 +653,7 @@ function App() {
   const [liveFeedView, setLiveFeedView] = useState<LiveFeedView>("feed");
   const builtInRosterCount = hltvTop20Rosters.length;
   const rosterPool = useMemo(() => [...hltvTop20Rosters, ...customRosters], [customRosters]);
+  const labTeams = useMemo(() => rosterPool.map(toTournamentTeam), [rosterPool]);
   const coachPool = useMemo(() => hltvTop20Coaches, []);
   const visibleCoachOptions = coachOptions.length ? coachOptions : coachPool.slice(0, COACH_SHORTLIST_SIZE);
   const activeCall = parseTactic(tactic);
@@ -1596,6 +1603,10 @@ function App() {
             <Database size={18} />
             <span>Team Lab</span>
           </button>
+          <button className="icon-button" onClick={() => pushScreen("balance-lab")} title="Explain team strength, OVR & round probability">
+            <Sparkles size={18} />
+            <span>Balance Lab</span>
+          </button>
           <button className="icon-button" onClick={() => setShowSettings(true)} title="Customize">
             <Settings2 size={18} />
             <span>Customize</span>
@@ -2246,6 +2257,16 @@ function App() {
           onBack={goBackScreen}
           onOpenSeries={openSeriesResult}
           onOpenPlayer={openPlayerDetail}
+        />
+      )}
+
+      {screen === "balance-lab" && (
+        <BalanceLabPage
+          teams={labTeams}
+          settings={settings}
+          difficulty={difficulty}
+          onBack={goBackScreen}
+          onOpenTeam={openTeamDetail}
         />
       )}
 
@@ -5590,6 +5611,325 @@ function RunStatsPage({
         )}
       </section>
     </main>
+  );
+}
+
+// ---- Balance Lab: explain team strength, OVR, and round win probability -------------------------
+
+const LAB_SCENARIOS: Array<{ key: string; label: string; scenario: RoundScenario }> = [
+  { key: "ct-full", label: "You CT · both full", scenario: { side: "CT", yourEconomy: "FULL", opponentEconomy: "FULL" } },
+  { key: "t-full", label: "You T · both full", scenario: { side: "T", yourEconomy: "FULL", opponentEconomy: "FULL" } },
+  { key: "you-force", label: "You force vs full", scenario: { side: "CT", yourEconomy: "FORCE", opponentEconomy: "FULL", buy: "force" } },
+  { key: "you-eco", label: "You eco vs full", scenario: { side: "T", yourEconomy: "ECO", opponentEconomy: "FULL", buy: "save" } },
+  { key: "they-eco", label: "Their eco vs your full", scenario: { side: "CT", yourEconomy: "FULL", opponentEconomy: "ECO" } },
+];
+
+function labPct(value: number) {
+  return `${(value * 100).toFixed(1)}%`;
+}
+function labSignedPP(value: number) {
+  return `${value >= 0 ? "+" : ""}${(value * 100).toFixed(1)}pp`;
+}
+function labSignedFixed(value: number, digits: number) {
+  return `${value >= 0 ? "+" : ""}${value.toFixed(digits)}`;
+}
+function roundProbTone(value: number) {
+  return value >= 0.6 ? "good" : value <= 0.4 ? "bad" : "neutral";
+}
+
+function BalanceLabPage({
+  teams,
+  settings,
+  difficulty,
+  onBack,
+  onOpenTeam,
+}: {
+  teams: FieldTeam[];
+  settings: CustomSettings;
+  difficulty: Difficulty;
+  onBack: () => void;
+  onOpenTeam: (team: FieldTeam) => void;
+}) {
+  const [leftId, setLeftId] = useState(teams[0]?.id ?? "");
+  const [rightId, setRightId] = useState(teams[1]?.id ?? teams[0]?.id ?? "");
+  const [scenarioKey, setScenarioKey] = useState(LAB_SCENARIOS[0].key);
+  const [playerId, setPlayerId] = useState("");
+
+  const left = teams.find((team) => team.id === leftId) ?? teams[0];
+  const right = teams.find((team) => team.id === rightId) ?? teams[1] ?? teams[0];
+  if (!left || !right) {
+    return (
+      <main className="layout fullscreen-page">
+        <div className="empty-fullscreen">No teams loaded.</div>
+      </main>
+    );
+  }
+
+  const leftBreakdown = teamStrengthBreakdown(left, settings, difficulty, false);
+  const rightBreakdown = teamStrengthBreakdown(right, settings, difficulty, true);
+
+  const scenarios = LAB_SCENARIOS.map((entry) => ({
+    ...entry,
+    explanation: explainRoundProbability(left, right, settings, difficulty, entry.scenario),
+  }));
+  const active = scenarios.find((entry) => entry.key === scenarioKey) ?? scenarios[0];
+
+  const roster = [
+    ...left.players.map((player) => ({ player, team: left })),
+    ...right.players.map((player) => ({ player, team: right })),
+  ];
+  const selected = roster.find((entry) => entry.player.id === playerId) ?? roster[0];
+  const ovr = selected ? ovrBreakdown(selected.player.stats, selected.player.role) : null;
+
+  return (
+    <main className="layout fullscreen-page balance-lab">
+      <section className="fullscreen-head">
+        <div>
+          <div className="section-title">
+            <Sparkles size={18} />
+            <span>Balance Lab</span>
+          </div>
+          <h1>Why the sim says what it says</h1>
+          <p>
+            Team strength, player OVR, and per-round win probability — every contribution itemised. Left is framed as
+            “you”, right as the “opponent”, so the difficulty bonus lands on the opponent exactly as it does in a real match.
+          </p>
+        </div>
+        <button className="secondary" onClick={onBack}>
+          <ArrowLeft size={16} />
+          Back
+        </button>
+      </section>
+
+      <section className="lab-matchup">
+        <LabTeamPicker label="You" value={left.id} teams={teams} onChange={setLeftId} />
+        <button
+          className="secondary lab-swap"
+          onClick={() => {
+            setLeftId(right.id);
+            setRightId(left.id);
+          }}
+          title="Swap sides"
+        >
+          <RefreshCcw size={16} />
+        </button>
+        <LabTeamPicker label="Opponent" value={right.id} teams={teams} onChange={setRightId} />
+      </section>
+
+      <section className="lab-card">
+        <div className="section-title">
+          <Gauge size={18} />
+          <span>Paper strength</span>
+        </div>
+        <div className="lab-strength-grid">
+          <LabStrengthColumn team={left} breakdown={leftBreakdown} onOpenTeam={onOpenTeam} />
+          <div className="lab-strength-gap">
+            <span>Strength gap</span>
+            <strong className={leftBreakdown.total >= rightBreakdown.total ? "good" : "bad"}>
+              {labSignedFixed(leftBreakdown.total - rightBreakdown.total, 1)}
+            </strong>
+            <em>OVR-equivalent · feeds the round model as gap / 58</em>
+          </div>
+          <LabStrengthColumn team={right} breakdown={rightBreakdown} onOpenTeam={onOpenTeam} />
+        </div>
+      </section>
+
+      <section className="lab-card">
+        <div className="section-title">
+          <Target size={18} />
+          <span>Round win probability</span>
+        </div>
+        <div className="lab-scenario-tabs">
+          {scenarios.map((entry) => (
+            <button
+              key={entry.key}
+              className={entry.key === active.key ? "active" : ""}
+              onClick={() => setScenarioKey(entry.key)}
+            >
+              <span>{entry.label}</span>
+              <b className={roundProbTone(entry.explanation.final)}>{labPct(entry.explanation.final)}</b>
+            </button>
+          ))}
+        </div>
+        <LabProbabilityWaterfall explanation={active.explanation} leftTag={left.tag} rightTag={right.tag} />
+      </section>
+
+      <section className="lab-card">
+        <div className="section-title">
+          <Crosshair size={18} />
+          <span>Player OVR</span>
+        </div>
+        <select className="lab-select" value={selected?.player.id ?? ""} onChange={(event) => setPlayerId(event.target.value)}>
+          {roster.map((entry) => (
+            <option key={entry.player.id} value={entry.player.id}>
+              {entry.team.tag} · {entry.player.handle} ({entry.player.role}) — OVR {entry.player.ovr}
+            </option>
+          ))}
+        </select>
+        {ovr && selected && <LabOvrBreakdown player={selected.player} breakdown={ovr} />}
+      </section>
+    </main>
+  );
+}
+
+function LabTeamPicker({
+  label,
+  value,
+  teams,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  teams: FieldTeam[];
+  onChange: (id: string) => void;
+}) {
+  return (
+    <label className="lab-team-picker">
+      <span>{label}</span>
+      <select value={value} onChange={(event) => onChange(event.target.value)}>
+        {teams.map((team) => (
+          <option key={team.id} value={team.id}>
+            {team.name} (OVR {Math.round(averageOvr(team.players))})
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+function LabStrengthColumn({
+  team,
+  breakdown,
+  onOpenTeam,
+}: {
+  team: FieldTeam;
+  breakdown: StrengthBreakdown;
+  onOpenTeam: (team: FieldTeam) => void;
+}) {
+  const rows: Array<{ label: string; value: number; signed: boolean }> = [
+    { label: "Avg OVR", value: breakdown.average, signed: false },
+    { label: "Composition", value: breakdown.composition, signed: true },
+    { label: "Coach", value: breakdown.coach, signed: true },
+    { label: "Difficulty", value: breakdown.difficulty, signed: true },
+  ];
+  return (
+    <div className="lab-strength-col" style={{ "--crest": team.accent } as React.CSSProperties}>
+      <button type="button" className="lab-strength-team" onClick={() => onOpenTeam(team)}>
+        <TeamLogo team={team} small />
+        <strong>{team.name}</strong>
+      </button>
+      <div className="lab-strength-rows">
+        {rows.map((row) => (
+          <div className="lab-strength-row" key={row.label}>
+            <span>{row.label}</span>
+            <b className={row.signed ? (row.value > 0 ? "good" : row.value < 0 ? "bad" : "") : ""}>
+              {row.signed ? labSignedFixed(row.value, 1) : row.value.toFixed(1)}
+            </b>
+          </div>
+        ))}
+        <div className="lab-strength-row total">
+          <span>Total</span>
+          <b>{breakdown.total.toFixed(1)}</b>
+        </div>
+      </div>
+      <div className="lab-player-ovrs">
+        {team.players.map((player) => (
+          <span key={player.id} className="lab-player-ovr">
+            <em>{player.handle}</em>
+            <b>{player.ovr}</b>
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function LabProbabilityWaterfall({
+  explanation,
+  leftTag,
+  rightTag,
+}: {
+  explanation: RoundProbabilityExplanation;
+  leftTag: string;
+  rightTag: string;
+}) {
+  const swing = explanation.contributions.filter((entry) => entry.key !== "base");
+  const maxAbs = Math.max(0.02, ...swing.map((entry) => Math.abs(entry.value)));
+  const steps: Array<{ label: string; value: string; muted?: boolean; strong?: boolean }> = [
+    { label: "Sum (pre-clamp)", value: labPct(explanation.base) },
+    { label: "Per-round clamp", value: labPct(explanation.baseClamped), muted: explanation.base === explanation.baseClamped },
+    { label: "Eco-upset caps", value: labPct(explanation.afterEcoCaps), muted: explanation.afterEcoCaps === explanation.baseClamped },
+    { label: "Comeback nudge", value: labSignedPP(explanation.comeback), muted: explanation.comeback === 0 },
+    { label: "Final", value: labPct(explanation.final), strong: true },
+  ];
+  return (
+    <div className="lab-waterfall">
+      <div className="lab-final">
+        <div>
+          <span>{leftTag} round win</span>
+          <strong className={roundProbTone(explanation.final)}>{labPct(explanation.final)}</strong>
+        </div>
+        <div className="lab-final-opp">
+          <span>{rightTag}</span>
+          <strong>{labPct(1 - explanation.final)}</strong>
+        </div>
+      </div>
+      <div className="lab-contributions">
+        {explanation.contributions.map((entry) => (
+          <div className="lab-contribution" key={entry.key}>
+            <span className="lab-contribution-label">{entry.label}</span>
+            <div className="lab-bar-track center">
+              {entry.key === "base" ? (
+                <span className="lab-base-pill">{labPct(entry.value)} start</span>
+              ) : (
+                <div
+                  className={`lab-bar ${entry.value >= 0 ? "pos" : "neg"}`}
+                  style={{ width: `${(Math.abs(entry.value) / maxAbs) * 50}%` }}
+                />
+              )}
+            </div>
+            <b className={entry.key === "base" ? "muted" : entry.value > 0 ? "good" : entry.value < 0 ? "bad" : "muted"}>
+              {entry.key === "base" ? "—" : labSignedPP(entry.value)}
+            </b>
+          </div>
+        ))}
+      </div>
+      <div className="lab-prob-steps">
+        {steps.map((step) => (
+          <div className={`lab-step${step.strong ? " strong" : ""}${step.muted ? " muted" : ""}`} key={step.label}>
+            <span>{step.label}</span>
+            <b>{step.value}</b>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function LabOvrBreakdown({ player, breakdown }: { player: Player; breakdown: OvrBreakdown }) {
+  const max = Math.max(0.001, ...breakdown.contributions.map((entry) => entry.contribution));
+  return (
+    <div className="lab-ovr">
+      <div className="lab-ovr-head">
+        <Flag country={player.country} />
+        <strong>{player.handle}</strong>
+        <em>{player.role}</em>
+        <b className="lab-ovr-total">OVR {breakdown.ovr}</b>
+      </div>
+      <div className="lab-ovr-bars">
+        {breakdown.contributions.map((entry) => (
+          <div className="lab-ovr-row" key={entry.stat}>
+            <span className="lab-ovr-stat">{entry.stat}</span>
+            <span className="lab-ovr-rating">{entry.rating}</span>
+            <div className="lab-bar-track">
+              <div className="lab-bar pos" style={{ width: `${(entry.contribution / max) * 100}%` }} />
+            </div>
+            <span className="lab-ovr-weight">×{entry.weight.toFixed(2)}</span>
+            <b>{entry.contribution.toFixed(1)}</b>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 

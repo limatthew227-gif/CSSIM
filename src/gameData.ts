@@ -123,23 +123,48 @@ export const mapPool: MapInfo[] = [
 
 const ids = mapPool.map((map) => map.id) as MapId[];
 
+// Per-role weighting of the five stats that produces a player's OVR. Single source of truth so the
+// balance debugger can explain an OVR from the SAME weights the rating uses.
+export const roleStatWeights: Record<Role, PlayerStats> = {
+  AWP: { aim: 0.29, clutch: 0.16, consistency: 0.14, awp: 0.38, igl: 0.03 },
+  IGL: { aim: 0.2, clutch: 0.16, consistency: 0.25, awp: 0.03, igl: 0.36 },
+  Entry: { aim: 0.47, clutch: 0.19, consistency: 0.26, awp: 0.04, igl: 0.04 },
+  Lurker: { aim: 0.29, clutch: 0.32, consistency: 0.29, awp: 0.04, igl: 0.06 },
+  Rifler: { aim: 0.43, clutch: 0.22, consistency: 0.27, awp: 0.04, igl: 0.04 },
+  Support: { aim: 0.28, clutch: 0.24, consistency: 0.38, awp: 0.04, igl: 0.06 },
+};
+
+export type StatKey = keyof PlayerStats;
+
+export interface OvrStatContribution {
+  stat: StatKey;
+  rating: number; // the player's raw stat value (0..100)
+  weight: number; // this role's weight on that stat
+  contribution: number; // rating * weight — how many OVR points it adds
+}
+
+export interface OvrBreakdown {
+  role: Role;
+  contributions: OvrStatContribution[]; // sorted high → low contribution
+  ovr: number; // rounded sum (== rateStatsForRole)
+}
+
+const STAT_KEYS: StatKey[] = ["aim", "clutch", "consistency", "awp", "igl"];
+
+export function ovrBreakdown(stats: PlayerStats, role: Role): OvrBreakdown {
+  const weight = roleStatWeights[role];
+  const contributions = STAT_KEYS.map((stat) => ({
+    stat,
+    rating: stats[stat],
+    weight: weight[stat],
+    contribution: stats[stat] * weight[stat],
+  })).sort((a, b) => b.contribution - a.contribution);
+  const total = contributions.reduce((sum, entry) => sum + entry.contribution, 0);
+  return { role, contributions, ovr: Math.round(total) };
+}
+
 export function rateStatsForRole(stats: PlayerStats, role: Role) {
-  const weights: Record<Role, PlayerStats> = {
-    AWP: { aim: 0.29, clutch: 0.16, consistency: 0.14, awp: 0.38, igl: 0.03 },
-    IGL: { aim: 0.2, clutch: 0.16, consistency: 0.25, awp: 0.03, igl: 0.36 },
-    Entry: { aim: 0.47, clutch: 0.19, consistency: 0.26, awp: 0.04, igl: 0.04 },
-    Lurker: { aim: 0.29, clutch: 0.32, consistency: 0.29, awp: 0.04, igl: 0.06 },
-    Rifler: { aim: 0.43, clutch: 0.22, consistency: 0.27, awp: 0.04, igl: 0.04 },
-    Support: { aim: 0.28, clutch: 0.24, consistency: 0.38, awp: 0.04, igl: 0.06 },
-  };
-  const weight = weights[role];
-  return Math.round(
-    stats.aim * weight.aim +
-      stats.clutch * weight.clutch +
-      stats.consistency * weight.consistency +
-      stats.awp * weight.awp +
-      stats.igl * weight.igl,
-  );
+  return ovrBreakdown(stats, role).ovr;
 }
 
 function mapValues(seed: number, base: number[]) {
