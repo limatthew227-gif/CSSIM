@@ -26,6 +26,7 @@ import {
   Sparkles,
   Swords,
   Target,
+  TrendingUp,
   Trophy,
   Trash2,
   Upload,
@@ -6299,6 +6300,34 @@ function WinProbGraph({
   );
 }
 
+// A player's rating per map over the run — a quick read of form, with a 1.00 baseline.
+function FormChart({ ratings }: { ratings: number[] }) {
+  if (ratings.length < 2) return null;
+  const lo = Math.min(0.8, ...ratings) - 0.05;
+  const hi = Math.max(1.2, ...ratings) + 0.05;
+  const xAt = (i: number) => 3 + (i / (ratings.length - 1)) * 94;
+  const yAt = (r: number) => 2 + (1 - (r - lo) / (hi - lo)) * 28; // higher rating -> top
+  const points = ratings.map((r, i) => `${xAt(i).toFixed(2)},${yAt(r).toFixed(2)}`).join(" ");
+  const baseY = yAt(1).toFixed(2);
+
+  return (
+    <div className="form-chart">
+      <svg viewBox="0 0 100 32" role="img" aria-label="Rating per map over the run">
+        <line x1="0" y1={baseY} x2="100" y2={baseY} className="fc-baseline" />
+        <polyline points={points} className="fc-line" vectorEffect="non-scaling-stroke" />
+        {ratings.map((r, i) => (
+          <circle key={i} cx={xAt(i)} cy={yAt(r)} r={0.9} className={`fc-dot ${r >= 1 ? "good" : "bad"}`} />
+        ))}
+      </svg>
+      <div className="winprob-axis">
+        <span>Map 1</span>
+        <span className="wp-mid">1.00 baseline</span>
+        <span>Map {ratings.length}</span>
+      </div>
+    </div>
+  );
+}
+
 // Series wrapper with per-map tabs (mirrors the replay/timeline panels).
 function WinProbPanel({ left, right, maps }: { left: ReplayTeam; right: ReplayTeam; maps: SeriesMapResult[] }) {
   const withProbs = maps.filter((map) => (map.roundProbabilities?.length ?? 0) > 0);
@@ -7309,6 +7338,16 @@ function PlayerDetailPage({
             <strong>{bestStreak}</strong>
             <span>Best 1+ rating streak</span>
           </div>
+        </section>
+      )}
+
+      {maps.length >= 2 && (
+        <section className="form-panel">
+          <div className="section-title">
+            <TrendingUp size={18} />
+            <span>Form — rating per map</span>
+          </div>
+          <FormChart ratings={maps.map((m) => m.line.rating)} />
         </section>
       )}
 

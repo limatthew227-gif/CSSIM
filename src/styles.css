@@ -9532,3 +9532,55 @@ input[type="range"] {
 .winprob-axis .wp-mid {
   color: var(--muted);
 }
+
+/* Player form chart (rating per map) --------------------------------------- */
+.form-panel {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 10px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: linear-gradient(180deg, #20242b, #171b21);
+}
+
+.form-chart {
+  display: grid;
+  gap: 4px;
+}
+
+.form-chart svg {
+  width: 100%;
+  height: auto;
+  aspect-ratio: 100 / 32;
+  display: block;
+  border-radius: 6px;
+  background: #11151a;
+}
+
+.fc-baseline {
+  stroke: var(--line);
+  stroke-width: 0.3;
+  stroke-dasharray: 1 1;
+}
+
+.fc-line {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.fc-dot {
+  stroke: #11151a;
+  stroke-width: 0.3;
+}
+
+.fc-dot.good {
+  fill: var(--green);
+}
+
+.fc-dot.bad {
+  fill: #ff8d8d;
+}
