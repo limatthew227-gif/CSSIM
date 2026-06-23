@@ -25,6 +25,8 @@ export interface MatchEvent {
   firstKill?: boolean;
   headshot?: boolean;
   flashAssist?: boolean;
+  killerDamage?: number;
+  assistantDamage?: number;
   reason?: string;
   actorPos?: MatchEventPosition;
   targetPos?: MatchEventPosition;
@@ -71,6 +73,8 @@ function eventFromFeedLine(line: FeedLine, index: number): MatchEvent {
     firstKill: line.first || undefined,
     headshot: line.isHeadshot || undefined,
     flashAssist: line.flashAssist || undefined,
+    killerDamage: line.killerDamage,
+    assistantDamage: line.assistantDamage,
     reason: line.reason || undefined,
     actorPos: line.killerPos,
     targetPos: line.victimPos,
