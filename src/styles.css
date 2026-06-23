@@ -8441,3 +8441,141 @@ input[type="range"] {
   text-transform: capitalize;
   text-align: right;
 }
+
+/* Player of the Major awards ----------------------------------------------- */
+.awards-panel {
+  display: grid;
+  gap: 9px;
+  margin: 10px 0;
+  padding: 10px;
+  border: 1px solid color-mix(in srgb, var(--gold), var(--line) 50%);
+  border-radius: var(--radius);
+  background:
+    radial-gradient(circle at 12% 0%, color-mix(in srgb, var(--gold), transparent 82%), transparent 38%),
+    linear-gradient(180deg, #20242b, #171b21);
+}
+
+.awards-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.awards-head > span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.awards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 7px;
+}
+
+.award-card {
+  position: relative;
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  overflow: hidden;
+  padding: 9px;
+  border: 1px solid rgba(109, 130, 157, 0.42);
+  border-radius: 9px;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--crest), transparent 80%), transparent 46%), #151a20;
+  text-align: left;
+  cursor: pointer;
+}
+
+.award-card.primary {
+  grid-column: span 2;
+  border-color: color-mix(in srgb, var(--gold), white 12%);
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--gold), transparent 72%), transparent 52%),
+    linear-gradient(180deg, #232833, #161b21);
+}
+
+.award-card:hover {
+  border-color: color-mix(in srgb, var(--crest), white 20%);
+}
+
+.award-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.award-card-top > span {
+  color: var(--gold);
+  font-size: 10px;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.award-player {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+
+.award-player .flat-flag {
+  width: 18px;
+  height: 12px;
+  border-radius: 3px;
+}
+
+.award-face {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  object-fit: cover;
+  object-position: top center;
+  background: #0e1116;
+}
+
+.award-card.primary .award-face {
+  width: 34px;
+  height: 34px;
+}
+
+.award-player strong {
+  min-width: 0;
+  overflow: hidden;
+  color: #fff;
+  font-size: 15px;
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.award-player em {
+  color: var(--muted);
+  font-style: normal;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.award-value {
+  color: var(--text);
+  font-size: 22px;
+  line-height: 0.95;
+}
+
+.award-card.primary .award-value {
+  font-size: 30px;
+  color: var(--gold);
+}
+
+.award-card p {
+  margin: 0;
+  overflow: hidden;
+  color: #d6dee9;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.15;
+  text-overflow: ellipsis;
+}

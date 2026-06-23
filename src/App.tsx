@@ -2239,6 +2239,13 @@ function App() {
                 </span>
               </div>
             )}
+            {(tournamentOutcome === "champion" || tournamentOutcome === "complete") && (
+              <MajorAwardsPanel
+                results={matchResults}
+                championName={tournamentOutcome === "champion" ? yourTeam.name : tournamentWinner?.name}
+                onOpenPlayer={openPlayerDetail}
+              />
+            )}
             <div className="pickem-strip">
               <div className="pickem-title">
                 <Trophy size={17} />
@@ -5797,6 +5804,160 @@ function VaultPage({ onBack }: { onBack: () => void }) {
         </section>
       </div>
     </main>
+  );
+}
+
+// ---- Player of the Major: end-of-run awards -----------------------------------------------------
+
+interface MajorAward {
+  key: string;
+  title: string;
+  row: PlayerDatabaseRow;
+  value: string;
+  detail: string;
+  primary?: boolean;
+}
+
+// Curate the standout performers across an entire Major, from the aggregated box scores plus the
+// event-log analytics (aces / headshot rate). The MVP is the headline; the rest celebrate a niche.
+function buildMajorAwards(results: SwissResult[]): MajorAward[] {
+  const rows = buildPlayerDatabase(results).filter((row) => row.matches > 0);
+  if (!rows.length) return [];
+  const logs = results.flatMap((result) => result.maps.map((map) => map.eventLog).filter((log): log is MatchEventLog => Boolean(log)));
+  const analytics = logs.length ? analyzeEventLogs(logs) : null;
+  const analyticsById = new Map((analytics?.players ?? []).map((player) => [player.playerId, player]));
+
+  const maxMaps = Math.max(...rows.map((row) => row.matches));
+  const minMaps = Math.min(3, maxMaps); // a fair sample, but never exclude everyone in a short run
+  const eligible = rows.filter((row) => row.matches >= minMaps);
+  const awards: MajorAward[] = [];
+
+  const best = <T,>(pool: T[], score: (item: T) => number): T | undefined =>
+    pool.reduce<{ item: T; score: number } | undefined>((acc, item) => {
+      const value = score(item);
+      return !acc || value > acc.score ? { item, score: value } : acc;
+    }, undefined)?.item;
+
+  const mvp = best(eligible.length ? eligible : rows, (row) => row.line.rating);
+  if (mvp) {
+    awards.push({
+      key: "mvp",
+      title: "Major MVP",
+      row: mvp,
+      value: mvp.line.rating.toFixed(2),
+      detail: `${mvp.line.kills}-${mvp.line.deaths} K–D · ${mvp.line.adr.toFixed(0)} ADR over ${mvp.matches} maps`,
+      primary: true,
+    });
+  }
+
+  const fragger = best(rows, (row) => row.line.kills);
+  if (fragger) {
+    awards.push({
+      key: "frag",
+      title: "Top fragger",
+      row: fragger,
+      value: `${fragger.line.kills}`,
+      detail: `${(fragger.line.kills / Math.max(1, fragger.matches)).toFixed(1)} kills / map`,
+    });
+  }
+
+  const opener = best(eligible.length ? eligible : rows, (row) => row.line.firstKills - row.line.firstDeaths);
+  if (opener && opener.line.firstKills > 0) {
+    const diff = opener.line.firstKills - opener.line.firstDeaths;
+    awards.push({
+      key: "open",
+      title: "Opening duels",
+      row: opener,
+      value: fmtDiff(diff),
+      detail: `${opener.line.firstKills} entries / ${opener.line.firstDeaths} opening deaths`,
+    });
+  }
+
+  const clutcher = best(rows, (row) => row.line.clutchWins);
+  if (clutcher && clutcher.line.clutchWins > 0) {
+    awards.push({
+      key: "clutch",
+      title: "Clutch master",
+      row: clutcher,
+      value: `${clutcher.line.clutchWins}`,
+      detail: `clutch round${clutcher.line.clutchWins === 1 ? "" : "s"} won`,
+    });
+  }
+
+  if (analytics) {
+    const aceRow = best(rows, (row) => analyticsById.get(row.player.id)?.aces ?? 0);
+    const aces = aceRow ? analyticsById.get(aceRow.player.id)?.aces ?? 0 : 0;
+    if (aceRow && aces > 0) {
+      awards.push({ key: "ace", title: "Ace leader", row: aceRow, value: `${aces}`, detail: `${aces} ace${aces === 1 ? "" : "s"} (5K rounds)` });
+    }
+
+    const hsPool = rows.filter((row) => (analyticsById.get(row.player.id)?.kills ?? 0) >= 30);
+    const hsRow = best(hsPool, (row) => analyticsById.get(row.player.id)?.headshotPct ?? 0);
+    const hs = hsRow ? analyticsById.get(hsRow.player.id) : undefined;
+    if (hsRow && hs && hs.headshotKills > 0) {
+      awards.push({
+        key: "hs",
+        title: "Headshot %",
+        row: hsRow,
+        value: `${Math.round(hs.headshotPct * 100)}%`,
+        detail: `${hs.headshotKills} of ${hs.kills} kills`,
+      });
+    }
+  }
+
+  return awards;
+}
+
+function MajorAwardsPanel({
+  results,
+  championName,
+  onOpenPlayer,
+}: {
+  results: SwissResult[];
+  championName?: string;
+  onOpenPlayer: (player: Player, team: FieldTeam) => void;
+}) {
+  const awards = useMemo(() => buildMajorAwards(results), [results]);
+  if (!awards.length) return null;
+
+  return (
+    <section className="awards-panel">
+      <div className="awards-head">
+        <div className="section-title">
+          <Trophy size={18} />
+          <span>Player of the Major</span>
+        </div>
+        <span>{championName ? `${championName} — champions` : "Tournament awards"}</span>
+      </div>
+      <div className="awards-grid">
+        {awards.map((award) => {
+          const photo = playerPhoto(award.row.player.handle);
+          return (
+            <button
+              type="button"
+              className={award.primary ? "award-card primary" : "award-card"}
+              key={award.key}
+              style={{ "--crest": award.row.team.accent } as React.CSSProperties}
+              onClick={() => onOpenPlayer(award.row.player, award.row.team)}
+              title={`${award.row.player.handle} — player profile`}
+            >
+              <div className="award-card-top">
+                <span>{award.title}</span>
+                <TeamLogo team={award.row.team} small />
+              </div>
+              <div className="award-player">
+                {photo && <img className="award-face" src={photo} alt={award.row.player.handle} loading="lazy" />}
+                <Flag country={award.row.player.country} />
+                <strong>{award.row.player.handle}</strong>
+                <em>{award.row.team.tag}</em>
+              </div>
+              <b className="award-value">{award.value}</b>
+              <p>{award.detail}</p>
+            </button>
+          );
+        })}
+      </div>
+    </section>
   );
 }
 
