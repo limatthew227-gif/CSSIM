@@ -104,6 +104,7 @@ import {
   type PlayerAnalytics,
 } from "./matchAnalytics";
 import { canonicalPlayerKey, playerInstanceKey, playerVersionKey } from "./playerIdentity";
+import { validateRoster, validateDataset, type ValidationIssue } from "./validation";
 import "./styles.css";
 
 import mirageRadar from "./assets/radar/mirage.png";
@@ -195,7 +196,7 @@ type StatsSideFilter = "both" | "T" | "CT";
 type StatsMapFilter = "all" | number;
 type StatsScope = "all" | "mine";
 type LiveFeedView = "feed" | "map";
-type TeamLabView = "builder" | "scout";
+type TeamLabView = "builder" | "scout" | "integrity";
 type ScoutSortKey = "ovr" | "hltv" | "audit" | "aim" | "clutch" | "consistency" | "awp" | "igl" | "team";
 type ScoutAuditSeverity = "danger" | "warn" | "info";
 
@@ -1430,8 +1431,23 @@ function App() {
         setTeamLabMessage("That JSON did not contain any valid teams exported from this app.");
         return;
       }
-      setCustomRosters((current) => mergeRosterLists(current, incoming));
-      setTeamLabMessage(`${incoming.length} team${incoming.length === 1 ? "" : "s"} imported.`);
+      // Validate before accepting: import only the teams that are structurally sound, so a bad role,
+      // impossible OVR or duplicate id can't silently corrupt the pool. Report what was rejected.
+      const clean: Roster[] = [];
+      let rejected = 0;
+      let warnings = 0;
+      incoming.forEach((roster) => {
+        const issues = validateRoster(roster);
+        const errors = issues.filter((issue) => issue.level === "error");
+        warnings += issues.length - errors.length;
+        if (errors.length) rejected += 1;
+        else clean.push(roster);
+      });
+      if (clean.length) setCustomRosters((current) => mergeRosterLists(current, clean));
+      const parts = [`${clean.length} team${clean.length === 1 ? "" : "s"} imported`];
+      if (rejected) parts.push(`${rejected} rejected (validation errors)`);
+      if (warnings) parts.push(`${warnings} warning${warnings === 1 ? "" : "s"}`);
+      setTeamLabMessage(`${parts.join(" · ")}.`);
     } catch {
       setTeamLabMessage("Could not parse that JSON.");
     }
@@ -1704,6 +1720,7 @@ function App() {
       {screen === "teams" && (
         <TeamLab
           rosterPool={rosterPool}
+          coaches={coachPool}
           builtInCount={builtInRosterCount}
           customRosters={customRosters}
           teamForm={teamForm}
@@ -2738,6 +2755,7 @@ function App() {
 
 function TeamLab({
   rosterPool,
+  coaches,
   builtInCount,
   customRosters,
   teamForm,
@@ -2753,6 +2771,7 @@ function TeamLab({
   onBack,
 }: {
   rosterPool: Roster[];
+  coaches: Coach[];
   builtInCount: number;
   customRosters: Roster[];
   teamForm: TeamForm;
@@ -2827,6 +2846,10 @@ function TeamLab({
               <Search size={15} />
               Players
             </button>
+            <button className={labView === "integrity" ? "selected" : ""} onClick={() => setLabView("integrity")}>
+              <CheckCircle2 size={15} />
+              Integrity
+            </button>
           </div>
           <button className="secondary" onClick={onBack}>
             Back to setup
@@ -2834,7 +2857,9 @@ function TeamLab({
         </div>
       </section>
 
-      {labView === "builder" ? (
+      {labView === "integrity" && <DataIntegrityPanel rosters={rosterPool} coaches={coaches} />}
+
+      {labView === "builder" && (
         <section className="team-editor-panel">
           <div className="team-editor-toolbar">
             <div className="section-title">
@@ -2978,7 +3003,9 @@ function TeamLab({
             })}
           </div>
         </section>
-      ) : (
+      )}
+
+      {labView === "scout" && (
         <section className="team-scout-panel">
           <div className="team-editor-toolbar">
             <div className="section-title">
@@ -3170,6 +3197,70 @@ function TeamLab({
       </aside>
     </main>
   );
+}
+
+function DataIntegrityPanel({ rosters, coaches }: { rosters: Roster[]; coaches: Coach[] }) {
+  const summary = useMemo(() => validateDataset(rosters, coaches), [rosters, coaches]);
+  const grouped = useMemo(() => groupIssuesByCode(summary.issues), [summary]);
+  const [showAll, setShowAll] = useState(false);
+  const visible = showAll ? summary.issues : summary.issues.slice(0, 30);
+
+  return (
+    <section className="integrity-panel">
+      <div className="integrity-head">
+        <div className="section-title">
+          <CheckCircle2 size={18} />
+          <span>Data integrity</span>
+        </div>
+        <div className="integrity-counts">
+          <span className={summary.errors ? "bad" : "good"}>{summary.errors} errors</span>
+          <span className={summary.warnings ? "warn" : "good"}>{summary.warnings} warnings</span>
+          <span className="muted">
+            {rosters.length} teams · {coaches.length} coaches
+          </span>
+        </div>
+      </div>
+
+      {summary.issues.length === 0 ? (
+        <p className="integrity-clean">Every team, player and coach passes validation.</p>
+      ) : (
+        <>
+          <div className="integrity-bycode">
+            {grouped.map((group) => (
+              <span key={group.code} className={`integrity-chip ${group.level}`}>
+                {group.code}
+                <b>{group.count}</b>
+              </span>
+            ))}
+          </div>
+          <ul className="integrity-list">
+            {visible.map((issue, index) => (
+              <li key={`${issue.code}-${issue.path}-${index}`} className={issue.level}>
+                <em>{issue.level}</em>
+                <b>{issue.message}</b>
+                <span>{issue.path}</span>
+              </li>
+            ))}
+          </ul>
+          {summary.issues.length > 30 && (
+            <button className="secondary" onClick={() => setShowAll((value) => !value)}>
+              {showAll ? "Show fewer" : `Show all ${summary.issues.length}`}
+            </button>
+          )}
+        </>
+      )}
+    </section>
+  );
+}
+
+function groupIssuesByCode(issues: ValidationIssue[]) {
+  const map = new Map<string, { code: string; level: ValidationIssue["level"]; count: number }>();
+  for (const issue of issues) {
+    const current = map.get(issue.code) ?? { code: issue.code, level: issue.level, count: 0 };
+    current.count += 1;
+    map.set(issue.code, current);
+  }
+  return [...map.values()].sort((a, b) => b.count - a.count);
 }
 
 function buildScoutRows(rosterPool: Roster[]): ScoutRow[] {

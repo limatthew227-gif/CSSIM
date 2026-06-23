@@ -8029,3 +8029,136 @@ input[type="range"] {
 .balance-lab .muted {
   color: var(--muted);
 }
+
+/* Data integrity panel ----------------------------------------------------- */
+.integrity-panel {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 10px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: linear-gradient(180deg, #20242b, #171b21);
+}
+
+.integrity-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.integrity-counts {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.integrity-counts .good {
+  color: var(--green);
+}
+
+.integrity-counts .bad {
+  color: #ff8d8d;
+}
+
+.integrity-counts .warn {
+  color: var(--gold);
+}
+
+.integrity-counts .muted {
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.integrity-clean {
+  margin: 0;
+  color: var(--green);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.integrity-bycode {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.integrity-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: #151a20;
+  color: #cfd7e2;
+  font-size: 10px;
+  font-weight: 800;
+  font-family: ui-monospace, monospace;
+}
+
+.integrity-chip.error {
+  border-color: color-mix(in srgb, #ff8d8d, transparent 55%);
+  color: #ff8d8d;
+}
+
+.integrity-chip.warning {
+  border-color: color-mix(in srgb, var(--gold), transparent 55%);
+  color: var(--gold);
+}
+
+.integrity-chip b {
+  color: #fff;
+}
+
+.integrity-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 3px;
+  max-height: 360px;
+  overflow-y: auto;
+}
+
+.integrity-list li {
+  display: grid;
+  grid-template-columns: 64px 1fr auto;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  border-radius: 7px;
+  background: #151a20;
+  font-size: 11px;
+}
+
+.integrity-list li em {
+  font-style: normal;
+  font-weight: 950;
+  text-transform: uppercase;
+  font-size: 9px;
+}
+
+.integrity-list li.error em {
+  color: #ff8d8d;
+}
+
+.integrity-list li.warning em {
+  color: var(--gold);
+}
+
+.integrity-list li b {
+  color: #e7edf4;
+  font-weight: 700;
+}
+
+.integrity-list li span {
+  color: var(--muted);
+  font-family: ui-monospace, monospace;
+  font-size: 9px;
+  text-align: right;
+}
