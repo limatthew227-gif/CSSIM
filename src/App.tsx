@@ -111,6 +111,8 @@ import {
   teamRef,
   type StorageAdapter,
   type PlayerCareerRecord,
+  type MatchRecord,
+  type TeamRecordRow,
 } from "./matchDatabase";
 import "./styles.css";
 
@@ -190,7 +192,7 @@ const BUY_CALL_OPTIONS: Array<{ id: BuyCall; label: string }> = [
   { id: "save", label: "Save" },
 ];
 
-type Screen = "setup" | "teams" | "draft" | "coach" | "swiss" | "playoffs" | "veto" | "match" | "result" | "stats" | "results" | "series-detail" | "player-detail" | "team-detail" | "balance-lab";
+type Screen = "setup" | "teams" | "draft" | "coach" | "swiss" | "playoffs" | "veto" | "match" | "result" | "stats" | "results" | "series-detail" | "player-detail" | "team-detail" | "balance-lab" | "vault";
 type Mode = "classic" | "blind" | "random" | "spectator";
 type RunKind = "player" | "spectator";
 type SwissRecord = { wins: number; losses: number };
@@ -1670,6 +1672,10 @@ function App() {
             <Sparkles size={18} />
             <span>Balance Lab</span>
           </button>
+          <button className="icon-button" onClick={() => pushScreen("vault")} title="All-time records from every saved match">
+            <Trophy size={18} />
+            <span>Vault</span>
+          </button>
           <button className="icon-button" onClick={() => setShowSettings(true)} title="Customize">
             <Settings2 size={18} />
             <span>Customize</span>
@@ -2334,6 +2340,8 @@ function App() {
         />
       )}
 
+      {screen === "vault" && <VaultPage onBack={goBackScreen} />}
+
       {screen === "results" && (
         <RunResultsPage
           results={matchResults}
@@ -2760,7 +2768,6 @@ function App() {
             mapResults={resultMapResults}
             teams={resultStatsTeams}
           />
-          <MatchSpotlightPanel label="Series leaders" teams={resultStatsTeams} />
           <section className="analysis-panel full series-analysis">
             <div className="series-analysis-head">
               <div className="section-title">
@@ -3766,140 +3773,6 @@ function roundTimelineBreakClass(index: number) {
   if (index === 12) return "half-break";
   if (index >= 24 && (index - 24) % 3 === 0) return "ot-break";
   return "";
-}
-
-function MatchSpotlightPanel({
-  label,
-  teams,
-}: {
-  label: string;
-  teams: Array<{ team: FieldTeam; players: Player[]; stats: MatchState["yourStats"] }>;
-}) {
-  const cards = buildMatchSpotlights(teams);
-  if (!cards.length) return null;
-
-  return (
-    <section className="match-spotlight-panel">
-      <div className="match-spotlight-head">
-        <div className="section-title">
-          <Award size={18} />
-          <span>Match spotlight</span>
-        </div>
-        <span>{label}</span>
-      </div>
-      <div className="spotlight-card-grid">
-        {cards.map((card, index) => {
-          const photo = playerPhoto(card.row.player.handle);
-          return (
-          <article
-            className={index === 0 ? "spotlight-card primary" : "spotlight-card"}
-            key={card.key}
-            style={{ "--crest": card.row.team.accent } as React.CSSProperties}
-          >
-            <div className="spotlight-card-top">
-              <span>{card.label}</span>
-              <TeamLogo team={card.row.team} small />
-            </div>
-            <div className="spotlight-player">
-              {photo && <img className="spotlight-face" src={photo} alt={card.row.player.handle} loading="lazy" />}
-              <Flag country={card.row.player.country} />
-              <strong>{card.row.player.handle}</strong>
-              <em>{card.row.team.tag}</em>
-            </div>
-            <small>{card.row.player.role} / OVR {card.row.player.ovr}</small>
-            <div className={`spotlight-metric ${card.tone}`}>
-              <b>{card.metric}</b>
-              <span>{card.suffix}</span>
-            </div>
-            <p>{card.detail}</p>
-          </article>
-          );
-        })}
-      </div>
-    </section>
-  );
-}
-
-function buildMatchSpotlights(teams: Array<{ team: FieldTeam; players: Player[]; stats: MatchState["yourStats"] }>) {
-  const rows = teams
-    .flatMap((entry) => statRows(entry.players, entry.stats, false).map((row) => ({ ...row, team: entry.team })))
-    .filter((row) => row.line.rounds > 0 || row.line.kills > 0 || row.line.deaths > 0 || row.line.damage > 0);
-  if (!rows.length) return [];
-
-  type SpotlightRow = (typeof rows)[number];
-  const used = new Set<string>();
-  const cards: Array<{
-    key: string;
-    label: string;
-    row: SpotlightRow;
-    metric: string;
-    suffix: string;
-    detail: string;
-    tone: string;
-  }> = [];
-
-  function addCard(
-    label: string,
-    candidates: SpotlightRow[],
-    metric: (row: SpotlightRow) => string,
-    suffix: string,
-    detail: (row: SpotlightRow) => string,
-    tone: (row: SpotlightRow) => string,
-  ) {
-    const row = candidates.find((candidate) => !used.has(`${candidate.team.id}:${candidate.player.id}`)) ?? candidates[0];
-    if (!row) return;
-    used.add(`${row.team.id}:${row.player.id}`);
-    cards.push({
-      key: `${label}-${row.team.id}-${row.player.id}`,
-      label,
-      row,
-      metric: metric(row),
-      suffix,
-      detail: detail(row),
-      tone: tone(row),
-    });
-  }
-
-  const byRating = [...rows].sort((a, b) => b.line.rating - a.line.rating || b.line.kills - a.line.kills || b.line.adr - a.line.adr);
-  const byAdr = [...rows].sort((a, b) => b.line.adr - a.line.adr || b.line.damage - a.line.damage || b.line.rating - a.line.rating);
-  const byOpening = [...rows].sort(
-    (a, b) =>
-      (b.line.firstKills - b.line.firstDeaths) - (a.line.firstKills - a.line.firstDeaths) ||
-      b.line.firstKills - a.line.firstKills ||
-      b.line.rating - a.line.rating,
-  );
-
-  addCard(
-    "MVP pace",
-    byRating,
-    (row) => row.line.rating.toFixed(2),
-    "Rating",
-    (row) => `${row.line.kills}-${row.line.deaths}-${row.line.assists} K-D-A / ${row.line.adr.toFixed(0)} ADR`,
-    (row) => ratingTone(row.line.rating),
-  );
-  addCard(
-    "Damage",
-    byAdr,
-    (row) => row.line.adr.toFixed(0),
-    "ADR",
-    (row) => `${row.line.damage.toFixed(0)} total damage / ${row.line.rating.toFixed(2)} rating`,
-    (row) => (row.line.adr >= 85 ? "good" : row.line.adr < 60 ? "bad" : "neutral"),
-  );
-  addCard(
-    "Opener",
-    byOpening,
-    (row) => signedInteger(row.line.firstKills - row.line.firstDeaths),
-    "FK-FD",
-    (row) => `${row.line.firstKills} first kills / ${row.line.firstDeaths} first deaths`,
-    (row) => {
-      const diff = row.line.firstKills - row.line.firstDeaths;
-      if (diff > 0) return "good";
-      if (diff < 0) return "bad";
-      return "neutral";
-    },
-  );
-
-  return cards;
 }
 
 function RoundReadPanel({
@@ -5753,6 +5626,180 @@ function RunStatsPage({
   );
 }
 
+// ---- Vault: all-time records from the persistent local match database ---------------------------
+
+const VAULT_STATS: Array<{
+  key: string;
+  label: string;
+  get: (line: PlayerCareerRecord["line"]) => number;
+  fmt: (line: PlayerCareerRecord["line"]) => string;
+}> = [
+  { key: "rating", label: "Rating", get: (l) => l.rating, fmt: (l) => l.rating.toFixed(2) },
+  { key: "kd", label: "K–D", get: (l) => l.kills - l.deaths, fmt: (l) => fmtDiff(l.kills - l.deaths) },
+  { key: "kills", label: "Kills", get: (l) => l.kills, fmt: (l) => `${l.kills}` },
+  { key: "adr", label: "ADR", get: (l) => l.adr, fmt: (l) => l.adr.toFixed(1) },
+  { key: "multi", label: "Multi-kills", get: (l) => l.multiKills, fmt: (l) => `${l.multiKills}` },
+  { key: "clutch", label: "Clutches", get: (l) => l.clutchWins, fmt: (l) => `${l.clutchWins}` },
+  { key: "opening", label: "Openings", get: (l) => l.firstKills - l.firstDeaths, fmt: (l) => fmtDiff(l.firstKills - l.firstDeaths) },
+];
+
+function VaultPage({ onBack }: { onBack: () => void }) {
+  const db = useMemo(() => getMatchDb(), []);
+  const [refresh, setRefresh] = useState(0);
+  const players = useMemo(() => db.listPlayers(), [db, refresh]);
+  const matches = useMemo(() => db.listMatches(), [db, refresh]);
+  const teams = useMemo(() => db.listTeams(), [db, refresh]);
+  const [statKey, setStatKey] = useState(VAULT_STATS[0].key);
+  const stat = VAULT_STATS.find((entry) => entry.key === statKey) ?? VAULT_STATS[0];
+  const leaders = useMemo(
+    () => [...players].sort((a, b) => stat.get(b.line) - stat.get(a.line) || b.line.rating - a.line.rating).slice(0, 25),
+    [players, stat],
+  );
+
+  if (!matches.length) {
+    return (
+      <main className="layout fullscreen-page">
+        <section className="fullscreen-head">
+          <div>
+            <div className="section-title">
+              <Trophy size={18} />
+              <span>Vault</span>
+            </div>
+            <h1>No saved matches yet</h1>
+            <p>Play or sim a series and your all-time records start accruing here — across every run.</p>
+          </div>
+          <button className="secondary" onClick={onBack}>
+            <ArrowLeft size={16} />
+            Back
+          </button>
+        </section>
+      </main>
+    );
+  }
+
+  return (
+    <main className="layout fullscreen-page vault-page">
+      <section className="fullscreen-head">
+        <div>
+          <div className="section-title">
+            <Trophy size={18} />
+            <span>Vault</span>
+          </div>
+          <h1>All-time records</h1>
+          <p>
+            {matches.length} maps · {players.length} players · {teams.length} teams — saved locally across every run.
+          </p>
+        </div>
+        <div className="fullscreen-actions">
+          <button
+            className="secondary"
+            onClick={() => {
+              if (typeof window !== "undefined" && window.confirm("Clear all saved match records? This can't be undone.")) {
+                db.clear();
+                setRefresh((value) => value + 1);
+              }
+            }}
+          >
+            <Trash2 size={16} />
+            Clear vault
+          </button>
+          <button className="secondary" onClick={onBack}>
+            <ArrowLeft size={16} />
+            Back
+          </button>
+        </div>
+      </section>
+
+      <section className="vault-card">
+        <div className="vault-card-head">
+          <div className="section-title">
+            <Award size={18} />
+            <span>Leaderboard</span>
+          </div>
+          <div className="vault-stat-tabs">
+            {VAULT_STATS.map((entry) => (
+              <button key={entry.key} className={entry.key === statKey ? "active" : ""} onClick={() => setStatKey(entry.key)}>
+                {entry.label}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="vault-leader-list">
+          {leaders.map((player, index) => {
+            const photo = playerPhoto(player.handle);
+            return (
+              <div className="vault-leader-row" key={player.canonicalKey}>
+                <span className="vault-rank">{index + 1}</span>
+                {photo && <img className="vault-face" src={photo} alt={player.handle} loading="lazy" />}
+                <Flag country={player.country} />
+                <strong>{player.handle}</strong>
+                <span className="vault-sub">
+                  {player.matches} map{player.matches === 1 ? "" : "s"} · {player.line.rating.toFixed(2)} rating
+                </span>
+                <b className="vault-stat-val">{stat.fmt(player.line)}</b>
+              </div>
+            );
+          })}
+        </div>
+      </section>
+
+      <div className="vault-two-col">
+        <section className="vault-card">
+          <div className="section-title">
+            <Shield size={18} />
+            <span>Team standings</span>
+          </div>
+          <table className="vault-table">
+            <thead>
+              <tr>
+                <th>Team</th>
+                <th>Maps</th>
+                <th>W</th>
+                <th>L</th>
+                <th>Win%</th>
+              </tr>
+            </thead>
+            <tbody>
+              {teams.map((row: TeamRecordRow) => (
+                <tr key={row.team.id}>
+                  <td className="vault-team-cell">
+                    <b>{row.team.tag}</b>
+                    <span>{row.team.name}</span>
+                  </td>
+                  <td>{row.matches}</td>
+                  <td>{row.wins}</td>
+                  <td>{row.losses}</td>
+                  <td>{((row.wins / Math.max(1, row.matches)) * 100).toFixed(0)}%</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
+
+        <section className="vault-card">
+          <div className="section-title">
+            <Clock3 size={18} />
+            <span>Recent matches</span>
+          </div>
+          <div className="vault-match-list">
+            {[...matches].reverse().slice(0, 40).map((match: MatchRecord) => (
+              <div className="vault-match-row" key={match.id}>
+                <span className="vault-match-map">{mapAbbr(match.map)}</span>
+                <span className={`vault-match-team${match.winnerId === match.left.id ? " won" : ""}`}>{match.left.tag}</span>
+                <b>
+                  {match.leftScore}–{match.rightScore}
+                </b>
+                <span className={`vault-match-team right${match.winnerId === match.right.id ? " won" : ""}`}>{match.right.tag}</span>
+                {match.stage && <span className="vault-match-stage">{match.stage}</span>}
+              </div>
+            ))}
+          </div>
+        </section>
+      </div>
+    </main>
+  );
+}
+
 // ---- Balance Lab: explain team strength, OVR, and round win probability -------------------------
 
 const LAB_SCENARIOS: Array<{ key: string; label: string; scenario: RoundScenario }> = [
@@ -6653,14 +6700,6 @@ function SeriesDetailPage({
         ]}
         onOpenPlayer={onOpenPlayer}
         onOpenTeam={onOpenTeam}
-      />
-
-      <MatchSpotlightPanel
-        label="Series leaders"
-        teams={[
-          { team: result.left, players: result.left.players, stats: result.leftStats },
-          { team: result.right, players: result.right.players, stats: result.rightStats },
-        ]}
       />
 
       <MatchInsightsPanel left={result.left} right={result.right} mapResults={result.maps} />
