@@ -160,6 +160,7 @@ export interface MatchState {
   yourSideStats: SideStats;
   opponentSideStats: SideStats;
   roundWinners: Array<"you" | "opponent">;
+  roundProbabilities: number[]; // your (clamped, final) win probability entering each played round
   running: boolean;
   ended: boolean;
   winner?: "you" | "opponent";
@@ -175,6 +176,7 @@ export interface MatchState {
   // Streaming fields:
   pendingEvents?: FeedLine[];
   pendingRoundWinner?: "you" | "opponent";
+  pendingRoundProbability?: number; // your win prob for the stashed (mid-drip) round
   pendingRoundReason?: string;
   pendingYourMoney?: Record<string, number>;
   pendingOpponentMoney?: Record<string, number>;
@@ -616,6 +618,7 @@ export function initMatch(map: MapId, you: FieldTeam, opponent: FieldTeam, conte
     yourSideStats: makeSideLines(you.players),
     opponentSideStats: makeSideLines(opponent.players),
     roundWinners: [],
+    roundProbabilities: [],
     running: true,
     ended: false,
     yourMoney,
@@ -1454,6 +1457,7 @@ export function playRound(
       yourSideStats,
       opponentSideStats,
       roundWinners: [...state.roundWinners, state.pendingRoundWinner!],
+      roundProbabilities: [...(state.roundProbabilities ?? []), state.pendingRoundProbability ?? 0.5],
       running: !ended,
       ended,
       winner: ended ? (youScore > opponentScore ? ("you" as "you" | "opponent") : ("opponent" as "you" | "opponent")) : undefined,
@@ -1654,6 +1658,7 @@ export function playRound(
         yourSideStats: finalYourSideStats,
         opponentSideStats: finalOpponentSideStats,
         roundWinners: [...state.roundWinners, state.pendingRoundWinner!],
+        roundProbabilities: [...(state.roundProbabilities ?? []), state.pendingRoundProbability ?? 0.5],
         running: !ended,
         ended,
         winner: ended ? (youScore > opponentScore ? ("you" as "you" | "opponent") : ("opponent" as "you" | "opponent")) : undefined,
@@ -2133,6 +2138,7 @@ export function playRound(
       yourSideStats: finalYourSideStats,
       opponentSideStats: finalOpponentSideStats,
       roundWinners: [...state.roundWinners, winningTeamId],
+      roundProbabilities: [...(state.roundProbabilities ?? []), probability],
       running: !ended,
       ended,
       winner: ended ? (youScore > opponentScore ? ("you" as "you" | "opponent") : ("opponent" as "you" | "opponent")) : undefined,
@@ -2160,6 +2166,7 @@ export function playRound(
     roundTimelineRound: state.round,
     pendingEvents: feed,
     pendingRoundWinner: winningTeamId,
+    pendingRoundProbability: probability,
     pendingRoundReason: roundReason,
     pendingYourMoney,
     pendingOpponentMoney,

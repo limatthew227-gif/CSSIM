@@ -534,3 +534,27 @@ test("a superstar's tournament K-D differential stays realistic (no +200 blowups
   // ...but the star should still clearly lead his team (we tamed concentration, didn't erase it).
   assert.ok(diffs[0] > diffs[1], `the star should still lead the team in K-D (${diffs.map((d) => `+${d}`).join(", ")})`);
 });
+
+test("roundProbabilities are captured one-per-round in [0.05, 0.95] for both instant and live play", () => {
+  const you = makeTeam("you", 86, 6);
+  const opp = makeTeam("opp", 80, 9);
+
+  const instant = playMatch(7, you, opp, "inferno");
+  assert.equal(instant.roundProbabilities.length, instant.roundWinners.length, "instant: one prob per round");
+  assert.ok(instant.roundProbabilities.length >= 13);
+  assert.ok(instant.roundProbabilities.every((p) => p >= 0.05 && p <= 0.95), "instant: probs clamped");
+
+  // Live/streaming: each call drips one event, so loop until the match ends.
+  const live = withSeed(7, () => {
+    let state = initMatch("inferno", you, opp);
+    let guard = 0;
+    while (!state.ended && guard < 8000) {
+      state = playRound(state, you, opp, defaultSettings, difficulties[0], "standard", 0, false);
+      guard += 1;
+    }
+    return state;
+  });
+  assert.equal(live.roundProbabilities.length, live.roundWinners.length, "live: one prob per round (no drift across the drip state machine)");
+  assert.ok(live.roundProbabilities.length >= 13);
+  assert.ok(live.roundProbabilities.every((p) => p >= 0.05 && p <= 0.95), "live: probs clamped");
+});

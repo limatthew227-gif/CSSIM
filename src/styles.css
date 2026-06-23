@@ -9440,3 +9440,95 @@ input[type="range"] {
 .team-match-opp-name {
   color: #cfd7e2;
 }
+
+/* Win-probability momentum graph ------------------------------------------- */
+.winprob-panel {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 10px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: linear-gradient(180deg, #20242b, #171b21);
+}
+
+.winprob-graph {
+  display: grid;
+  gap: 4px;
+}
+
+.winprob-graph svg {
+  width: 100%;
+  height: auto;
+  aspect-ratio: 100 / 32;
+  display: block;
+  border-radius: 6px;
+  background: #11151a;
+}
+
+.wp-zone-left {
+  fill: color-mix(in srgb, var(--green), transparent 92%);
+}
+
+.wp-zone-right {
+  fill: color-mix(in srgb, #ff8d8d, transparent 92%);
+}
+
+.wp-centerline {
+  stroke: var(--line);
+  stroke-width: 0.3;
+  stroke-dasharray: 1 1;
+}
+
+.wp-halfline {
+  stroke: color-mix(in srgb, var(--muted), transparent 55%);
+  stroke-width: 0.25;
+}
+
+.wp-line {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.wp-dot {
+  fill: var(--muted);
+  stroke: #11151a;
+  stroke-width: 0.3;
+}
+
+.wp-dot.won {
+  fill: var(--green);
+}
+
+.wp-dot.lost {
+  fill: #ff8d8d;
+}
+
+.wp-swing {
+  fill: none;
+  stroke: var(--gold);
+  stroke-width: 0.4;
+}
+
+.winprob-axis {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.winprob-axis .good {
+  color: var(--green);
+}
+
+.winprob-axis .bad {
+  color: #ff8d8d;
+}
+
+.winprob-axis .wp-mid {
+  color: var(--muted);
+}

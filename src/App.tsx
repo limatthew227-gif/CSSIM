@@ -252,6 +252,7 @@ interface SeriesMapResult {
   winnerId: string;
   eventLog?: MatchEventLog;
   roundWinners?: TimelineSide[];
+  roundProbabilities?: number[];
   leftStats: MatchState["yourStats"];
   rightStats: MatchState["yourStats"];
   leftSideStats: Record<"CT" | "T", MatchState["yourStats"]>;
@@ -2796,6 +2797,22 @@ function App() {
             <StatsTable title={yourTeam.name} players={selected} stats={match.yourStats} money={match.yourMoney} weapons={match.yourWeapons} armor={match.yourArmor} />
             <StatsTable title={opponent.name} players={opponent.players} stats={match.opponentStats} money={match.opponentMoney} weapons={match.opponentWeapons} armor={match.opponentArmor} />
           </section>
+          {match.roundProbabilities.length > 0 && (
+            <section className="winprob-panel live">
+              <div className="replay-head">
+                <div className="section-title">
+                  <Gauge size={18} />
+                  <span>Win probability</span>
+                </div>
+              </div>
+              <WinProbGraph
+                probabilities={match.roundProbabilities}
+                winners={match.roundWinners.map((winner) => (winner === "you" ? "left" : "right"))}
+                leftTag={yourTeam.tag}
+                rightTag={opponent.tag}
+              />
+            </section>
+          )}
         </main>
       )}
 
@@ -2849,6 +2866,7 @@ function App() {
             right={opponent}
             maps={resultMapResults.map((map, index) => roundTimelineMapFromResult(map, index))}
           />
+          <WinProbPanel left={yourTeam} right={opponent} maps={resultMapResults} />
           <SeriesRoundReplayPanel left={yourTeam} right={opponent} maps={resultMapResults} />
         </main>
       )}
@@ -6233,6 +6251,83 @@ function groupEventsByRound(events: MatchEvent[]): ReplayRound[] {
   return [...rounds.entries()].sort((a, b) => a[0] - b[0]).map(([round, list]) => ({ round, events: list }));
 }
 
+// Win-probability momentum graph: the engine's actual per-round win probability (for the left team)
+// across a map, with the real round outcomes as dots and stars on upset/swing rounds.
+function WinProbGraph({
+  probabilities,
+  winners,
+  leftTag,
+  rightTag,
+}: {
+  probabilities: number[];
+  winners?: TimelineSide[];
+  leftTag: string;
+  rightTag: string;
+}) {
+  const n = probabilities.length;
+  if (!n) return null;
+  const xAt = (i: number) => (n === 1 ? 50 : 3 + (i / (n - 1)) * 94);
+  const yAt = (p: number) => 2 + (1 - Math.max(0, Math.min(1, p))) * 28; // prob 1 -> top (y=2), 0 -> bottom (y=30)
+  const linePoints = probabilities.map((p, i) => `${xAt(i).toFixed(2)},${yAt(p).toFixed(2)}`).join(" ");
+  const halfX = n > 13 ? xAt(12) : null; // side switch after round 13
+
+  return (
+    <div className="winprob-graph">
+      <svg viewBox="0 0 100 32" role="img" aria-label="Round win probability over the map">
+        <rect x="0" y="2" width="100" height="14" className="wp-zone-left" />
+        <rect x="0" y="16" width="100" height="14" className="wp-zone-right" />
+        <line x1="0" y1="16" x2="100" y2="16" className="wp-centerline" />
+        {halfX !== null && <line x1={halfX} y1="2" x2={halfX} y2="30" className="wp-halfline" />}
+        <polyline points={linePoints} className="wp-line" vectorEffect="non-scaling-stroke" />
+        {probabilities.map((p, i) => {
+          const side = winners?.[i];
+          const swing = side === "left" ? p < 0.35 : side === "right" ? p > 0.65 : false;
+          return (
+            <g key={i}>
+              {swing && <circle cx={xAt(i)} cy={yAt(p)} r={1.7} className="wp-swing" />}
+              <circle cx={xAt(i)} cy={yAt(p)} r={0.95} className={`wp-dot ${side === "left" ? "won" : side === "right" ? "lost" : ""}`} />
+            </g>
+          );
+        })}
+      </svg>
+      <div className="winprob-axis">
+        <span className="good">↑ {leftTag} favoured</span>
+        <span className="wp-mid">dots: round winner · ★ upset</span>
+        <span className="bad">{rightTag} favoured ↓</span>
+      </div>
+    </div>
+  );
+}
+
+// Series wrapper with per-map tabs (mirrors the replay/timeline panels).
+function WinProbPanel({ left, right, maps }: { left: ReplayTeam; right: ReplayTeam; maps: SeriesMapResult[] }) {
+  const withProbs = maps.filter((map) => (map.roundProbabilities?.length ?? 0) > 0);
+  const [mapIndex, setMapIndex] = useState(0);
+  if (!withProbs.length) return null;
+  const active = withProbs[Math.min(mapIndex, withProbs.length - 1)];
+
+  return (
+    <section className="winprob-panel">
+      <div className="replay-head">
+        <div className="section-title">
+          <Gauge size={18} />
+          <span>Win probability</span>
+        </div>
+        {withProbs.length > 1 && (
+          <div className="replay-map-tabs">
+            {withProbs.map((map, index) => (
+              <button key={`${map.map}-${index}`} className={index === mapIndex ? "active" : ""} onClick={() => setMapIndex(index)}>
+                {mapName(map.map)}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+      <WinProbGraph probabilities={active.roundProbabilities!} winners={active.roundWinners} leftTag={left.tag} rightTag={right.tag} />
+    </section>
+  );
+}
+
 // Minimal team shape the replay needs — satisfied by both FieldTeam and the DB's StoredTeamRef.
 type ReplayTeam = { name: string; tag: string; accent: string };
 const REPLAY_SPEEDS = [1, 2, 4];
@@ -7584,6 +7679,7 @@ function SeriesDetailPage({
         maps={result.maps.map((map, index) => roundTimelineMapFromResult(map, index))}
       />
 
+      <WinProbPanel left={result.left} right={result.right} maps={result.maps} />
       <SeriesRoundReplayPanel left={result.left} right={result.right} maps={result.maps} />
     </main>
   );
@@ -8315,6 +8411,7 @@ function mapResultFromState(map: MapId, state: MatchState, left: FieldTeam, righ
     winnerId: state.winner === "you" ? left.id : state.winner === "opponent" ? right.id : state.you >= state.opponent ? left.id : right.id,
     eventLog: eventLogFromMatchState(map, state),
     roundWinners: state.roundWinners.map((winner) => (winner === "you" ? "left" : "right")),
+    roundProbabilities: state.roundProbabilities, // left (= "you") win probability entering each round
     leftStats: state.yourStats,
     rightStats: state.opponentStats,
     leftSideStats: state.yourSideStats,
