@@ -9261,7 +9261,7 @@ input[type="range"] {
   border-color: color-mix(in srgb, var(--accent), transparent 55%);
 }
 
-.team-match-row {
+.vault-team-match-row {
   grid-template-columns: 40px 22px auto 1fr 22px;
 }
 

@@ -196,7 +196,7 @@ const BUY_CALL_OPTIONS: Array<{ id: BuyCall; label: string }> = [
 ];
 
 type Screen = "setup" | "teams" | "draft" | "coach" | "swiss" | "playoffs" | "veto" | "match" | "result" | "stats" | "results" | "series-detail" | "player-detail" | "team-detail" | "balance-lab" | "vault" | "vault-replay" | "vault-team" | "compare";
-type Mode = "classic" | "blind" | "random" | "spectator";
+type Mode = "classic" | "random" | "spectator";
 type RunKind = "player" | "spectator";
 type SwissRecord = { wins: number; losses: number };
 type TimeoutPlan = { boost: number; rounds: number };
@@ -1105,7 +1105,7 @@ function App() {
     setSeries(undefined);
     setMatch(undefined);
     setPlayerForm(generatePlayerForm(selected));
-    setAchievements((current) => unlockAchievements(current, draftAchievements(selected, mode)));
+    setAchievements((current) => unlockAchievements(current, draftAchievements(selected)));
     setVeto(createVeto());
     setScreen("swiss");
   }
@@ -1719,10 +1719,6 @@ function App() {
                     <Target size={16} />
                     Classic
                   </button>
-                  <button className={mode === "blind" ? "selected" : ""} onClick={() => setMode("blind")}>
-                    <Shield size={16} />
-                    Almanac
-                  </button>
                   <button className={mode === "random" ? "selected" : ""} onClick={() => setMode("random")}>
                     <Dice5 size={16} />
                     Random
@@ -1845,7 +1841,6 @@ function App() {
                   <PlayerCard
                     key={player.id}
                     player={player}
-                    hidden={mode === "blind"}
                     missing={missingRoles.includes(player.role)}
                     onClick={() => choosePlayer(player)}
                   />
@@ -4213,12 +4208,10 @@ function Avatar({ label, accent, photo }: { label: string; accent: string; photo
 
 function PlayerCard({
   player,
-  hidden,
   missing,
   onClick,
 }: {
   player: Player;
-  hidden: boolean;
   missing: boolean;
   onClick: () => void;
 }) {
@@ -4228,15 +4221,11 @@ function PlayerCard({
       <Avatar label={player.handle} accent={player.source.accent} photo={playerPhoto(player.handle)} />
       <div className="player-head">
         <strong>{player.handle}</strong>
-        <b>{hidden ? "??" : player.ovr}</b>
+        <b>{player.ovr}</b>
       </div>
-      <span className="player-id-meta"><Flag country={player.country} /> {player.country} / {player.realName} {!hidden && ` / Rating: ${player.ovr}`}</span>
+      <span className="player-id-meta"><Flag country={player.country} /> {player.country} / {player.realName} / Rating: {player.ovr}</span>
       <small>{player.role} / {player.style}</small>
-      {hidden ? (
-        <div className="hidden-stats">ratings hidden</div>
-      ) : (
-        <StatBars player={player} />
-      )}
+      <StatBars player={player} />
     </button>
   );
 }
@@ -5374,7 +5363,6 @@ function SwissPath({ record }: { record: SwissRecord }) {
 const achievementText: Record<string, string> = {
   "role-perfect": "Role perfect",
   superteam: "Superteam",
-  almanac: "Almanac brain",
   "veto-read": "Veto read",
   "upset-artist": "Upset artist",
   "close-call": "Close call",
@@ -6087,7 +6075,7 @@ function VaultTeamPage({
             return (
               <button
                 type="button"
-                className={`vault-match-row team-match-row${canReplay ? "" : " no-replay"}`}
+                className={`vault-match-row vault-team-match-row${canReplay ? "" : " no-replay"}`}
                 key={row.matchId}
                 aria-disabled={!canReplay}
                 onClick={() => canReplay && onOpenReplay(row.matchId)}
@@ -9316,12 +9304,11 @@ function unlockAchievements(current: string[], incoming: string[]) {
   return Array.from(new Set([...current, ...incoming]));
 }
 
-function draftAchievements(players: Player[], mode: Mode) {
+function draftAchievements(players: Player[]) {
   const unlocks: string[] = [];
   const roles = new Set(players.map((player) => player.role));
   if (requiredRoles.every((role) => roles.has(role))) unlocks.push("role-perfect");
   if (averageOvr(players) >= 88) unlocks.push("superteam");
-  if (mode === "blind") unlocks.push("almanac");
   return unlocks;
 }
 
