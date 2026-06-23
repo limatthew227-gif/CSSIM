@@ -105,6 +105,13 @@ import {
 } from "./matchAnalytics";
 import { canonicalPlayerKey, playerInstanceKey, playerVersionKey } from "./playerIdentity";
 import { validateRoster, validateDataset, type ValidationIssue } from "./validation";
+import {
+  MatchDatabase,
+  memoryStorage,
+  teamRef,
+  type StorageAdapter,
+  type PlayerCareerRecord,
+} from "./matchDatabase";
 import "./styles.css";
 
 import mirageRadar from "./assets/radar/mirage.png";
@@ -430,6 +437,41 @@ function createFormPlayer(
   stats: PlayerStats,
 ): TeamFormPlayer {
   return { handle, realName, country, role, style, ...stats };
+}
+
+// Persistent local match database (localStorage in the browser, in-memory under SSR/tests). A single
+// instance so every completed map accrues into one queryable store of matches + canonical careers.
+let matchDbInstance: MatchDatabase | null = null;
+function getMatchDb(): MatchDatabase {
+  if (!matchDbInstance) {
+    const storage: StorageAdapter = typeof window !== "undefined" ? window.localStorage : memoryStorage();
+    matchDbInstance = new MatchDatabase(storage);
+  }
+  return matchDbInstance;
+}
+
+// Persist any completed series maps not already in the DB. Idempotent: keyed by series+map id.
+function recordResultsToDb(results: SwissResult[]) {
+  const db = getMatchDb();
+  results.forEach((series) => {
+    series.maps.forEach((map, index) => {
+      if (!map.eventLog) return;
+      const id = `${series.id}-${map.map}-${index}`;
+      if (db.getMatch(id)) return;
+      db.recordMatch({
+        id,
+        recordedAt: new Date().toISOString(),
+        stage: series.stage,
+        map: map.map,
+        left: { team: teamRef(series.left), players: series.left.players },
+        right: { team: teamRef(series.right), players: series.right.players },
+        leftScore: map.leftScore,
+        rightScore: map.rightScore,
+        winnerId: map.winnerId,
+        eventLog: map.eventLog,
+      });
+    });
+  });
 }
 
 function loadCustomRosters() {
@@ -812,6 +854,11 @@ function App() {
   useEffect(() => {
     document.documentElement.style.setProperty("--accent", settings.accent);
   }, [settings.accent]);
+
+  // Accrue every completed map into the persistent match database (survives reloads and spans runs).
+  useEffect(() => {
+    if (matchResults.length) recordResultsToDb(matchResults);
+  }, [matchResults]);
 
   useEffect(() => {
     saveCustomRosters(customRosters);
@@ -6024,6 +6071,45 @@ function LabOvrBreakdown({ player, breakdown }: { player: Player; breakdown: Ovr
   );
 }
 
+// All-time line from the persistent local match database — spans every saved match across all runs.
+function PlayerVaultLine({ vault }: { vault: PlayerCareerRecord | undefined }) {
+  if (!vault || vault.matches === 0) return null;
+  const line = vault.line;
+  return (
+    <section className="vault-line">
+      <div className="vault-label">
+        <Database size={15} />
+        <span>All-time</span>
+        <em>local match database</em>
+      </div>
+      <div className="vault-tiles">
+        <div className="vault-tile">
+          <strong>{vault.matches}</strong>
+          <span>Maps</span>
+        </div>
+        <div className="vault-tile">
+          <strong className={ratingTone(line.rating)}>{line.rating.toFixed(2)}</strong>
+          <span>Rating</span>
+        </div>
+        <div className="vault-tile">
+          <strong>
+            {line.kills}–{line.deaths}
+          </strong>
+          <span>K–D</span>
+        </div>
+        <div className="vault-tile">
+          <strong>{line.adr.toFixed(0)}</strong>
+          <span>ADR</span>
+        </div>
+        <div className="vault-tile">
+          <strong>{vault.teamIds.length}</strong>
+          <span>{vault.teamIds.length === 1 ? "Team" : "Teams"}</span>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 // A player's whole-run "career": event-log advanced stats summed across every team they appeared on.
 function PlayerCareerPanel({
   player,
@@ -6158,6 +6244,7 @@ function PlayerDetailPage({
   const display = [...maps].reverse(); // most recent first
   const photo = playerPhoto(player.handle);
   const career = useMemo(() => buildPlayerCareer(results, canonicalPlayerKey(player)), [results, player]);
+  const vault = useMemo(() => getMatchDb().playerCareer(canonicalPlayerKey(player)), [player]);
 
   return (
     <main className="layout fullscreen-page">
@@ -6209,6 +6296,8 @@ function PlayerDetailPage({
       )}
 
       <PlayerCareerPanel player={player} career={career} activeTeam={team} onOpenTeam={onOpenTeam} />
+
+      <PlayerVaultLine vault={vault} />
 
       <section className="full-table-card">
         <div className="full-table-head player-map-grid">

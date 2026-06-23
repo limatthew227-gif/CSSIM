@@ -8162,3 +8162,68 @@ input[type="range"] {
   font-size: 9px;
   text-align: right;
 }
+
+/* Player all-time vault line (persistent match DB) ------------------------- */
+.vault-line {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin: 0 0 10px;
+  padding: 8px 12px;
+  border: 1px solid color-mix(in srgb, var(--gold), var(--line) 64%);
+  border-radius: var(--radius);
+  background: linear-gradient(180deg, #20242b, #171b21);
+}
+
+.vault-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--gold);
+  font-size: 11px;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.vault-label em {
+  color: var(--muted);
+  font-style: normal;
+  font-size: 9px;
+  font-weight: 800;
+}
+
+.vault-tiles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-left: auto;
+}
+
+.vault-tile {
+  display: grid;
+  gap: 1px;
+  text-align: center;
+}
+
+.vault-tile strong {
+  color: var(--text);
+  font-size: 17px;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.vault-tile strong.good {
+  color: var(--green);
+}
+
+.vault-tile strong.bad {
+  color: #ff8d8d;
+}
+
+.vault-tile span {
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 950;
+  text-transform: uppercase;
+}
