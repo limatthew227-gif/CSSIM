@@ -2,6 +2,9 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
   ArrowLeft,
+  ArrowLeftRight,
+  ArrowRight,
+  Coins,
   Award,
   Ban,
   CheckCircle2,
@@ -83,6 +86,16 @@ import {
   type RoundProbabilityExplanation,
   type RoundScenario,
 } from "./sim";
+import {
+  STARTING_BANKROLL,
+  type PlacementTier,
+  playerValue,
+  transferDelta,
+  prizeForPlacement,
+  placementTier,
+  placementLabel,
+  pickTransferCandidates,
+} from "./career";
 import { hltvTop20Coaches, hltvTop20Rosters } from "./hltvTop20";
 import { playerPhoto } from "./playerPhotos";
 import { simulateRadarPlayers, MAP_LAYOUTS, getStepDelay } from "./radarSim";
@@ -195,7 +208,7 @@ const BUY_CALL_OPTIONS: Array<{ id: BuyCall; label: string }> = [
   { id: "save", label: "Save" },
 ];
 
-type Screen = "setup" | "teams" | "draft" | "coach" | "swiss" | "playoffs" | "veto" | "match" | "result" | "stats" | "results" | "series-detail" | "player-detail" | "team-detail" | "balance-lab" | "vault" | "vault-replay" | "vault-team" | "compare";
+type Screen = "setup" | "teams" | "draft" | "coach" | "swiss" | "playoffs" | "veto" | "match" | "result" | "stats" | "results" | "series-detail" | "player-detail" | "team-detail" | "balance-lab" | "vault" | "vault-replay" | "vault-team" | "compare" | "transfer";
 type Mode = "classic" | "random" | "spectator";
 type RunKind = "player" | "spectator";
 type SwissRecord = { wins: number; losses: number };
@@ -695,6 +708,13 @@ function App() {
   const [vaultReplayId, setVaultReplayId] = useState<string | null>(null); // match id opened from the Vault
   const [vaultTeamId, setVaultTeamId] = useState<string | null>(null); // team id opened from the Vault standings
   const [compareAId, setCompareAId] = useState<string | null>(null); // player A pre-filled when opening Compare
+  // Career continuation: keep this drafted roster across Majors, earn prize money, run a transfer window.
+  const [careerActive, setCareerActive] = useState(false);
+  const [careerMoney, setCareerMoney] = useState(0);
+  const [careerEvent, setCareerEvent] = useState(1); // Major number currently being played (1-based)
+  const [careerHistory, setCareerHistory] = useState<Array<{ event: number; tier: PlacementTier; prize: number; record: { wins: number; losses: number } }>>([]);
+  const [transferCandidates, setTransferCandidates] = useState<Array<{ player: Player; team: Roster }>>([]);
+  const [transferTrade, setTransferTrade] = useState<{ incoming: Player; outgoing: Player; delta: number } | null>(null); // one trade per window
   const [navStack, setNavStack] = useState<Screen[]>([]); // back-stack for the detail pages
   const [statsScope, setStatsScope] = useState<StatsScope>("all");
   const [record, setRecord] = useState({ wins: 0, losses: 0 });
@@ -716,6 +736,11 @@ function App() {
   const rosterPool = useMemo(() => [...hltvTop20Rosters, ...customRosters], [customRosters]);
   const labTeams = useMemo(() => rosterPool.map(toTournamentTeam), [rosterPool]);
   const comparePool = useMemo(() => rosterPool.flatMap((roster) => roster.players.map((player) => ({ player, team: roster }))), [rosterPool]);
+  const playerTeamMap = useMemo(() => {
+    const map = new Map<string, Roster>();
+    rosterPool.forEach((roster) => roster.players.forEach((player) => map.set(player.id, roster)));
+    return map;
+  }, [rosterPool]);
   const coachPool = useMemo(() => hltvTop20Coaches, []);
   const visibleCoachOptions = coachOptions.length ? coachOptions : coachPool.slice(0, COACH_SHORTLIST_SIZE);
   const activeCall = parseTactic(tactic);
@@ -1471,6 +1496,76 @@ function App() {
     setVeto(createVeto());
     setSeries(undefined);
     setMatch(undefined);
+    setCareerActive(false);
+    setCareerMoney(0);
+    setCareerEvent(1);
+    setCareerHistory([]);
+    setTransferCandidates([]);
+    setTransferTrade(null);
+  }
+
+  // ---- Career continuation -------------------------------------------------------------------------
+  // Banked this Major's prize, then open the transfer window. The first call begins the career.
+  function enterTransferWindow() {
+    const champion = tournamentOutcome === "champion";
+    const reachedPlayoffs = phase === "playoffs";
+    const tier = placementTier({ champion, reachedPlayoffs, playoffRound });
+    const prize = prizeForPlacement(tier);
+    setCareerMoney((money) => (careerActive ? money : STARTING_BANKROLL) + prize);
+    setCareerActive(true);
+    setCareerHistory((history) => [...history, { event: careerEvent, tier, prize, record: { ...record } }]);
+    const picks = pickTransferCandidates(selected, comparePool.map((entry) => entry.player));
+    setTransferCandidates(picks.map((player) => ({ player, team: playerTeamMap.get(player.id) ?? currentRoster })));
+    setTransferTrade(null);
+    setScreen("transfer");
+  }
+
+  // The role-swap: send `outgoing` (your same-role player) to their team, receive `incoming`. A positive
+  // delta is paid out of the bank; a negative delta (you traded a more valuable player) refunds the surplus.
+  function doTransfer(incoming: Player, outgoing: Player) {
+    if (transferTrade) return; // one trade per window
+    const delta = transferDelta(incoming, outgoing);
+    if (delta > careerMoney) return; // can't afford
+    setSelected((current) => current.map((player) => (player.id === outgoing.id ? incoming : player)));
+    setCareerMoney((money) => money - delta);
+    setTransferTrade({ incoming, outgoing, delta });
+  }
+
+  function undoTransfer() {
+    if (!transferTrade) return;
+    const { incoming, outgoing, delta } = transferTrade;
+    setSelected((current) => current.map((player) => (player.id === incoming.id ? outgoing : player)));
+    setCareerMoney((money) => money + delta);
+    setTransferTrade(null);
+  }
+
+  // Start the next Major with the (possibly traded) roster — mirrors chooseCoach's reset but keeps the
+  // roster, coach and bankroll.
+  function startNextMajor() {
+    setCareerEvent((event) => event + 1);
+    const nextSwissField = buildSwissField(rosterPool);
+    const nextSwissRecords = initialSwissRecords(nextSwissField);
+    const rival = selectOpponentForRecord({ wins: 0, losses: 0 }, nextSwissField, nextSwissRecords, []);
+    setRecord({ wins: 0, losses: 0 });
+    setPhase("swiss");
+    setPlayoffRound("quarterfinal");
+    setPlayoffPairs([]);
+    setTournamentOutcome("running");
+    setTournamentWinner(undefined);
+    setSwissField(nextSwissField);
+    setSwissRecords(nextSwissRecords);
+    setSpectatorSwissRound(1);
+    setOpponent(rival);
+    setPlayedOpponentIds([]);
+    setMatchResults([]);
+    setSelectedResultId(undefined);
+    setStatsScope("all");
+    setSeries(undefined);
+    setMatch(undefined);
+    setPlayerForm(generatePlayerForm(selected));
+    setVeto(createVeto());
+    setRunKind("player");
+    setScreen("swiss");
   }
 
   function saveTeam() {
@@ -2042,7 +2137,11 @@ function App() {
                   </>
                 ) : runDone && record.losses >= 3 && isSwissStageResolved(swissField, swissRecords, record) ? (
                   <>
-                    <button className="primary" onClick={() => enterNeutralPlayoffs(swissRecords, "eliminated")}>
+                    <button className="primary" onClick={enterTransferWindow}>
+                      <ArrowRight size={17} />
+                      {careerActive ? `Continue to Major ${careerEvent + 1}` : "Continue career"}
+                    </button>
+                    <button className="secondary" onClick={() => enterNeutralPlayoffs(swissRecords, "eliminated")}>
                       <FastForward size={17} />
                       Continue bracket
                     </button>
@@ -2052,10 +2151,16 @@ function App() {
                     </button>
                   </>
                 ) : runDone ? (
-                  <button className="primary" onClick={restartRun}>
-                    <RefreshCcw size={17} />
-                    Retry run
-                  </button>
+                  <>
+                    <button className="primary" onClick={enterTransferWindow}>
+                      <ArrowRight size={17} />
+                      {careerActive ? `Continue to Major ${careerEvent + 1}` : "Continue career"}
+                    </button>
+                    <button className="secondary" onClick={restartRun}>
+                      <RefreshCcw size={17} />
+                      Retry run
+                    </button>
+                  </>
                 ) : (
                   <button className="primary" onClick={startVeto}>
                     <Play size={17} />
@@ -2221,6 +2326,17 @@ function App() {
                     <FastForward size={17} />
                     Sim games
                   </button>
+                ) : runKind === "player" ? (
+                  <>
+                    <button className="primary" onClick={enterTransferWindow}>
+                      <ArrowRight size={17} />
+                      {careerActive ? `Continue to Major ${careerEvent + 1}` : "Continue career"}
+                    </button>
+                    <button className="secondary" onClick={restartRun}>
+                      <RefreshCcw size={17} />
+                      New run
+                    </button>
+                  </>
                 ) : (
                   <button className="primary" onClick={restartRun}>
                     <RefreshCcw size={17} />
@@ -2344,6 +2460,20 @@ function App() {
       )}
 
       {screen === "compare" && <ComparePage pool={comparePool} initialAId={compareAId} onBack={goBackScreen} />}
+
+      {screen === "transfer" && (
+        <TransferWindow
+          eventNumber={careerEvent}
+          lastResult={careerHistory[careerHistory.length - 1]}
+          money={careerMoney}
+          roster={selected}
+          candidates={transferCandidates}
+          trade={transferTrade}
+          onTrade={doTransfer}
+          onUndo={undoTransfer}
+          onStart={startNextMajor}
+        />
+      )}
 
       {screen === "team-detail" && detailTeam && (
         <TeamDetailPage
@@ -7373,6 +7503,167 @@ function PlayerCareerPanel({
   );
 }
 
+// ---- Career transfer window ----------------------------------------------------------------------
+
+const fmtMoney = (amount: number) => `$${Math.round(amount).toLocaleString()}`;
+
+function TransferCandidateCard({
+  candidate,
+  roster,
+  money,
+  locked,
+  onTrade,
+}: {
+  candidate: { player: Player; team: Roster };
+  roster: Player[];
+  money: number;
+  locked: boolean;
+  onTrade: (incoming: Player, outgoing: Player) => void;
+}) {
+  const sameRole = roster.filter((player) => player.role === candidate.player.role).sort((a, b) => playerValue(b) - playerValue(a));
+  const [outId, setOutId] = useState(sameRole[0]?.id ?? "");
+  const outgoing = sameRole.find((player) => player.id === outId) ?? sameRole[0];
+  const delta = outgoing ? transferDelta(candidate.player, outgoing) : 0;
+  const affordable = delta <= money;
+  const photo = playerPhoto(candidate.player.handle);
+
+  return (
+    <div className="candidate-card" style={{ "--crest": candidate.team.accent } as React.CSSProperties}>
+      <div className="candidate-head">
+        {photo && <img className="candidate-face" src={photo} alt={candidate.player.handle} loading="lazy" />}
+        <div className="candidate-id">
+          <strong>
+            <Flag country={candidate.player.country} /> {candidate.player.handle}
+          </strong>
+          <span>
+            {candidate.team.tag} · {candidate.player.role} · OVR {candidate.player.ovr}
+          </span>
+        </div>
+        <span className="candidate-value">{fmtMoney(playerValue(candidate.player))}</span>
+      </div>
+      <div className="candidate-trade">
+        {sameRole.length > 1 ? (
+          <select className="candidate-out" value={outId} onChange={(event) => setOutId(event.target.value)} aria-label="Player to send">
+            {sameRole.map((player) => (
+              <option key={player.id} value={player.id}>
+                Send {player.handle} ({player.ovr})
+              </option>
+            ))}
+          </select>
+        ) : (
+          <span className="candidate-out-label">Send {outgoing?.handle ?? "—"}</span>
+        )}
+        <span className={`candidate-cost ${delta > 0 ? "pay" : delta < 0 ? "gain" : ""}`}>
+          {delta > 0 ? `Pay ${fmtMoney(delta)}` : delta < 0 ? `Gain ${fmtMoney(-delta)}` : "Even swap"}
+        </span>
+        <button className="primary" disabled={locked || !affordable || !outgoing} onClick={() => outgoing && onTrade(candidate.player, outgoing)}>
+          <ArrowLeftRight size={14} />
+          Trade
+        </button>
+      </div>
+      {!affordable && !locked && <small className="candidate-warn">Not enough money</small>}
+    </div>
+  );
+}
+
+function TransferWindow({
+  eventNumber,
+  lastResult,
+  money,
+  roster,
+  candidates,
+  trade,
+  onTrade,
+  onUndo,
+  onStart,
+}: {
+  eventNumber: number;
+  lastResult?: { tier: PlacementTier; prize: number; record: { wins: number; losses: number } };
+  money: number;
+  roster: Player[];
+  candidates: Array<{ player: Player; team: Roster }>;
+  trade: { incoming: Player; outgoing: Player; delta: number } | null;
+  onTrade: (incoming: Player, outgoing: Player) => void;
+  onUndo: () => void;
+  onStart: () => void;
+}) {
+  return (
+    <main className="layout fullscreen-page transfer-page">
+      <section className="fullscreen-head">
+        <div>
+          <div className="section-title">
+            <ArrowLeftRight size={18} />
+            <span>Transfer window</span>
+          </div>
+          <h1>After Major {eventNumber}</h1>
+          {lastResult && (
+            <p>
+              Finished <b>{placementLabel(lastResult.tier, lastResult.record)}</b> · earned <b>{fmtMoney(lastResult.prize)}</b>
+            </p>
+          )}
+        </div>
+        <div className="transfer-bank">
+          <Coins size={18} />
+          {fmtMoney(money)}
+        </div>
+      </section>
+
+      <div className="transfer-grid">
+        <section className="transfer-card">
+          <div className="section-title">
+            <Users size={18} />
+            <span>Your roster</span>
+          </div>
+          <div className="transfer-roster">
+            {roster.map((player) => (
+              <div className="transfer-roster-row" key={player.id}>
+                <Flag country={player.country} />
+                <strong>{player.handle}</strong>
+                <span className="tr-role">{player.role}</span>
+                <span className="tr-ovr">{player.ovr}</span>
+                <span className="tr-value">{fmtMoney(playerValue(player))}</span>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section className="transfer-card">
+          <div className="vault-card-head">
+            <div className="section-title">
+              <ArrowLeftRight size={18} />
+              <span>Market</span>
+            </div>
+            <span className="vault-count">one trade per window</span>
+          </div>
+          {trade && (
+            <div className="transfer-done">
+              <span>
+                Sent <b>{trade.outgoing.handle}</b> → signed <b className="good">{trade.incoming.handle}</b> for{" "}
+                <b>{trade.delta > 0 ? fmtMoney(trade.delta) : trade.delta < 0 ? `+${fmtMoney(-trade.delta)}` : "free"}</b>
+              </span>
+              <button className="secondary" onClick={onUndo}>
+                Undo
+              </button>
+            </div>
+          )}
+          <div className="transfer-candidates">
+            {candidates.map((candidate) => (
+              <TransferCandidateCard key={candidate.player.id} candidate={candidate} roster={roster} money={money} locked={Boolean(trade)} onTrade={onTrade} />
+            ))}
+          </div>
+        </section>
+      </div>
+
+      <div className="transfer-foot">
+        <button className="primary" onClick={onStart}>
+          <ArrowRight size={17} />
+          Start Major {eventNumber + 1}
+        </button>
+      </div>
+    </main>
+  );
+}
+
 // ---- Player comparison ---------------------------------------------------------------------------
 
 interface CompareEntry {
@@ -9339,6 +9630,8 @@ function sanitizeLoadedScreen(screen: Screen | undefined, snapshot: RunSnapshot)
   if (screen === "series-detail" && !snapshot.selectedResultId) return snapshot.phase === "playoffs" ? "playoffs" : "swiss";
   if (screen === "player-detail" || screen === "team-detail") return snapshot.phase === "playoffs" ? "playoffs" : "swiss";
   if (screen === "coach" && snapshot.runKind === "spectator") return "swiss";
+  // The transfer window is transient career state not held in a run snapshot — never restore into it.
+  if (screen === "transfer" || screen === "compare") return snapshot.phase === "playoffs" ? "playoffs" : "swiss";
   return screen;
 }
 
