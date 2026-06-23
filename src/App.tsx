@@ -129,6 +129,7 @@ import { validateRoster, validateDataset, type ValidationIssue } from "./validat
 import {
   MatchDatabase,
   memoryStorage,
+  createIdbStorage,
   teamRef,
   type StorageAdapter,
   type PlayerCareerRecord,
@@ -476,10 +477,24 @@ function createFormPlayer(
 // Persistent local match database (localStorage in the browser, in-memory under SSR/tests). A single
 // instance so every completed map accrues into one queryable store of matches + canonical careers.
 let matchDbInstance: MatchDatabase | null = null;
+// Resolves once the Vault's full history has loaded from IndexedDB (so reads/records wait for it).
+let resolveMatchDbReady: () => void = () => {};
+const matchDbReady: Promise<void> = new Promise((resolve) => {
+  resolveMatchDbReady = resolve;
+});
+
 function getMatchDb(): MatchDatabase {
   if (!matchDbInstance) {
-    const storage: StorageAdapter = typeof window !== "undefined" ? window.localStorage : memoryStorage();
-    matchDbInstance = new MatchDatabase(storage);
+    if (typeof indexedDB !== "undefined") {
+      // IndexedDB (hundreds of MB) so the Vault keeps a full career of matches; migrates old localStorage.
+      const { adapter, ready } = createIdbStorage();
+      matchDbInstance = new MatchDatabase(adapter);
+      ready.then(() => resolveMatchDbReady());
+    } else {
+      const storage: StorageAdapter = typeof window !== "undefined" ? window.localStorage : memoryStorage();
+      matchDbInstance = new MatchDatabase(storage);
+      resolveMatchDbReady();
+    }
   }
   return matchDbInstance;
 }
@@ -919,10 +934,22 @@ function App() {
     document.documentElement.style.setProperty("--accent", settings.accent);
   }, [settings.accent]);
 
-  // Accrue every completed map into the persistent match database (survives reloads and spans runs).
+  // Kick off the Vault's IndexedDB load and flip dbReady once its full history is in memory.
+  const [dbReady, setDbReady] = useState(false);
   useEffect(() => {
-    if (matchResults.length) recordResultsToDb(matchResults);
-  }, [matchResults]);
+    getMatchDb(); // start the async load
+    let live = true;
+    matchDbReady.then(() => live && setDbReady(true));
+    return () => {
+      live = false;
+    };
+  }, []);
+
+  // Accrue every completed map into the persistent match database (survives reloads and spans runs).
+  // Gated on dbReady so we never write onto a half-loaded cache (which would clobber the loaded history).
+  useEffect(() => {
+    if (dbReady && matchResults.length) recordResultsToDb(matchResults);
+  }, [matchResults, dbReady]);
 
   useEffect(() => {
     saveCustomRosters(customRosters);
@@ -2647,6 +2674,7 @@ function App() {
             setVaultTeamId(id);
             pushScreen("vault-team");
           }}
+          dbReady={dbReady}
         />
       )}
 
@@ -6401,13 +6429,19 @@ function VaultPage({
   onBack,
   onOpenReplay,
   onOpenTeam,
+  dbReady,
 }: {
   onBack: () => void;
   onOpenReplay: (matchId: string) => void;
   onOpenTeam: (teamId: string) => void;
+  dbReady: boolean;
 }) {
   const db = useMemo(() => getMatchDb(), []);
   const [refresh, setRefresh] = useState(0);
+  // Recompute once the Vault's full history finishes loading from IndexedDB.
+  useEffect(() => {
+    if (dbReady) setRefresh((value) => value + 1);
+  }, [dbReady]);
   const [statKey, setStatKey] = useState(VAULT_STATS[0].key);
   const [sideFilter, setSideFilter] = useState<StatsSideFilter>("both");
   const [mapFilter, setMapFilter] = useState<VaultMapFilter>("all");

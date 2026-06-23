@@ -23,6 +23,103 @@ export function memoryStorage(seed: Record<string, string> = {}): StorageAdapter
   };
 }
 
+// ---- IndexedDB-backed storage (browser) -----------------------------------------------------------
+// localStorage caps at ~5MB, which the Vault outgrows over a long career — old matches then get evicted.
+// IndexedDB holds hundreds of MB. We keep the SYNCHRONOUS StorageAdapter contract by mirroring the data
+// in memory: reads hit the in-memory cache; writes update it synchronously and persist to IndexedDB in
+// the background. `ready` resolves once the full history has loaded from IndexedDB (migrating any old
+// localStorage Vault into it on first run). Callers should await `ready` before reading or recording.
+const IDB_NAME = "cssim-vault";
+const IDB_STORE = "kv";
+
+function openVaultIdb(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(IDB_NAME, 1);
+    req.onupgradeneeded = () => {
+      if (!req.result.objectStoreNames.contains(IDB_STORE)) req.result.createObjectStore(IDB_STORE);
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+function idbReq<T>(req: IDBRequest<T>): Promise<T> {
+  return new Promise((resolve, reject) => {
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+export function createIdbStorage(keys: string[] = [DB_KEY, LOG_KEY]): { adapter: StorageAdapter; ready: Promise<void> } {
+  const cache = new Map<string, string>();
+  let dbPromise: Promise<IDBDatabase> | null = null;
+  const getDb = () => (dbPromise ??= openVaultIdb());
+  const localGet = (key: string) => (typeof window !== "undefined" && window.localStorage ? window.localStorage.getItem(key) : null);
+
+  const ready = (async () => {
+    try {
+      const db = await getDb();
+      for (const key of keys) {
+        const stored = (await idbReq(db.transaction(IDB_STORE, "readonly").objectStore(IDB_STORE).get(key))) as string | undefined;
+        if (stored != null) {
+          cache.set(key, stored);
+        } else {
+          // First run on IndexedDB: migrate the existing localStorage Vault across so nothing is lost,
+          // then drop the localStorage copy to give that ~5MB budget back to the autosave / save slots.
+          const legacy = localGet(key);
+          if (legacy != null) {
+            cache.set(key, legacy);
+            await idbReq(db.transaction(IDB_STORE, "readwrite").objectStore(IDB_STORE).put(legacy, key));
+            try {
+              window.localStorage.removeItem(key);
+            } catch {
+              /* ignore */
+            }
+          }
+        }
+      }
+    } catch {
+      // IndexedDB unavailable (e.g. private mode) — fall back to whatever localStorage holds.
+      for (const key of keys) {
+        const legacy = localGet(key);
+        if (legacy != null) cache.set(key, legacy);
+      }
+    }
+  })();
+
+  const persist = (key: string, value: string | null) => {
+    getDb()
+      .then((db) => {
+        const store = db.transaction(IDB_STORE, "readwrite").objectStore(IDB_STORE);
+        const req: IDBRequest = value == null ? store.delete(key) : store.put(value, key);
+        return idbReq(req);
+      })
+      .catch(() => {
+        // IndexedDB write failed — fall back to localStorage so the write isn't simply lost.
+        try {
+          if (typeof window === "undefined" || !window.localStorage) return;
+          if (value == null) window.localStorage.removeItem(key);
+          else window.localStorage.setItem(key, value);
+        } catch {
+          /* localStorage also failed (quota) — drop it */
+        }
+      });
+  };
+
+  const adapter: StorageAdapter = {
+    getItem: (key) => cache.get(key) ?? null,
+    setItem: (key, value) => {
+      cache.set(key, value);
+      persist(key, value);
+    },
+    removeItem: (key) => {
+      cache.delete(key);
+      persist(key, null);
+    },
+  };
+  return { adapter, ready };
+}
+
 export interface StoredTeamRef {
   id: string;
   name: string;
@@ -162,12 +259,13 @@ export interface TeamProfile {
 const DB_KEY = "cssim-match-db-v1";
 const LOG_KEY = "cssim-match-logs-v1";
 const SCHEMA_VERSION = 2; // v2 adds sideBox + a separate log store; v1 records still parse (fields optional)
-// Ring buffer so the registry can't grow unbounded in localStorage. Each record now carries a combined
-// box PLUS a CT/T split (~3x the stat payload), so this is kept conservative to stay well under quota.
-const MAX_MATCHES = 300;
-// Event logs are large (hundreds of events per map). They live in their OWN small ring buffer, separate
-// from the registry, so the registry stays tiny/fast and only the most recent matches are replayable.
-const MAX_EVENT_LOGS = 40;
+// Generous ring buffers — backed by IndexedDB (createIdbStorage) the registry has hundreds of MB to work
+// with, not localStorage's ~5MB, so a long career keeps its full match history (~100 Majors' worth) and
+// far more replays. The caps are now just runaway backstops, not the everyday limit.
+const MAX_MATCHES = 3000;
+// Event logs are large (hundreds of events per map) and live in their OWN ring buffer, separate from the
+// registry, so the registry stays fast and most matches stay replayable.
+const MAX_EVENT_LOGS = 150;
 
 interface DbShape {
   schemaVersion: number;

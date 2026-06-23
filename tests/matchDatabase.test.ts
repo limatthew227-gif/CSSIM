@@ -131,13 +131,14 @@ test("MatchDatabase: event logs live in a separate store, not the registry blob"
 
 test("MatchDatabase: the log store is ring-buffered to its cap while box scores persist", () => {
   const db = new MatchDatabase(memoryStorage());
-  for (let i = 0; i < 45; i += 1) {
-    db.recordMatch(miniLoggedInput(`log-${String(i).padStart(2, "0")}`));
+  const N = 155;
+  for (let i = 0; i < N; i += 1) {
+    db.recordMatch(miniLoggedInput(`log-${String(i).padStart(3, "0")}`));
   }
-  assert.equal(db.eventLogIds().size, 40); // capped
-  assert.equal(db.getEventLog("log-00"), undefined); // oldest evicted
-  assert.ok(db.getEventLog("log-44")); // newest kept
-  assert.equal(db.count(), 45); // every box score persisted (well under MAX_MATCHES)
+  assert.equal(db.eventLogIds().size, 150); // capped at MAX_EVENT_LOGS
+  assert.equal(db.getEventLog("log-000"), undefined); // oldest evicted
+  assert.ok(db.getEventLog(`log-${String(N - 1).padStart(3, "0")}`)); // newest kept
+  assert.equal(db.count(), N); // every box score persisted (well under MAX_MATCHES)
 });
 
 test("MatchDatabase: a log-store quota failure never aborts the box-score write", () => {
