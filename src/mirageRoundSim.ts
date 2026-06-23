@@ -29,8 +29,12 @@ const PLANT_TIME = 3.2;
 const DEFUSE_TIME = 9.0;
 const BOMB_TIME = 40;
 const TTK_BASE = 0.7; // seconds from "we see each other" to someone dying — paces deaths
+const envN = (k: string, d: number) => (typeof process !== "undefined" && process.env && process.env[k] ? Number(process.env[k]) : d);
 const HOLDER_EDGE = 1.45; // a player holding their angle beats a peeker, all else equal
-const AWP_EDGE = 1.7; // AWP first-shot advantage
+// AWP first-shot advantage. Lowered from 1.7: on mirage's spatial sim a star AWP was hoarding ~33% of
+// the team's kills (vs a realistic ~25%), which compounded to absurd tournament K-D differentials. The
+// AWP is still clearly favoured first-shot, just not single-handedly running the server. Env-tunable.
+const AWP_EDGE = envN("AWP_EDGE", 1.55);
 const DEFUSE_EXPOSE = 1.5; // a CT caught defusing is exposed — a T who re-peeks (flash out) is favoured
 const CROSSFIRE = 1.1; // each extra enemy with LOS on you sharply cuts your odds (1vN is a near-loss)
 // Aggregate-balance knobs. Per-duel edges COMPOUND over a ~16-round match, so individual OVR skill is

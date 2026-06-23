@@ -499,3 +499,38 @@ test("a star on a weak team still frags like a star (not shut down by weak teamm
   // Before the carry fix this sat ~0.85 (below average!); a 92-OVR star should clearly outperform.
   assert.ok(rating / N >= 1.05, `star on a weak team should rate well above average, got ${(rating / N).toFixed(2)}`);
 });
+
+test("a superstar's tournament K-D differential stays realistic (no +200 blowups)", () => {
+  // A 94-OVR star carrying mid mates against a weaker field, over a deep tournament run. The real
+  // all-time Major K-D record is ~+132; a single player hoovering up kills used to compound to +200+.
+  const elite: FieldTeam = {
+    ...makeTeam("elite", 84),
+    players: [
+      makePlayer("star", "AWP", 94, "Aggressive", 95),
+      makePlayer("e2", "Entry", 84),
+      makePlayer("e3", "Rifler", 84),
+      makePlayer("e4", "Support", 84),
+      makePlayer("e5", "IGL", 84),
+    ],
+  };
+  const weak = makeTeam("weak", 79);
+  const tally = new Map<string, { k: number; d: number }>();
+  elite.players.forEach((p) => tally.set(p.id, { k: 0, d: 0 }));
+  const MAPS = 18;
+  for (let seed = 1; seed <= MAPS; seed += 1) {
+    const final = playMatch(seed * 5 + 3, elite, weak, "inferno");
+    elite.players.forEach((p) => {
+      const line = final.yourStats[p.id];
+      const t = tally.get(p.id)!;
+      t.k += line.kills;
+      t.d += line.deaths;
+    });
+  }
+  const diffs = [...tally.values()].map((t) => t.k - t.d).sort((a, b) => b - a);
+  const topPerMap = diffs[0] / MAPS;
+  // Realistic ceiling: even dominating a weak field, the best player should sit well under ~11/map
+  // (the buggy weights produced ~13-18/map, i.e. +230-320 over a run).
+  assert.ok(topPerMap < 11, `top K-D differential should be realistic, got ${topPerMap.toFixed(1)}/map (+${diffs[0]} over ${MAPS} maps)`);
+  // ...but the star should still clearly lead his team (we tamed concentration, didn't erase it).
+  assert.ok(diffs[0] > diffs[1], `the star should still lead the team in K-D (${diffs.map((d) => `+${d}`).join(", ")})`);
+});

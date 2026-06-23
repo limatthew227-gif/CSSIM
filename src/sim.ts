@@ -68,6 +68,11 @@ export const FORM_SD = envNum("FORM_SD", 14);
 // (was ~62%) with 6+ different champions. (Env-overridable for re-calibration; defaults in production.)
 export const ROUND_CLAMP_HI = envNum("CLAMP_HI", 0.78);
 export const ROUND_CLAMP_LO = envNum("CLAMP_LO", 0.22);
+// Compresses how concentrated a single player's kill/death SHARE within their team can get (these
+// weights only pick which teammate frags/dies — never team outcomes). <1 pulls shares toward an even
+// split, so a star still leads the server but doesn't post an all-time-record K-D every event. Tuned
+// so the best player's tournament K-D differential tracks reality (top ~+80, all-time record ~+132).
+export const SHARE_GAMMA = envNum("SHARE_GAMMA", 0.55);
 export function rollForm(): number {
   return (Math.random() + Math.random() + Math.random() - 1.5) * FORM_SD;
 }
@@ -2875,10 +2880,16 @@ function killWeight(player: Player, context: MatchContext, opponentRank?: number
 
   const skill = clamp((player.ovr - 50) / 50, 0, 1);
 
-  // 60 OVR ≈ 0.92, 80 OVR ≈ 1.46, 95 OVR ≈ 1.87
-  const baseWeight = 0.65 + skill * 1.35;
+  // Compressed kill spread so a star doesn't hoover up too large a kill share — the tournament-long
+  // K-D differential was running ~2x the real-world Major record. 60 OVR ≈ 1.02, 80 ≈ 1.36, 95 ≈ 1.62.
+  const baseWeight = 0.85 + skill * 0.85;
 
-  return baseWeight * roleMod * styleMod * playerPerformanceMultiplier(player, context, opponentRank, weapon);
+  // Soften the performance multiplier's kill inflation too (it already gets the full benefit on the
+  // kill side; a hot star frags more, but not so much that they alone post record K-D every event).
+  const perf = playerPerformanceMultiplier(player, context, opponentRank, weapon);
+  const killPerf = 1 + (perf - 1) * 0.7;
+
+  return Math.pow(baseWeight * roleMod * styleMod * killPerf, SHARE_GAMMA);
 }
 
 function deathWeight(player: Player, context: MatchContext, opponentRank?: number, weapon?: string) {
@@ -2900,10 +2911,18 @@ function deathWeight(player: Player, context: MatchContext, opponentRank?: numbe
 
   const skill = clamp((player.ovr - 50) / 50, 0, 1);
 
-  // 60 OVR ≈ 1.24, 80 OVR ≈ 1.02, 95 OVR ≈ 0.86
-  const baseWeight = 1.35 - skill * 0.55;
+  // Flatter death spread so stars die a bit more often (they were surviving unrealistically — ~11
+  // deaths over 24 rounds), which pulls the K-D differential back toward realistic ranges.
+  // 60 OVR ≈ 1.14, 80 OVR ≈ 1.03, 95 OVR ≈ 0.95
+  const baseWeight = 1.20 - skill * 0.28;
 
-  return (baseWeight * roleMod * styleMod) / playerPerformanceMultiplier(player, context, opponentRank, weapon);
+  // The performance multiplier already inflates a hot star's KILLS; applying its FULL value to deaths
+  // too made them nearly immortal (a 1.3 multiplier => ~1.7x K-D swing). Soften it on the death side
+  // so a peaking/playoff star frags more without dying far less than everyone else.
+  const perf = playerPerformanceMultiplier(player, context, opponentRank, weapon);
+  const deathPerf = 1 + (perf - 1) * 0.5;
+
+  return Math.pow((baseWeight * roleMod * styleMod) / deathPerf, SHARE_GAMMA);
 }
 
 function playerPerformanceMultiplier(player: Player, context: MatchContext, opponentRank?: number, weapon?: string) {
