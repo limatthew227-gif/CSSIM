@@ -1493,16 +1493,6 @@ meter::-webkit-meter-optimum-value {
   background: linear-gradient(90deg, var(--accent), var(--green));
 }
 
-.hidden-stats {
-  display: grid;
-  place-items: center;
-  width: 100%;
-  min-height: 96px;
-  border: 1px dashed var(--line);
-  border-radius: var(--radius);
-  color: var(--muted);
-}
-
 .bench {
   margin-top: 14px;
   padding: 14px;
