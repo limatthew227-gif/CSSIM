@@ -9129,35 +9129,6 @@ input[type="range"] {
 }
 
 /* Clickable team in the standings table */
-.vault-team-tr:hover {
-  background: color-mix(in srgb, var(--accent), transparent 92%);
-}
-
-.vault-team-link {
-  display: flex;
-  align-items: baseline;
-  gap: 6px;
-  padding: 0;
-  border: none;
-  background: none;
-  color: inherit;
-  cursor: pointer;
-  text-align: left;
-}
-
-.vault-team-link b {
-  color: #fff;
-}
-
-.vault-team-link span {
-  color: var(--muted);
-  font-size: 10px;
-}
-
-.vault-team-link:hover b {
-  color: var(--accent);
-}
-
 .team-map-chips {
   display: flex;
   flex-wrap: wrap;
@@ -9313,4 +9284,159 @@ input[type="range"] {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Vault: sort toggle, full-width standings list, logos ---------------------- */
+.vault-page .good {
+  color: var(--green);
+}
+
+.vault-page .bad {
+  color: #ff8d8d;
+}
+
+.vault-count {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.vault-sort-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #151a20;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.vault-sort-toggle[aria-pressed="true"] {
+  border-color: color-mix(in srgb, var(--gold), white 10%);
+  color: var(--gold);
+}
+
+.vault-standings-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 3px 12px;
+  align-content: start;
+}
+
+.vault-standing-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto 42px;
+  align-items: center;
+  gap: 9px;
+  padding: 5px 8px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: #151a20;
+  text-align: left;
+  cursor: pointer;
+}
+
+.vault-standing-row:hover {
+  border-color: color-mix(in srgb, var(--accent), transparent 50%);
+}
+
+.vault-standing-row:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.vault-standing-row .team-logo.small {
+  width: 28px;
+  height: 28px;
+  font-size: 9px;
+  flex: none;
+}
+
+.vault-standing-id {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+
+.vault-standing-id strong {
+  overflow: hidden;
+  color: #fff;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vault-standing-id span {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.vault-standing-rec {
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+}
+
+.vault-standing-rec em {
+  font-style: normal;
+}
+
+.vault-standing-pct {
+  color: var(--muted);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+/* Team profile header crest */
+.vault-team-headline {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.vault-team-headline .team-logo {
+  flex: none;
+}
+
+/* Head-to-head + match-history crests (logo-less teams fall back to a small readable tag) */
+.team-h2h-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.team-h2h-name .team-logo.small {
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+  font-size: 8px;
+  flex: none;
+}
+
+.team-match-opp {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.team-match-vs {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.team-match-opp .team-logo.small {
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  font-size: 7px;
+  flex: none;
+}
+
+.team-match-opp-name {
+  color: #cfd7e2;
 }

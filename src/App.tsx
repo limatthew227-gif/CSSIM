@@ -5756,19 +5756,22 @@ function VaultTeamPage({
   return (
     <main className="layout fullscreen-page vault-page vault-team-page" style={{ "--crest": profile.team.accent } as React.CSSProperties}>
       <section className="fullscreen-head">
-        <div>
-          <div className="section-title">
-            <Shield size={18} />
-            <span>Team profile</span>
+        <div className="vault-team-headline">
+          <TeamLogo team={profile.team} />
+          <div>
+            <div className="section-title">
+              <Shield size={18} />
+              <span>Team profile</span>
+            </div>
+            <h1>
+              {profile.team.name}
+              {profile.team.year && <em className="vault-era">'{profile.team.year.slice(-2)}</em>}
+            </h1>
+            <p>
+              {profile.wins}–{profile.losses} · {winPct.toFixed(0)}% win rate · {profile.matches} maps
+              {profile.streak ? ` · ${profile.streak.count}${profile.streak.type} streak` : ""}
+            </p>
           </div>
-          <h1>
-            {profile.team.name}
-            {profile.team.year && <em className="vault-era">'{profile.team.year.slice(-2)}</em>}
-          </h1>
-          <p>
-            {profile.wins}–{profile.losses} · {winPct.toFixed(0)}% win rate · {profile.matches} maps
-            {profile.streak ? ` · ${profile.streak.count}${profile.streak.type} streak` : ""}
-          </p>
         </div>
         <button className="secondary" onClick={onBack}>
           <ArrowLeft size={16} />
@@ -5879,7 +5882,8 @@ function VaultTeamPage({
                   title={`Filter matches vs ${entry.team.name}`}
                 >
                   <span className="team-h2h-name">
-                    <b>{entry.team.tag}</b> <span>{entry.team.name}</span>
+                    <TeamLogo team={entry.team} small />
+                    <span>{entry.team.name}</span>
                   </span>
                   <span className="team-h2h-rec">
                     <em className="good">{entry.wins}</em>–<em className="bad">{entry.losses}</em>
@@ -5923,7 +5927,11 @@ function VaultTeamPage({
                 <b>
                   {row.teamScore}–{row.oppScore}
                 </b>
-                <span className="team-match-opp">vs {row.opponent.tag}</span>
+                <span className="team-match-opp">
+                  <span className="team-match-vs">vs</span>
+                  <TeamLogo team={row.opponent} small />
+                  <span className="team-match-opp-name">{row.opponent.tag}</span>
+                </span>
                 <span className="vault-match-play">{canReplay ? <Play size={13} /> : null}</span>
               </button>
             );
@@ -5948,6 +5956,7 @@ function VaultPage({
   const [statKey, setStatKey] = useState(VAULT_STATS[0].key);
   const [sideFilter, setSideFilter] = useState<StatsSideFilter>("both");
   const [mapFilter, setMapFilter] = useState<VaultMapFilter>("all");
+  const [sortDir, setSortDir] = useState<"desc" | "asc">("desc"); // desc = highest first; asc surfaces the lowest
 
   const matches = useMemo(() => db.listMatches(), [db, refresh]);
   const teams = useMemo(() => db.listTeams(), [db, refresh]);
@@ -5968,10 +5977,12 @@ function VaultPage({
   );
 
   const stat = VAULT_STATS.find((entry) => entry.key === statKey) ?? VAULT_STATS[0];
-  const leaders = useMemo(
-    () => [...filteredPlayers].sort((a, b) => stat.get(b.line) - stat.get(a.line) || b.line.rating - a.line.rating).slice(0, 25),
-    [filteredPlayers, stat],
-  );
+  const leaders = useMemo(() => {
+    const dir = sortDir === "asc" ? -1 : 1; // flip both the stat and the rating tiebreak when showing lowest
+    return [...filteredPlayers]
+      .sort((a, b) => dir * (stat.get(b.line) - stat.get(a.line)) || dir * (b.line.rating - a.line.rating))
+      .slice(0, 25);
+  }, [filteredPlayers, stat, sortDir]);
   const top = leaders[0];
 
   if (!matches.length) {
@@ -6045,7 +6056,7 @@ function VaultPage({
         </div>
         {top && (
           <div className="vault-hero-leader">
-            <span className="vault-hero-leader-label">{stat.label} leader</span>
+            <span className="vault-hero-leader-label">{sortDir === "asc" ? `Lowest ${stat.label}` : `${stat.label} leader`}</span>
             <div className="vault-hero-leader-body">
               {playerPhoto(top.handle) && <img className="vault-face lg" src={playerPhoto(top.handle)} alt={top.handle} loading="lazy" />}
               <div className="vault-hero-leader-id">
@@ -6101,6 +6112,16 @@ function VaultPage({
               </option>
             ))}
           </select>
+          <button
+            type="button"
+            className="vault-sort-toggle"
+            aria-pressed={sortDir === "asc"}
+            onClick={() => setSortDir((dir) => (dir === "desc" ? "asc" : "desc"))}
+            title={sortDir === "desc" ? "Showing highest — click for lowest" : "Showing lowest — click for highest"}
+          >
+            {sortDir === "desc" ? "Highest" : "Lowest"}
+            <ArrowLeft size={13} style={{ transform: sortDir === "desc" ? "rotate(-90deg)" : "rotate(90deg)" }} />
+          </button>
         </div>
         {leaders.length === 0 ? (
           <div className="vault-no-rows">No {sideFilter === "both" ? "" : `${sideFilter}-side `}records{mapFilter === "all" ? "" : ` on ${mapName(mapFilter)}`} yet.</div>
@@ -6109,7 +6130,7 @@ function VaultPage({
             {leaders.map((player, index) => {
               const photo = playerPhoto(player.handle);
               return (
-                <div className={`vault-leader-row${index < 3 ? ` medal medal-${index + 1}` : ""}`} key={player.versionKey}>
+                <div className={`vault-leader-row${index < 3 && sortDir === "desc" ? ` medal medal-${index + 1}` : ""}`} key={player.versionKey}>
                   <span className="vault-rank-chip">{index + 1}</span>
                   {photo ? (
                     <img className="vault-face" src={photo} alt={player.handle} loading="lazy" />
@@ -6134,71 +6155,63 @@ function VaultPage({
         )}
       </section>
 
-      <div className="vault-two-col">
-        <section className="vault-card">
+      <section className="vault-card">
+        <div className="vault-card-head">
           <div className="section-title">
             <Shield size={18} />
             <span>Team standings</span>
           </div>
-          <table className="vault-table">
-            <thead>
-              <tr>
-                <th>Team</th>
-                <th>Maps</th>
-                <th>W</th>
-                <th>L</th>
-                <th>Win%</th>
-              </tr>
-            </thead>
-            <tbody>
-              {teams.map((row: TeamRecordRow) => (
-                <tr key={row.team.id} className="vault-team-tr">
-                  <td className="vault-team-cell">
-                    <button type="button" className="vault-team-link" onClick={() => onOpenTeam(row.team.id)} title={`${row.team.name} — team profile`}>
-                      <b>{row.team.tag}</b>
-                      <span>{row.team.name}</span>
-                    </button>
-                  </td>
-                  <td>{row.matches}</td>
-                  <td>{row.wins}</td>
-                  <td>{row.losses}</td>
-                  <td>{((row.wins / Math.max(1, row.matches)) * 100).toFixed(0)}%</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </section>
+          <span className="vault-count">{teams.length} teams</span>
+        </div>
+        <div className="vault-standings-list">
+          {teams.map((row: TeamRecordRow) => {
+            const pct = (row.wins / Math.max(1, row.matches)) * 100;
+            return (
+              <button type="button" className="vault-standing-row" key={row.team.id} onClick={() => onOpenTeam(row.team.id)} title={`${row.team.name} — team profile`}>
+                <TeamLogo team={row.team} small />
+                <div className="vault-standing-id">
+                  <strong>{row.team.name}</strong>
+                  <span>{row.matches} map{row.matches === 1 ? "" : "s"}</span>
+                </div>
+                <span className="vault-standing-rec">
+                  <em className="good">{row.wins}</em>–<em className="bad">{row.losses}</em>
+                </span>
+                <span className="vault-standing-pct">{pct.toFixed(0)}%</span>
+              </button>
+            );
+          })}
+        </div>
+      </section>
 
-        <section className="vault-card">
-          <div className="section-title">
-            <Clock3 size={18} />
-            <span>Recent matches</span>
-          </div>
-          <div className="vault-match-list">
-            {[...matches].reverse().slice(0, 40).map((match: MatchRecord) => {
-              const canReplay = replayIds.has(match.id);
-              return (
-                <button
-                  type="button"
-                  className={`vault-match-row${canReplay ? "" : " no-replay"}`}
-                  key={match.id}
-                  aria-disabled={!canReplay}
-                  onClick={() => canReplay && onOpenReplay(match.id)}
-                  title={canReplay ? "Watch round replay" : "Replay not saved for this match"}
-                >
-                  <span className="vault-match-map">{mapAbbr(match.map)}</span>
-                  <span className={`vault-match-team${match.winnerId === match.left.id ? " won" : ""}`}>{match.left.tag}</span>
-                  <b>
-                    {match.leftScore}–{match.rightScore}
-                  </b>
-                  <span className={`vault-match-team right${match.winnerId === match.right.id ? " won" : ""}`}>{match.right.tag}</span>
-                  <span className="vault-match-play">{canReplay ? <Play size={13} /> : null}</span>
-                </button>
-              );
-            })}
-          </div>
-        </section>
-      </div>
+      <section className="vault-card">
+        <div className="section-title">
+          <Clock3 size={18} />
+          <span>Recent matches</span>
+        </div>
+        <div className="vault-match-list">
+          {[...matches].reverse().slice(0, 40).map((match: MatchRecord) => {
+            const canReplay = replayIds.has(match.id);
+            return (
+              <button
+                type="button"
+                className={`vault-match-row${canReplay ? "" : " no-replay"}`}
+                key={match.id}
+                aria-disabled={!canReplay}
+                onClick={() => canReplay && onOpenReplay(match.id)}
+                title={canReplay ? "Watch round replay" : "Replay not saved for this match"}
+              >
+                <span className="vault-match-map">{mapAbbr(match.map)}</span>
+                <span className={`vault-match-team${match.winnerId === match.left.id ? " won" : ""}`}>{match.left.tag}</span>
+                <b>
+                  {match.leftScore}–{match.rightScore}
+                </b>
+                <span className={`vault-match-team right${match.winnerId === match.right.id ? " won" : ""}`}>{match.right.tag}</span>
+                <span className="vault-match-play">{canReplay ? <Play size={13} /> : null}</span>
+              </button>
+            );
+          })}
+        </div>
+      </section>
     </main>
   );
 }

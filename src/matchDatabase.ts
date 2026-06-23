@@ -29,6 +29,7 @@ export interface StoredTeamRef {
   tag: string;
   accent: string;
   year: string;
+  logo?: string; // resolved logo URL, so the Vault can render crests (older records fall back to the tag)
 }
 
 export interface StoredPlayerRef {
@@ -512,8 +513,8 @@ export class MatchDatabase {
   }
 }
 
-export function teamRef(team: { id: string; name: string; tag: string; accent: string; year: string }): StoredTeamRef {
-  return { id: team.id, name: team.name, tag: team.tag, accent: team.accent, year: team.year };
+export function teamRef(team: { id: string; name: string; tag: string; accent: string; year: string; logo?: string }): StoredTeamRef {
+  return { id: team.id, name: team.name, tag: team.tag, accent: team.accent, year: team.year, logo: team.logo };
 }
 
 function playerRef(player: Player, side: "left" | "right", teamId: string): StoredPlayerRef {
