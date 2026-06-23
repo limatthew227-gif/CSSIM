@@ -5736,11 +5736,14 @@ function VaultPage({ onBack }: { onBack: () => void }) {
           {leaders.map((player, index) => {
             const photo = playerPhoto(player.handle);
             return (
-              <div className="vault-leader-row" key={player.canonicalKey}>
+              <div className="vault-leader-row" key={player.versionKey}>
                 <span className="vault-rank">{index + 1}</span>
                 {photo && <img className="vault-face" src={photo} alt={player.handle} loading="lazy" />}
                 <Flag country={player.country} />
-                <strong>{player.handle}</strong>
+                <strong>
+                  {player.handle}
+                  {player.year && <em className="vault-era">'{player.year.slice(-2)}</em>}
+                </strong>
                 <span className="vault-sub">
                   {player.matches} map{player.matches === 1 ? "" : "s"} · {player.line.rating.toFixed(2)} rating
                 </span>
@@ -6595,8 +6598,8 @@ function PlayerDetailPage({
   });
   const display = [...maps].reverse(); // most recent first
   const photo = playerPhoto(player.handle);
-  const career = useMemo(() => buildPlayerCareer(results, canonicalPlayerKey(player)), [results, player]);
-  const vault = useMemo(() => getMatchDb().playerCareer(canonicalPlayerKey(player)), [player]);
+  const career = useMemo(() => buildPlayerCareer(results, playerVersionKey(player)), [results, player]);
+  const vault = useMemo(() => getMatchDb().playerCareer(playerVersionKey(player)), [player]);
 
   return (
     <main className="layout fullscreen-page">
@@ -7871,9 +7874,10 @@ interface PlayerCareer {
   line: MatchState["yourStats"][string]; // PlayerLine summed across all stints
 }
 
-// Aggregate one human's whole run by CANONICAL identity, not by team — so a pro drafted onto your
-// roster and the same pro on their real HLTV team fold into a single career line.
-function buildPlayerCareer(results: SwissResult[], canonicalKey: string): PlayerCareer {
+// Aggregate one player VERSION's whole run by identity, not by team — so a pro drafted onto your
+// roster and the same-era pro on their real HLTV team fold into one career line, while a different
+// era of that player (e.g. FalleN 2018 vs 2026) stays a separate career.
+function buildPlayerCareer(results: SwissResult[], versionKey: string): PlayerCareer {
   const logs: MatchEventLog[] = [];
   const idToPlayer = new Map<string, Player>();
   const stintByTeam = new Map<string, CareerTeamStint>();
@@ -7885,7 +7889,7 @@ function buildPlayerCareer(results: SwissResult[], canonicalKey: string): Player
       ["right", result.right],
     ] as const).forEach(([sideKey, team]) => {
       team.players.forEach((player) => idToPlayer.set(player.id, player));
-      const member = team.players.find((player) => canonicalPlayerKey(player) === canonicalKey);
+      const member = team.players.find((player) => playerVersionKey(player) === versionKey);
       if (!member) return;
       // Sum PER-MAP stats (not the series-level aggregate) so this career line matches the player-card
       // and all-time vault, which both aggregate per-map lines.
@@ -7911,7 +7915,7 @@ function buildPlayerCareer(results: SwissResult[], canonicalKey: string): Player
     ? mergePlayerAnalytics(
         analytics.players.filter((row) => {
           const player = idToPlayer.get(row.playerId);
-          return player ? canonicalPlayerKey(player) === canonicalKey : false;
+          return player ? playerVersionKey(player) === versionKey : false;
         }),
       )
     : null;

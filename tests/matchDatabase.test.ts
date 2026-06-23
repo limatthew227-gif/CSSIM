@@ -43,8 +43,8 @@ test("MatchDatabase: playerCareer folds a canonical player across teams and runs
   db.recordMatch(matchInput("r1", "2026-06-01T00:00:00Z", drafted, oppA, 3));
   db.recordMatch(matchInput("r2", "2026-06-02T00:00:00Z", realTeam, oppB, 4));
 
-  const canonical = db.getMatch("r1")!.players.find((ref) => ref.handle === "star")!.canonicalKey;
-  const career = db.playerCareer(canonical)!;
+  const version = db.getMatch("r1")!.players.find((ref) => ref.handle === "star")!.versionKey;
+  const career = db.playerCareer(version)!;
 
   assert.equal(career.matches, 2);
   assert.equal(career.teamIds.length, 2); // appeared for two teams
@@ -54,7 +54,7 @@ test("MatchDatabase: playerCareer folds a canonical player across teams and runs
   const expected = emptyLine();
   ["r1", "r2"].forEach((id) => {
     const match = db.getMatch(id)!;
-    const ref = match.players.find((entry) => entry.canonicalKey === canonical)!;
+    const ref = match.players.find((entry) => entry.versionKey === version)!;
     addLine(expected, match.box[ref.id]);
   });
   assert.equal(career.line.kills, expected.kills);
@@ -63,6 +63,31 @@ test("MatchDatabase: playerCareer folds a canonical player across teams and runs
   assert.equal(career.line.adr, expected.adr);
   assert.equal(career.line.rating, expected.rating);
 });
+
+test("MatchDatabase: keeps different eras of the same player separate (FalleN 2018 vs 2026)", () => {
+  const db = new MatchDatabase(memoryStorage());
+  const classic = teamWithStarYear("navi-2018", "navi-2018-star", "2018");
+  const modern = teamWithStarYear("navi-2026", "navi-2026-star", "2026");
+  db.recordMatch(matchInput("c1", "2026-06-01T00:00:00Z", classic, makeTeam("oppA", 80), 3));
+  db.recordMatch(matchInput("m1", "2026-06-02T00:00:00Z", modern, makeTeam("oppB", 80), 4));
+
+  // Same handle/realName/country, but the two eras are distinct registry entries.
+  const stars = db.listPlayers().filter((p) => p.handle === "star");
+  assert.equal(stars.length, 2, "the 2018 and 2026 versions should be two separate records");
+  assert.deepEqual([...new Set(stars.map((p) => p.year))].sort(), ["2018", "2026"]);
+
+  const v2018 = db.getMatch("c1")!.players.find((r) => r.handle === "star")!.versionKey;
+  const v2026 = db.getMatch("m1")!.players.find((r) => r.handle === "star")!.versionKey;
+  assert.notEqual(v2018, v2026);
+  assert.equal(db.playerCareer(v2018)!.matches, 1); // not merged with the 2026 self
+  assert.equal(db.playerCareer(v2026)!.matches, 1);
+});
+
+function teamWithStarYear(id: string, starId: string, year: string): FieldTeam {
+  const team = makeTeam(id, 84);
+  team.players = [makeStar(starId, year), ...team.players.slice(1)];
+  return team;
+}
 
 function emptyLine(): PlayerLine {
   return { kills: 0, deaths: 0, assists: 0, damage: 0, adr: 0, kastRounds: 0, rounds: 0, impact: 0, firstKills: 0, firstDeaths: 0, multiKills: 0, clutchWins: 0, rating: 1 };
@@ -159,11 +184,22 @@ function teamWithStar(id: string, starId: string): FieldTeam {
   return team;
 }
 
-function makeStar(id: string): Player {
-  return makePlayer(id, "Entry", 92, "star", "Star Real", "RU");
+// A star with a FIXED source (team name + year) so two instances on different teams share one
+// player version — unless `year` differs, which makes them distinct eras.
+function makeStar(id: string, year = "2026"): Player {
+  return makePlayer(id, "Entry", 92, "star", "Star Real", "RU", "Spirit", year);
 }
 
-function makePlayer(id: string, role: Role, ovr: number, handle = id, realName = id, country = "US"): Player {
+function makePlayer(
+  id: string,
+  role: Role,
+  ovr: number,
+  handle = id,
+  realName = id,
+  country = "US",
+  sourceName = `${id}-src`,
+  year = "2026",
+): Player {
   const maps = mapPool.reduce((acc, map) => ((acc[map.id] = ovr), acc), {} as Record<MapId, number>);
   return {
     id,
@@ -175,7 +211,7 @@ function makePlayer(id: string, role: Role, ovr: number, handle = id, realName =
     traits: [role],
     stats: { aim: ovr, clutch: ovr, consistency: ovr, awp: role === "AWP" ? 90 : 55, igl: role === "IGL" ? 90 : 55 },
     ovr,
-    source: { tag: "TST", name: `${id}-src`, country: "US", era: "CS2", year: "2026", accent: "#ffffff" },
+    source: { tag: "TST", name: sourceName, country: "US", era: "CS2", year, accent: "#ffffff" },
     maps,
   };
 }

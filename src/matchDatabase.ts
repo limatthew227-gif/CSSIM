@@ -38,6 +38,8 @@ export interface StoredPlayerRef {
   handle: string;
   realName: string;
   country: string;
+  year?: string; // source-team year — distinguishes a player's eras (FalleN 2018 vs FalleN 2026)
+  era?: string;
   role: Role;
   side: "left" | "right";
   teamId: string;
@@ -79,13 +81,15 @@ export interface RecordMatchInput {
 }
 
 export interface PlayerCareerRecord {
-  canonicalKey: string;
+  versionKey: string;
   handle: string;
   realName: string;
   country: string;
+  year?: string; // the era this record covers (a 2018 player is a separate record from their 2026 self)
+  era?: string;
   matches: number;
   teamIds: string[];
-  line: PlayerLine; // aggregated across every stored appearance
+  line: PlayerLine; // aggregated across every stored appearance of THIS version
 }
 
 export interface TeamRecordRow {
@@ -195,16 +199,17 @@ export class MatchDatabase {
     return [...rows.values()].sort((a, b) => b.wins - a.wins || b.matches - a.matches);
   }
 
-  // Career across every stored match, keyed by canonical identity — so a player folds together across
-  // teams and runs (a drafted copy + their real-team appearances), with historical versions distinct.
-  playerCareer(canonicalKey: string): PlayerCareerRecord | undefined {
+  // Career across every stored match, keyed by player VERSION — so a player folds together across
+  // teams and runs of the SAME era (a drafted copy + their real-team appearances), while different
+  // eras stay separate (FalleN 2018 is a distinct record from FalleN 2026).
+  playerCareer(versionKey: string): PlayerCareerRecord | undefined {
     const line = emptyLine();
     const teamIds = new Set<string>();
     let matches = 0;
     let identity: StoredPlayerRef | undefined;
 
     for (const match of this.read().matches) {
-      const refs = match.players.filter((ref) => ref.canonicalKey === canonicalKey);
+      const refs = match.players.filter((ref) => ref.versionKey === versionKey);
       if (!refs.length) continue;
       matches += 1;
       for (const ref of refs) {
@@ -217,20 +222,23 @@ export class MatchDatabase {
 
     if (!identity) return undefined;
     return {
-      canonicalKey,
+      versionKey,
       handle: identity.handle,
       realName: identity.realName,
       country: identity.country,
+      year: identity.year,
+      era: identity.era,
       matches,
       teamIds: [...teamIds],
       line,
     };
   }
 
-  // All distinct canonical players, most-played first — the persistent player registry.
+  // All distinct player VERSIONS, most-played first — the persistent player registry. Each era of a
+  // player (2018 vs 2026) is its own entry.
   listPlayers(): PlayerCareerRecord[] {
     const keys = new Set<string>();
-    for (const match of this.read().matches) for (const ref of match.players) keys.add(ref.canonicalKey);
+    for (const match of this.read().matches) for (const ref of match.players) keys.add(ref.versionKey);
     return [...keys]
       .map((key) => this.playerCareer(key))
       .filter((career): career is PlayerCareerRecord => Boolean(career))
@@ -250,6 +258,8 @@ function playerRef(player: Player, side: "left" | "right", teamId: string): Stor
     handle: player.handle,
     realName: player.realName,
     country: player.country,
+    year: player.source?.year,
+    era: player.source?.era,
     role: player.role,
     side,
     teamId,

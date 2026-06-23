@@ -8786,3 +8786,12 @@ input[type="range"] {
   stroke: #e7edf4;
   stroke-width: 0.4;
 }
+
+.vault-era {
+  margin-left: 4px;
+  color: var(--muted);
+  font-style: normal;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
