@@ -6410,7 +6410,7 @@ button.team-stats-row {
 }
 
 .round-read-panel p {
-  min-height: 0;
+  min-height: 2.4em; /* reserve ~2 lines so the per-round read text doesn't reflow the panel */
   margin: 0;
   padding: 0;
   border: 0;
@@ -6418,6 +6418,15 @@ button.team-stats-row {
   background: transparent;
   font-size: 11px;
   line-height: 1.2;
+}
+
+/* Per-round explanation under the round call — reserve space so changing text doesn't jump the layout. */
+.tactics-panel .last-reason {
+  min-height: 2.8em;
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
 }
 
 .round-read-actions {

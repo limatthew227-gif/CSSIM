@@ -396,6 +396,7 @@ interface RunSnapshot {
   careerActive?: boolean;
   careerMoney?: number;
   careerEvent?: number;
+  playerFinish?: PlacementTier | null;
   careerHistory?: Array<{ event: number; tier: PlacementTier; prize: number; record: { wins: number; losses: number } }>;
   transferCandidates?: Array<{ player: Player; team: Roster }>;
   transferTrade?: { incoming: Player; outgoing: Player; delta: number } | null;
@@ -706,6 +707,9 @@ function App() {
   const [playoffRound, setPlayoffRound] = useState<PlayoffRound>("quarterfinal");
   const [playoffPairs, setPlayoffPairs] = useState<SwissPair[]>([]);
   const [tournamentOutcome, setTournamentOutcome] = useState<TournamentOutcome>("running");
+  // Where YOUR team actually finished this Major, captured at the moment you resolve (win/elim). The
+  // bracket's playoffRound keeps advancing after you're out, so it can't be trusted for placement.
+  const [playerFinish, setPlayerFinish] = useState<PlacementTier | null>(null);
   const [tournamentWinner, setTournamentWinner] = useState<FieldTeam | undefined>();
   const [swissField, setSwissField] = useState<FieldTeam[]>(() => buildSwissField(hltvTop20Rosters));
   const [swissRecords, setSwissRecords] = useState<Record<string, SwissRecord>>({});
@@ -1111,6 +1115,7 @@ function App() {
     setPlayoffRound("quarterfinal");
     setPlayoffPairs([]);
     setTournamentOutcome("running");
+    setPlayerFinish(null);
     setTournamentWinner(undefined);
     setSwissField(nextSwissField);
     setSwissRecords(nextSwissRecords);
@@ -1156,6 +1161,7 @@ function App() {
     setPlayoffRound("quarterfinal");
     setPlayoffPairs([]);
     setTournamentOutcome("running");
+    setPlayerFinish(null);
     setTournamentWinner(undefined);
     setSwissField(nextSwissField);
     setSwissRecords(nextSwissRecords);
@@ -1336,6 +1342,7 @@ function App() {
       setVeto(createVeto());
     } else {
       setTournamentOutcome("eliminated");
+      setPlayerFinish("swiss");
       if (isSwissStageResolved(swissField, nextSwissRecords, nextRecord)) {
         enterNeutralPlayoffs(nextSwissRecords, "eliminated");
         return;
@@ -1432,10 +1439,16 @@ function App() {
     setSpectatorSwissRound((round) => Math.min(5, round + 1));
   }
 
+  function roundTier(round: PlayoffRound): PlacementTier {
+    return round === "final" ? "runner-up" : round === "semifinal" ? "top4" : "top8";
+  }
+
   function simPlayoffPhase() {
     if (!playoffPairs.length || tournamentOutcome === "champion" || tournamentOutcome === "complete") return;
+    const userInRound = playoffPairs.some((pair) => pair.left.id === "user" || pair.right.id === "user");
     const roundResults = playoffPairs.map((pair) => simulatePlayoffSeries(pair, playoffRound, settings, difficulty));
     const winners = roundResults.map((result) => (result.winnerId === result.left.id ? result.left : result.right));
+    const userWon = winners.some((team) => team.id === "user");
     setMatchResults((current) => [...current, ...roundResults]);
     setSelectedResultId(roundResults[roundResults.length - 1]?.id);
 
@@ -1443,10 +1456,12 @@ function App() {
       const winner = winners[0];
       setTournamentWinner(winner);
       setTournamentOutcome(winner?.id === "user" ? "champion" : "complete");
+      if (userInRound) setPlayerFinish(winner?.id === "user" ? "champion" : "runner-up");
       setScreen("playoffs");
       return;
     }
 
+    if (userInRound && !userWon) setPlayerFinish(roundTier(playoffRound)); // you were knocked out this round
     const nextRound = playoffRound === "quarterfinal" ? "semifinal" : "final";
     const pairs = winners.some((team) => team.id === "user")
       ? buildNextPlayoffPairs(nextRound, winners, yourTeam)
@@ -1473,11 +1488,13 @@ function App() {
       if (playoffRound === "final") {
         setTournamentWinner(winners[0]);
         setTournamentOutcome("complete");
+        setPlayerFinish("runner-up");
         setScreen("playoffs");
         return;
       }
       const nextRound = playoffRound === "quarterfinal" ? "semifinal" : "final";
       const pairs = buildNeutralNextPlayoffPairs(nextRound, winners);
+      setPlayerFinish(roundTier(playoffRound)); // the round you just LOST, before the bracket advances
       setPlayoffRound(nextRound);
       setPlayoffPairs(pairs);
       setOpponent(pairs[0]?.right ?? pairs[0]?.left ?? opponent);
@@ -1488,6 +1505,7 @@ function App() {
     if (playoffRound === "final") {
       setTournamentWinner(yourTeam);
       setTournamentOutcome("champion");
+      setPlayerFinish("champion");
       setScreen("playoffs");
       return;
     }
@@ -1540,14 +1558,14 @@ function App() {
     setCareerHistory([]);
     setTransferCandidates([]);
     setTransferTrade(null);
+    setPlayerFinish(null);
   }
 
   // ---- Career continuation -------------------------------------------------------------------------
   // Banked this Major's prize, then open the transfer window. The first call begins the career.
   function enterTransferWindow() {
-    const champion = tournamentOutcome === "champion";
-    const reachedPlayoffs = phase === "playoffs";
-    const tier = placementTier({ champion, reachedPlayoffs, playoffRound });
+    // playerFinish is captured when you actually resolve; fall back to deriving it only if it's missing.
+    const tier = playerFinish ?? placementTier({ champion: tournamentOutcome === "champion", reachedPlayoffs: phase === "playoffs", playoffRound });
     const prize = prizeForPlacement(tier);
     setCareerMoney((money) => (careerActive ? money : STARTING_BANKROLL) + prize);
     setCareerActive(true);
@@ -1589,6 +1607,7 @@ function App() {
     setPlayoffRound("quarterfinal");
     setPlayoffPairs([]);
     setTournamentOutcome("running");
+    setPlayerFinish(null);
     setTournamentWinner(undefined);
     setSwissField(nextSwissField);
     setSwissRecords(nextSwissRecords);
@@ -1603,6 +1622,7 @@ function App() {
     setPlayerForm(generatePlayerForm(selected));
     setVeto(createVeto());
     setRunKind("player");
+    setPlayerFinish(null);
     setScreen("swiss");
   }
 
@@ -1700,6 +1720,7 @@ function App() {
       careerHistory,
       transferCandidates,
       transferTrade,
+      playerFinish,
     };
   }
 
@@ -1786,6 +1807,7 @@ function App() {
     setCareerHistory(snapshot.careerHistory ?? []);
     setTransferCandidates(snapshot.transferCandidates ?? []);
     setTransferTrade(snapshot.transferTrade ?? null);
+    setPlayerFinish(snapshot.playerFinish ?? null);
     setDetailPlayer(null);
     setDetailTeam(null);
     setNavStack([]);
@@ -3012,7 +3034,7 @@ function App() {
                 timeoutPlan={timeoutPlan}
                 onTimeout={useTimeout}
               />
-              <p>{match.lastReason ?? "Opening defaults are live."}</p>
+              <p className="last-reason">{match.lastReason ?? "Opening defaults are live."}</p>
             </div>
           </section>
           <section className="match-stats-grid">
