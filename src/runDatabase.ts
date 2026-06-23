@@ -22,6 +22,42 @@ export interface SavedRunSlot<TSnapshot = unknown> {
 const RUN_DB_KEY = "major-draft-lab-run-db-v1";
 const RUN_DB_VERSION = 1;
 const MAX_RUN_SLOTS = 8;
+const AUTOSAVE_KEY = "major-draft-lab-autosave-v1";
+
+export interface Autosave<TSnapshot = unknown> {
+  schemaVersion: number;
+  updatedAt: string;
+  summary: RunSummary;
+  snapshot: TSnapshot;
+}
+
+// A single rolling autosave so a reload resumes the career/run where it left off (distinct from the
+// manual save slots). Writes are guarded so a quota failure drops the autosave instead of crashing.
+export function writeAutosave<TSnapshot>(snapshot: TSnapshot, summary: RunSummary): void {
+  if (typeof window === "undefined") return;
+  try {
+    const payload: Autosave<TSnapshot> = { schemaVersion: RUN_DB_VERSION, updatedAt: new Date().toISOString(), summary, snapshot };
+    window.localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(payload));
+  } catch {
+    /* serialization or quota failure — skip this autosave */
+  }
+}
+
+export function readAutosave<TSnapshot>(): Autosave<TSnapshot> | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(AUTOSAVE_KEY) ?? "null");
+    if (!parsed || typeof parsed !== "object" || !("snapshot" in parsed)) return null;
+    return parsed as Autosave<TSnapshot>;
+  } catch {
+    return null;
+  }
+}
+
+export function clearAutosave(): void {
+  if (typeof window === "undefined") return;
+  window.localStorage.removeItem(AUTOSAVE_KEY);
+}
 
 export function loadRunSlots<TSnapshot = unknown>(): SavedRunSlot<TSnapshot>[] {
   if (typeof window === "undefined") return [];

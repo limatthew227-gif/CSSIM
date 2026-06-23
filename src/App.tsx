@@ -105,6 +105,9 @@ import {
   formatRunSlotTime,
   loadRunSlots,
   saveRunSlot,
+  writeAutosave,
+  readAutosave,
+  clearAutosave,
   type RunSummary,
   type SavedRunSlot,
 } from "./runDatabase";
@@ -389,6 +392,13 @@ interface RunSnapshot {
   timeouts: number;
   timeoutPlan: TimeoutPlan;
   liveFeedView: LiveFeedView;
+  // Career continuation (optional — absent on older saves / non-career runs).
+  careerActive?: boolean;
+  careerMoney?: number;
+  careerEvent?: number;
+  careerHistory?: Array<{ event: number; tier: PlacementTier; prize: number; record: { wins: number; losses: number } }>;
+  transferCandidates?: Array<{ player: Player; team: Roster }>;
+  transferTrade?: { incoming: Player; outgoing: Player; delta: number } | null;
 }
 
 type SavedRun = SavedRunSlot<RunSnapshot>;
@@ -715,6 +725,7 @@ function App() {
   const [careerHistory, setCareerHistory] = useState<Array<{ event: number; tier: PlacementTier; prize: number; record: { wins: number; losses: number } }>>([]);
   const [transferCandidates, setTransferCandidates] = useState<Array<{ player: Player; team: Roster }>>([]);
   const [transferTrade, setTransferTrade] = useState<{ incoming: Player; outgoing: Player; delta: number } | null>(null); // one trade per window
+  const [autosave, setAutosave] = useState(() => readAutosave<RunSnapshot>()); // last-session snapshot, read once at mount
   const [navStack, setNavStack] = useState<Screen[]>([]); // back-stack for the detail pages
   const [statsScope, setStatsScope] = useState<StatsScope>("all");
   const [record, setRecord] = useState({ wins: 0, losses: 0 });
@@ -907,6 +918,33 @@ function App() {
   useEffect(() => {
     saveCustomRosters(customRosters);
   }, [customRosters]);
+
+  // Rolling autosave so a reload resumes the run/career. Fires only at stable points (screen/phase/
+  // results/career changes), NOT during the live round drip, to avoid spamming localStorage.
+  useEffect(() => {
+    if (runKind !== "player") return;
+    // Skip the pre-run flow and pure-viewer screens so the autosave reflects the last resumable game
+    // state (swiss / playoffs / match / result / veto / transfer), not a transient sub-view.
+    const transient: Screen[] = [
+      "setup",
+      "teams",
+      "draft",
+      "coach",
+      "vault",
+      "vault-replay",
+      "vault-team",
+      "results",
+      "series-detail",
+      "stats",
+      "balance-lab",
+      "player-detail",
+      "team-detail",
+      "compare",
+    ];
+    if (transient.includes(screen)) return;
+    writeAutosave(buildRunSnapshot(), buildRunSummary());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [screen, phase, record, matchResults, careerMoney, careerEvent, selected, tournamentOutcome]);
 
   useEffect(() => {
     if (screen !== "veto" || !veto.pendingOpponent) return;
@@ -1656,6 +1694,12 @@ function App() {
       timeouts,
       timeoutPlan,
       liveFeedView,
+      careerActive,
+      careerMoney,
+      careerEvent,
+      careerHistory,
+      transferCandidates,
+      transferTrade,
     };
   }
 
@@ -1692,8 +1736,7 @@ function App() {
     setSaveMessage(`${saved.summary.teamName} saved.`);
   }
 
-  function loadSavedRun(slot: SavedRun) {
-    const snapshot = slot.snapshot;
+  function applyRunSnapshot(snapshot: RunSnapshot) {
     setSettings(snapshot.settings ?? defaultSettings);
     setRealTimeRounds(snapshot.realTimeRounds ?? true);
     setTeamName(snapshot.teamName ?? "My Five");
@@ -1737,12 +1780,34 @@ function App() {
     setTimeouts(snapshot.timeouts ?? 2);
     setTimeoutPlan(snapshot.timeoutPlan ?? { boost: 0, rounds: 0 });
     setLiveFeedView(snapshot.liveFeedView ?? "feed");
+    setCareerActive(snapshot.careerActive ?? false);
+    setCareerMoney(snapshot.careerMoney ?? 0);
+    setCareerEvent(snapshot.careerEvent ?? 1);
+    setCareerHistory(snapshot.careerHistory ?? []);
+    setTransferCandidates(snapshot.transferCandidates ?? []);
+    setTransferTrade(snapshot.transferTrade ?? null);
     setDetailPlayer(null);
     setDetailTeam(null);
     setNavStack([]);
+    setScreen(sanitizeLoadedScreen(snapshot.screen, snapshot));
+  }
+
+  function loadSavedRun(slot: SavedRun) {
+    applyRunSnapshot(slot.snapshot);
     setActiveSaveId(slot.id);
     setSaveMessage(`${slot.summary.teamName} loaded.`);
-    setScreen(sanitizeLoadedScreen(snapshot.screen, snapshot));
+  }
+
+  function resumeAutosave() {
+    if (!autosave) return;
+    applyRunSnapshot(autosave.snapshot);
+    setActiveSaveId(undefined);
+    setSaveMessage("Resumed your last session.");
+  }
+
+  function dismissAutosave() {
+    clearAutosave();
+    setAutosave(null);
   }
 
   function deleteSavedRun(id: string) {
@@ -1797,6 +1862,28 @@ function App() {
 
       {screen === "setup" && (
         <main className="layout setup-grid">
+          {autosave && selected.length === 0 && (
+            <section className="resume-banner">
+              <div className="resume-info">
+                <ArrowRight size={20} />
+                <div>
+                  <strong>Resume your last session</strong>
+                  <span>
+                    {autosave.summary.teamName} · {autosave.summary.detail} · {formatRunSlotTime(autosave.updatedAt)}
+                  </span>
+                </div>
+              </div>
+              <div className="resume-actions">
+                <button className="primary" onClick={resumeAutosave}>
+                  <ArrowRight size={15} />
+                  Resume
+                </button>
+                <button className="secondary" onClick={dismissAutosave}>
+                  Dismiss
+                </button>
+              </div>
+            </section>
+          )}
           <section className="hero-panel">
             <div className="section-title">
               <Trophy size={18} />
@@ -9630,8 +9717,8 @@ function sanitizeLoadedScreen(screen: Screen | undefined, snapshot: RunSnapshot)
   if (screen === "series-detail" && !snapshot.selectedResultId) return snapshot.phase === "playoffs" ? "playoffs" : "swiss";
   if (screen === "player-detail" || screen === "team-detail") return snapshot.phase === "playoffs" ? "playoffs" : "swiss";
   if (screen === "coach" && snapshot.runKind === "spectator") return "swiss";
-  // The transfer window is transient career state not held in a run snapshot — never restore into it.
-  if (screen === "transfer" || screen === "compare") return snapshot.phase === "playoffs" ? "playoffs" : "swiss";
+  // Compare carries no persisted selection; the transfer window IS fully snapshotted, so it restores fine.
+  if (screen === "compare") return snapshot.phase === "playoffs" ? "playoffs" : "swiss";
   return screen;
 }
 

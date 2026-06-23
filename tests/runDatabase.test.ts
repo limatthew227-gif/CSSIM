@@ -1,7 +1,7 @@
 import { beforeEach, test } from "node:test";
 import assert from "node:assert/strict";
 
-import { deleteRunSlot, loadRunSlots, saveRunSlot } from "../src/runDatabase";
+import { deleteRunSlot, loadRunSlots, saveRunSlot, writeAutosave, readAutosave, clearAutosave } from "../src/runDatabase";
 
 const store = new Map<string, string>();
 
@@ -14,6 +14,9 @@ beforeEach(() => {
         getItem: (key: string) => store.get(key) ?? null,
         setItem: (key: string, value: string) => {
           store.set(key, value);
+        },
+        removeItem: (key: string) => {
+          store.delete(key);
         },
       },
     },
@@ -37,6 +40,22 @@ test("run database: saves, updates, sorts and deletes run slots", () => {
   const remaining = loadRunSlots();
   assert.equal(remaining.length, 1);
   assert.equal(remaining[0].id, second.id);
+});
+
+test("autosave round-trips snapshot + summary, then clears", () => {
+  assert.equal(readAutosave(), null, "no autosave to begin with");
+
+  writeAutosave({ careerMoney: 84000, careerEvent: 2, roster: ["a", "b"] }, summary("My Five", "After Major 1"));
+  const saved = readAutosave<{ careerMoney: number; careerEvent: number; roster: string[] }>();
+  assert.ok(saved, "autosave is read back");
+  assert.equal(saved!.snapshot.careerMoney, 84000);
+  assert.equal(saved!.snapshot.careerEvent, 2);
+  assert.deepEqual(saved!.snapshot.roster, ["a", "b"]);
+  assert.equal(saved!.summary.teamName, "My Five");
+  assert.equal(typeof saved!.updatedAt, "string");
+
+  clearAutosave();
+  assert.equal(readAutosave(), null, "cleared");
 });
 
 function summary(teamName: string, detail: string) {

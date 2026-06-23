@@ -10147,3 +10147,40 @@ input[type="range"] {
   padding: 11px 20px;
   font-size: 15px;
 }
+
+/* Resume-last-session banner (autosave) ------------------------------------ */
+.resume-banner {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px 16px;
+  border: 1px solid color-mix(in srgb, var(--accent), var(--line) 40%);
+  border-radius: var(--radius);
+  background: linear-gradient(135deg, color-mix(in srgb, var(--accent), #151a20 84%), #151a20);
+}
+
+.resume-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--accent);
+}
+
+.resume-info strong {
+  display: block;
+  color: #fff;
+  font-size: 15px;
+}
+
+.resume-info span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.resume-actions {
+  display: flex;
+  gap: 8px;
+  flex: none;
+}
