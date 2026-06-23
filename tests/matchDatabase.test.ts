@@ -189,6 +189,7 @@ test("MatchDatabase: teamProfile aggregates record, roster, head-to-head, per-ma
   assert.equal(profile.wins + profile.losses, 3);
   assert.equal(profile.roster.length, 5); // the five players who turned out
   assert.ok(profile.roster.every((row) => row.maps === 3));
+  assert.ok(profile.roster.every((row) => row.current), "an unchanged lineup is all current");
   assert.ok(profile.roster.every((row, i, arr) => i === 0 || arr[i - 1].line.rating >= row.line.rating)); // best first
 
   const vsA = profile.headToHead.find((row) => row.team.id === "oppA")!;
@@ -201,6 +202,25 @@ test("MatchDatabase: teamProfile aggregates record, roster, head-to-head, per-ma
   assert.ok(profile.streak && profile.streak.count >= 1);
 
   assert.equal(db.teamProfile("nope"), undefined);
+});
+
+test("MatchDatabase: a replaced player is flagged former (not current)", () => {
+  const db = new MatchDatabase(memoryStorage());
+  const you = makeTeam("you", 84);
+  const opp = makeTeam("opp", 80);
+  db.recordMatch(matchInput("m1", "2026-06-01T00:00:00Z", you, opp, 1));
+  db.recordMatch(matchInput("m2", "2026-06-02T00:00:00Z", you, opp, 2));
+  // Trade the AWP for a new signing, then play a LATER match with the new lineup.
+  const swapped: FieldTeam = { ...you, players: [makePlayer("you-newawp", "AWP", 85, "newAWP"), ...you.players.filter((p) => p.role !== "AWP")] };
+  db.recordMatch(matchInput("m3", "2026-06-03T00:00:00Z", swapped, opp, 3));
+
+  const profile = db.teamProfile("you")!;
+  assert.equal(profile.roster.length, 6, "six players turned out across the run");
+  const former = profile.roster.filter((row) => !row.current);
+  assert.equal(former.length, 1, "exactly one former player");
+  assert.equal(former[0].role, "AWP", "the replaced AWP is the former player");
+  assert.ok(profile.roster.find((row) => row.handle === "newAWP")?.current, "the new signing is current");
+  assert.equal(profile.roster.filter((row) => row.current).length, 5, "the present lineup is five");
 });
 
 test("MatchDatabase: recordMany commits a batch in one pass, dedupes within it, and keeps logs", () => {

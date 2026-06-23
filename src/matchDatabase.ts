@@ -138,6 +138,7 @@ export interface TeamRosterRow {
   role: Role;
   maps: number;
   line: PlayerLine; // aggregated for THIS team only
+  current: boolean; // on the roster as of the team's most recent match (false = a former/traded player)
 }
 
 export interface HeadToHeadRow {
@@ -429,6 +430,11 @@ export class MatchDatabase {
       streak = { type, count };
     }
 
+    // The current roster = whoever turned out in the team's most recent match record (all five start
+    // every map, so that record's players are the present lineup); everyone else is a former player.
+    const lastGame = games[games.length - 1];
+    const currentKeys = new Set(lastGame.players.filter((ref) => ref.teamId === teamId).map((ref) => ref.versionKey));
+
     const roster: TeamRosterRow[] = [...rosterAgg.values()]
       .filter((agg) => agg.matchIds.size > 0)
       .map((agg) => {
@@ -442,6 +448,7 @@ export class MatchDatabase {
           role: agg.ref.role,
           maps: agg.matchIds.size,
           line: agg.line,
+          current: currentKeys.has(agg.ref.versionKey),
         };
       })
       .sort((a, b) => b.line.rating - a.line.rating || b.line.kills - b.line.deaths - (a.line.kills - a.line.deaths));

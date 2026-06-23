@@ -6154,9 +6154,11 @@ function VaultTeamPage({
   const profile = useMemo(() => (teamId ? db.teamProfile(teamId) : undefined), [db, teamId]);
   const replayIds = useMemo(() => db.eventLogIds(), [db]);
   const [vsFilter, setVsFilter] = useState<string | null>(null);
+  const [rosterTab, setRosterTab] = useState<"current" | "former">("current");
 
   useEffect(() => {
     setVsFilter(null); // reset the head-to-head filter when navigating to a different team
+    setRosterTab("current");
   }, [teamId]);
 
   if (!profile) {
@@ -6181,6 +6183,10 @@ function VaultTeamPage({
 
   const winPct = profile.matches ? (profile.wins / profile.matches) * 100 : 0;
   const mvp = profile.roster[0];
+  const mvpKey = profile.roster[0]?.versionKey;
+  const formerRoster = profile.roster.filter((row) => !row.current);
+  const currentRoster = profile.roster.filter((row) => row.current);
+  const shownRoster = rosterTab === "former" ? formerRoster : currentRoster;
   const history = vsFilter ? profile.history.filter((row) => row.opponent.id === vsFilter) : profile.history;
 
   return (
@@ -6262,9 +6268,21 @@ function VaultTeamPage({
 
       <div className="vault-two-col">
         <section className="vault-card">
-          <div className="section-title">
-            <Users size={18} />
-            <span>Roster</span>
+          <div className="vault-card-head">
+            <div className="section-title">
+              <Users size={18} />
+              <span>Roster</span>
+            </div>
+            {formerRoster.length > 0 && (
+              <div className="segmented compact roster-tabs">
+                <button className={rosterTab === "current" ? "selected" : ""} onClick={() => setRosterTab("current")}>
+                  Current
+                </button>
+                <button className={rosterTab === "former" ? "selected" : ""} onClick={() => setRosterTab("former")}>
+                  Former ({formerRoster.length})
+                </button>
+              </div>
+            )}
           </div>
           <table className="vault-table team-roster-table">
             <thead>
@@ -6277,13 +6295,13 @@ function VaultTeamPage({
               </tr>
             </thead>
             <tbody>
-              {profile.roster.map((row, index) => (
+              {shownRoster.map((row) => (
                 <tr key={row.versionKey}>
                   <td className="vault-team-cell">
                     <Flag country={row.country} />
                     <b>{row.handle}</b>
                     <span>{row.role}</span>
-                    {index === 0 && <em className="team-mvp-badge">MVP</em>}
+                    {row.versionKey === mvpKey && <em className="team-mvp-badge">MVP</em>}
                   </td>
                   <td>{row.maps}</td>
                   <td>
@@ -6293,6 +6311,13 @@ function VaultTeamPage({
                   <td className={ratingTone(row.line.rating)}>{row.line.rating.toFixed(2)}</td>
                 </tr>
               ))}
+              {shownRoster.length === 0 && (
+                <tr>
+                  <td colSpan={5} className="roster-empty">
+                    No former players yet.
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </section>
