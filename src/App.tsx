@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
   ArrowLeft,
@@ -95,6 +95,7 @@ import {
   type SavedRunSlot,
 } from "./runDatabase";
 import { eventLogFromMatchState, type MatchEvent, type MatchEventLog, type MatchEventTeam } from "./matchEvents";
+import { buildReplayTimeline, replayRoundDuration, visibleEntries, type TimelineEntry } from "./replayTimeline";
 import {
   analyzeEventLogs,
   matchInsightLeaders,
@@ -113,6 +114,7 @@ import {
   type PlayerCareerRecord,
   type MatchRecord,
   type TeamRecordRow,
+  type RecordMatchInput,
 } from "./matchDatabase";
 import "./styles.css";
 
@@ -192,7 +194,7 @@ const BUY_CALL_OPTIONS: Array<{ id: BuyCall; label: string }> = [
   { id: "save", label: "Save" },
 ];
 
-type Screen = "setup" | "teams" | "draft" | "coach" | "swiss" | "playoffs" | "veto" | "match" | "result" | "stats" | "results" | "series-detail" | "player-detail" | "team-detail" | "balance-lab" | "vault";
+type Screen = "setup" | "teams" | "draft" | "coach" | "swiss" | "playoffs" | "veto" | "match" | "result" | "stats" | "results" | "series-detail" | "player-detail" | "team-detail" | "balance-lab" | "vault" | "vault-replay";
 type Mode = "classic" | "blind" | "random" | "spectator";
 type RunKind = "player" | "spectator";
 type SwissRecord = { wins: number; losses: number };
@@ -455,12 +457,14 @@ function getMatchDb(): MatchDatabase {
 // Persist any completed series maps not already in the DB. Idempotent: keyed by series+map id.
 function recordResultsToDb(results: SwissResult[]) {
   const db = getMatchDb();
+  const existing = new Set(db.listMatches().map((match) => match.id)); // one read for dedupe
+  const inputs: RecordMatchInput[] = [];
   results.forEach((series) => {
     series.maps.forEach((map, index) => {
-      if (!map.eventLog) return;
       const id = `${series.id}-${map.map}-${index}`;
-      if (db.getMatch(id)) return;
-      db.recordMatch({
+      if (existing.has(id)) return; // every box score is recorded; the log (if any) goes to the log store
+      existing.add(id);
+      inputs.push({
         id,
         recordedAt: new Date().toISOString(),
         stage: series.stage,
@@ -471,9 +475,16 @@ function recordResultsToDb(results: SwissResult[]) {
         rightScore: map.rightScore,
         winnerId: map.winnerId,
         stats: { ...map.leftStats, ...map.rightStats },
+        sideStats: {
+          CT: { ...map.leftSideStats.CT, ...map.rightSideStats.CT },
+          T: { ...map.leftSideStats.T, ...map.rightSideStats.T },
+        },
+        eventLog: map.eventLog,
+        keepEventLog: Boolean(map.eventLog),
       });
     });
   });
+  if (inputs.length) db.recordMany(inputs); // single read/sort/serialize for the whole batch
 }
 
 function loadCustomRosters() {
@@ -679,6 +690,7 @@ function App() {
   const [selectedResultId, setSelectedResultId] = useState<string>();
   const [detailPlayer, setDetailPlayer] = useState<{ player: Player; team: FieldTeam } | null>(null);
   const [detailTeam, setDetailTeam] = useState<FieldTeam | null>(null);
+  const [vaultReplayId, setVaultReplayId] = useState<string | null>(null); // match id opened from the Vault
   const [navStack, setNavStack] = useState<Screen[]>([]); // back-stack for the detail pages
   const [statsScope, setStatsScope] = useState<StatsScope>("all");
   const [record, setRecord] = useState({ wins: 0, losses: 0 });
@@ -2347,7 +2359,23 @@ function App() {
         />
       )}
 
-      {screen === "vault" && <VaultPage onBack={goBackScreen} />}
+      {screen === "vault" && (
+        <VaultPage
+          onBack={goBackScreen}
+          onOpenReplay={(id) => {
+            setVaultReplayId(id);
+            pushScreen("vault-replay");
+          }}
+        />
+      )}
+
+      {screen === "vault-replay" && (
+        <MatchRoundReplayPanel
+          match={vaultReplayId ? getMatchDb().getMatch(vaultReplayId) : undefined}
+          log={vaultReplayId ? getMatchDb().getEventLog(vaultReplayId) : undefined}
+          onBack={goBackScreen}
+        />
+      )}
 
       {screen === "results" && (
         <RunResultsPage
@@ -2801,7 +2829,7 @@ function App() {
             right={opponent}
             maps={resultMapResults.map((map, index) => roundTimelineMapFromResult(map, index))}
           />
-          <RoundReplayPanel left={yourTeam} right={opponent} maps={resultMapResults} />
+          <SeriesRoundReplayPanel left={yourTeam} right={opponent} maps={resultMapResults} />
         </main>
       )}
 
@@ -5651,36 +5679,67 @@ const VAULT_STATS: Array<{
   { key: "opening", label: "Openings", get: (l) => l.firstKills - l.firstDeaths, fmt: (l) => fmtDiff(l.firstKills - l.firstDeaths) },
 ];
 
-function VaultPage({ onBack }: { onBack: () => void }) {
+type VaultMapFilter = "all" | MapId;
+
+const SIDE_FILTERS: Array<{ key: StatsSideFilter; label: string }> = [
+  { key: "both", label: "Both" },
+  { key: "CT", label: "CT" },
+  { key: "T", label: "T" },
+];
+
+function VaultPage({ onBack, onOpenReplay }: { onBack: () => void; onOpenReplay: (matchId: string) => void }) {
   const db = useMemo(() => getMatchDb(), []);
   const [refresh, setRefresh] = useState(0);
-  const players = useMemo(() => db.listPlayers(), [db, refresh]);
+  const [statKey, setStatKey] = useState(VAULT_STATS[0].key);
+  const [sideFilter, setSideFilter] = useState<StatsSideFilter>("both");
+  const [mapFilter, setMapFilter] = useState<VaultMapFilter>("all");
+
   const matches = useMemo(() => db.listMatches(), [db, refresh]);
   const teams = useMemo(() => db.listTeams(), [db, refresh]);
-  const [statKey, setStatKey] = useState(VAULT_STATS[0].key);
+  // Distinct player versions, derived from the already-fetched matches (no extra DB scan).
+  const totalPlayers = useMemo(() => {
+    const keys = new Set<string>();
+    matches.forEach((match) => match.players.forEach((ref) => keys.add(ref.versionKey)));
+    return keys.size;
+  }, [matches]);
+  const replayIds = useMemo(() => db.eventLogIds(), [db, refresh]);
+  const filteredPlayers = useMemo(
+    () =>
+      db.listPlayers({
+        side: sideFilter === "both" ? undefined : sideFilter,
+        map: mapFilter === "all" ? undefined : mapFilter,
+      }),
+    [db, refresh, sideFilter, mapFilter],
+  );
+
   const stat = VAULT_STATS.find((entry) => entry.key === statKey) ?? VAULT_STATS[0];
   const leaders = useMemo(
-    () => [...players].sort((a, b) => stat.get(b.line) - stat.get(a.line) || b.line.rating - a.line.rating).slice(0, 25),
-    [players, stat],
+    () => [...filteredPlayers].sort((a, b) => stat.get(b.line) - stat.get(a.line) || b.line.rating - a.line.rating).slice(0, 25),
+    [filteredPlayers, stat],
   );
+  const top = leaders[0];
 
   if (!matches.length) {
     return (
-      <main className="layout fullscreen-page">
+      <main className="layout fullscreen-page vault-page">
         <section className="fullscreen-head">
           <div>
             <div className="section-title">
               <Trophy size={18} />
               <span>Vault</span>
             </div>
-            <h1>No saved matches yet</h1>
-            <p>Play or sim a series and your all-time records start accruing here — across every run.</p>
+            <h1>All-time records</h1>
           </div>
           <button className="secondary" onClick={onBack}>
             <ArrowLeft size={16} />
             Back
           </button>
         </section>
+        <div className="vault-empty">
+          <Trophy size={32} />
+          <strong>No saved matches yet</strong>
+          <p>Play or sim a series and your all-time records — leaderboards, team standings, and replays — start accruing here, across every run.</p>
+        </div>
       </main>
     );
   }
@@ -5694,9 +5753,7 @@ function VaultPage({ onBack }: { onBack: () => void }) {
             <span>Vault</span>
           </div>
           <h1>All-time records</h1>
-          <p>
-            {matches.length} maps · {players.length} players · {teams.length} teams — saved locally across every run.
-          </p>
+          <p>Every saved match, across every run — kept locally on this device.</p>
         </div>
         <div className="fullscreen-actions">
           <button
@@ -5718,6 +5775,37 @@ function VaultPage({ onBack }: { onBack: () => void }) {
         </div>
       </section>
 
+      <section className="vault-hero">
+        <div className="vault-hero-tile">
+          <strong>{matches.length}</strong>
+          <span>Maps</span>
+        </div>
+        <div className="vault-hero-tile">
+          <strong>{totalPlayers}</strong>
+          <span>Players</span>
+        </div>
+        <div className="vault-hero-tile">
+          <strong>{teams.length}</strong>
+          <span>Teams</span>
+        </div>
+        {top && (
+          <div className="vault-hero-leader">
+            <span className="vault-hero-leader-label">{stat.label} leader</span>
+            <div className="vault-hero-leader-body">
+              {playerPhoto(top.handle) && <img className="vault-face lg" src={playerPhoto(top.handle)} alt={top.handle} loading="lazy" />}
+              <div className="vault-hero-leader-id">
+                <strong>
+                  <Flag country={top.country} /> {top.handle}
+                  {top.year && <em className="vault-era">'{top.year.slice(-2)}</em>}
+                </strong>
+                <span>{top.matches} map{top.matches === 1 ? "" : "s"}</span>
+              </div>
+              <b className="vault-hero-leader-val">{stat.fmt(top.line)}</b>
+            </div>
+          </div>
+        )}
+      </section>
+
       <section className="vault-card">
         <div className="vault-card-head">
           <div className="section-title">
@@ -5732,26 +5820,61 @@ function VaultPage({ onBack }: { onBack: () => void }) {
             ))}
           </div>
         </div>
-        <div className="vault-leader-list">
-          {leaders.map((player, index) => {
-            const photo = playerPhoto(player.handle);
-            return (
-              <div className="vault-leader-row" key={player.versionKey}>
-                <span className="vault-rank">{index + 1}</span>
-                {photo && <img className="vault-face" src={photo} alt={player.handle} loading="lazy" />}
-                <Flag country={player.country} />
-                <strong>
-                  {player.handle}
-                  {player.year && <em className="vault-era">'{player.year.slice(-2)}</em>}
-                </strong>
-                <span className="vault-sub">
-                  {player.matches} map{player.matches === 1 ? "" : "s"} · {player.line.rating.toFixed(2)} rating
-                </span>
-                <b className="vault-stat-val">{stat.fmt(player.line)}</b>
-              </div>
-            );
-          })}
+        <div className="vault-filter-row">
+          <div className="vault-side-tabs" role="group" aria-label="Side filter">
+            {SIDE_FILTERS.map((entry) => (
+              <button
+                key={entry.key}
+                aria-pressed={entry.key === sideFilter}
+                className={entry.key === sideFilter ? "active" : ""}
+                onClick={() => setSideFilter(entry.key)}
+              >
+                {entry.label}
+              </button>
+            ))}
+          </div>
+          <select
+            className="vault-map-select"
+            aria-label="Filter by map"
+            value={mapFilter}
+            onChange={(event) => setMapFilter(event.target.value as VaultMapFilter)}
+          >
+            <option value="all">All maps</option>
+            {mapPool.map((map) => (
+              <option key={map.id} value={map.id}>
+                {mapName(map.id)}
+              </option>
+            ))}
+          </select>
         </div>
+        {leaders.length === 0 ? (
+          <div className="vault-no-rows">No {sideFilter === "both" ? "" : `${sideFilter}-side `}records{mapFilter === "all" ? "" : ` on ${mapName(mapFilter)}`} yet.</div>
+        ) : (
+          <div className="vault-leader-list">
+            {leaders.map((player, index) => {
+              const photo = playerPhoto(player.handle);
+              return (
+                <div className={`vault-leader-row${index < 3 ? ` medal medal-${index + 1}` : ""}`} key={player.versionKey}>
+                  <span className="vault-rank-chip">{index + 1}</span>
+                  {photo ? (
+                    <img className="vault-face" src={photo} alt={player.handle} loading="lazy" />
+                  ) : (
+                    <span className="vault-face placeholder" aria-hidden="true" />
+                  )}
+                  <Flag country={player.country} />
+                  <strong>
+                    {player.handle}
+                    {player.year && <em className="vault-era">'{player.year.slice(-2)}</em>}
+                  </strong>
+                  <span className="vault-sub">
+                    {player.matches} map{player.matches === 1 ? "" : "s"} · {player.line.rating.toFixed(2)} rating
+                  </span>
+                  <b className="vault-stat-val">{stat.fmt(player.line)}</b>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </section>
 
       <div className="vault-two-col">
@@ -5793,17 +5916,27 @@ function VaultPage({ onBack }: { onBack: () => void }) {
             <span>Recent matches</span>
           </div>
           <div className="vault-match-list">
-            {[...matches].reverse().slice(0, 40).map((match: MatchRecord) => (
-              <div className="vault-match-row" key={match.id}>
-                <span className="vault-match-map">{mapAbbr(match.map)}</span>
-                <span className={`vault-match-team${match.winnerId === match.left.id ? " won" : ""}`}>{match.left.tag}</span>
-                <b>
-                  {match.leftScore}–{match.rightScore}
-                </b>
-                <span className={`vault-match-team right${match.winnerId === match.right.id ? " won" : ""}`}>{match.right.tag}</span>
-                {match.stage && <span className="vault-match-stage">{match.stage}</span>}
-              </div>
-            ))}
+            {[...matches].reverse().slice(0, 40).map((match: MatchRecord) => {
+              const canReplay = replayIds.has(match.id);
+              return (
+                <button
+                  type="button"
+                  className={`vault-match-row${canReplay ? "" : " no-replay"}`}
+                  key={match.id}
+                  aria-disabled={!canReplay}
+                  onClick={() => canReplay && onOpenReplay(match.id)}
+                  title={canReplay ? "Watch round replay" : "Replay not saved for this match"}
+                >
+                  <span className="vault-match-map">{mapAbbr(match.map)}</span>
+                  <span className={`vault-match-team${match.winnerId === match.left.id ? " won" : ""}`}>{match.left.tag}</span>
+                  <b>
+                    {match.leftScore}–{match.rightScore}
+                  </b>
+                  <span className={`vault-match-team right${match.winnerId === match.right.id ? " won" : ""}`}>{match.right.tag}</span>
+                  <span className="vault-match-play">{canReplay ? <Play size={13} /> : null}</span>
+                </button>
+              );
+            })}
           </div>
         </section>
       </div>
@@ -5828,54 +5961,119 @@ function groupEventsByRound(events: MatchEvent[]): ReplayRound[] {
   return [...rounds.entries()].sort((a, b) => a[0] - b[0]).map(([round, list]) => ({ round, events: list }));
 }
 
-function RoundReplayPanel({ left, right, maps }: { left: FieldTeam; right: FieldTeam; maps: SeriesMapResult[] }) {
-  const playable = maps.filter((map) => map.eventLog && map.eventLog.events.length > 0);
-  const [mapIndex, setMapIndex] = useState(0);
-  const [round, setRound] = useState(1);
+// Minimal team shape the replay needs — satisfied by both FieldTeam and the DB's StoredTeamRef.
+type ReplayTeam = { name: string; tag: string; accent: string };
+const REPLAY_SPEEDS = [1, 2, 4];
 
-  const activeMap = playable[Math.min(mapIndex, Math.max(0, playable.length - 1))];
-  const rounds = useMemo(() => (activeMap?.eventLog ? groupEventsByRound(activeMap.eventLog.events) : []), [activeMap]);
-  if (!playable.length || !rounds.length) return null;
-
+// The animated replay core: a per-round timeline played by a requestAnimationFrame loop. Kills (and on
+// mirage, bomb events) reveal as the playhead passes their timestamp; play/pause, speed and a scrubber
+// drive it. Reused by the series panel (map tabs) and the Vault single-match screen.
+function RoundReplayCore({
+  left,
+  right,
+  mapId,
+  rounds,
+  autoAdvance = true,
+}: {
+  left: ReplayTeam;
+  right: ReplayTeam;
+  mapId: MapId;
+  rounds: ReplayRound[];
+  autoAdvance?: boolean;
+}) {
   const total = rounds.length;
-  const clamped = Math.min(Math.max(round, 1), total);
+  const [round, setRound] = useState(1);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [playing, setPlaying] = useState(false);
+  const [speed, setSpeed] = useState(1);
+
+  const clamped = Math.min(Math.max(round, 1), Math.max(1, total));
   const current = rounds.find((entry) => entry.round === clamped) ?? rounds[clamped - 1] ?? rounds[0];
-  const kills = current.events.filter((event) => event.type === "kill" && event.actorId && event.targetId);
+  const timeline = useMemo<TimelineEntry[]>(() => (current ? buildReplayTimeline(current.events, mapId) : []), [current, mapId]);
+  const duration = useMemo(() => (current ? replayRoundDuration(timeline, current.events) : 0), [timeline, current]);
+
+  const ctRef = useRef(0);
+  const rafRef = useRef<number | null>(null);
+  const lastTsRef = useRef(0);
+
+  // Back to round 1 whenever the source rounds change (new map / series / match).
+  useEffect(() => {
+    setRound(1);
+    setPlaying(false);
+  }, [rounds]);
+
+  // Zero the playhead at the start of each round.
+  useEffect(() => {
+    ctRef.current = 0;
+    setCurrentTime(0);
+  }, [clamped, mapId]);
+
+  // Playback loop.
+  useEffect(() => {
+    if (!playing || duration <= 0) return;
+    lastTsRef.current = 0;
+    const tick = (ts: number) => {
+      if (!lastTsRef.current) lastTsRef.current = ts;
+      const dt = ((ts - lastTsRef.current) / 1000) * speed;
+      lastTsRef.current = ts;
+      const next = ctRef.current + dt;
+      if (next >= duration) {
+        if (autoAdvance && clamped < total) {
+          // Advance AND zero the playhead in the same update so the next round never renders for a
+          // frame with the previous round's (large) currentTime — which would flash all its kills.
+          ctRef.current = 0;
+          setCurrentTime(0);
+          setRound(clamped + 1);
+        } else {
+          ctRef.current = duration;
+          setCurrentTime(duration);
+          setPlaying(false);
+        }
+        return;
+      }
+      ctRef.current = next;
+      setCurrentTime(next);
+      rafRef.current = requestAnimationFrame(tick);
+    };
+    rafRef.current = requestAnimationFrame(tick);
+    return () => {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+    };
+  }, [playing, speed, duration, clamped, total, autoAdvance]);
+
+  if (!current) return null;
+
+  const visible = visibleEntries(timeline, currentTime);
+  const visibleKills = visible.filter((entry) => entry.event.type === "kill");
+  const totalKills = timeline.filter((entry) => entry.event.type === "kill").length;
   const over = current.events.find((event) => event.type === "round_over");
   const winnerTeam = over && over.team !== "neutral" ? (over.team === "left" ? left : right) : undefined;
 
-  // alive reconstruction for the running count shown beside each kill
   const alive: Record<MatchEventTeam, number> = { left: 5, right: 5, neutral: 0 };
-  const teamName = (team: MatchEventTeam) => (team === "left" ? left : right);
-  const step = (delta: number) => setRound((value) => Math.min(Math.max(Math.min(Math.max(value, 1), total) + delta, 1), total));
+  const teamFor = (team: MatchEventTeam) => (team === "left" ? left : right);
+  const step = (delta: number) => {
+    setPlaying(false);
+    setRound(Math.min(Math.max(clamped + delta, 1), total));
+  };
+  const togglePlay = () => {
+    if (!playing && currentTime >= duration) {
+      ctRef.current = 0;
+      setCurrentTime(0);
+    }
+    setPlaying((value) => !value);
+  };
+  const scrub = (value: number) => {
+    setPlaying(false);
+    ctRef.current = value;
+    setCurrentTime(value);
+  };
+  const cycleSpeed = () => setSpeed((value) => REPLAY_SPEEDS[(REPLAY_SPEEDS.indexOf(value) + 1) % REPLAY_SPEEDS.length]);
 
   return (
-    <section className="replay-panel">
-      <div className="replay-head">
-        <div className="section-title">
-          <Play size={18} />
-          <span>Round replay</span>
-        </div>
-        {playable.length > 1 && (
-          <div className="replay-map-tabs">
-            {playable.map((map, index) => (
-              <button
-                key={`${map.map}-${index}`}
-                className={index === mapIndex ? "active" : ""}
-                onClick={() => {
-                  setMapIndex(index);
-                  setRound(1);
-                }}
-              >
-                {mapName(map.map)}
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-
+    <>
       <div className="replay-round-bar">
-        <button className="secondary" onClick={() => step(-1)} disabled={clamped <= 1}>
+        <button className="secondary" onClick={() => step(-1)} disabled={clamped <= 1} title="Previous round">
           <ArrowLeft size={15} />
         </button>
         <div className="replay-round-label">
@@ -5886,21 +6084,41 @@ function RoundReplayPanel({ left, right, maps }: { left: FieldTeam; right: Field
             {over?.reason ? ` (${over.reason})` : ""}
           </span>
         </div>
-        <button className="secondary" onClick={() => step(1)} disabled={clamped >= total}>
+        <button className="secondary" onClick={() => step(1)} disabled={clamped >= total} title="Next round">
           <ArrowLeft size={15} style={{ transform: "rotate(180deg)" }} />
         </button>
       </div>
 
-      <div className={`replay-body${activeMap.map === "mirage" ? " has-radar" : ""}`}>
+      <div className="replay-controls">
+        <button className="replay-play" onClick={togglePlay} title={playing ? "Pause" : "Play"}>
+          {playing ? <Pause size={15} /> : <Play size={15} />}
+        </button>
+        <input
+          className="replay-scrubber"
+          type="range"
+          min={0}
+          max={Math.max(duration, 0.001)}
+          step={0.05}
+          value={Math.min(currentTime, duration)}
+          onChange={(event) => scrub(Number(event.target.value))}
+          aria-label="Replay scrubber"
+        />
+        <button className="replay-speed" onClick={cycleSpeed} title="Playback speed">
+          {speed}×
+        </button>
+      </div>
+
+      <div className={`replay-body${mapId === "mirage" ? " has-radar" : ""}`}>
         <ol className="replay-feed">
-          {kills.length === 0 && <li className="replay-empty">No kills recorded this round.</li>}
-          {kills.map((event, index) => {
+          {totalKills === 0 && <li className="replay-empty">No kills recorded this round.</li>}
+          {visibleKills.map((entry, index) => {
+            const event = entry.event;
             const killerTeam = event.team;
             const victimTeam = killerTeam === "left" ? "right" : killerTeam === "right" ? "left" : "neutral";
             if (victimTeam !== "neutral") alive[victimTeam] = Math.max(0, alive[victimTeam] - 1);
             return (
               <li key={`${event.id}-${index}`} className="replay-kill">
-                <span className="replay-killer" style={{ color: teamName(killerTeam)?.accent }}>
+                <span className="replay-killer" style={{ color: teamFor(killerTeam)?.accent }}>
                   {event.actor}
                 </span>
                 <span className="replay-weapon">
@@ -5917,12 +6135,14 @@ function RoundReplayPanel({ left, right, maps }: { left: FieldTeam; right: Field
           })}
         </ol>
 
-        {activeMap.map === "mirage" && (
+        {mapId === "mirage" && (
           <div className="replay-radar">
             <img src={mirageRadar} alt="mirage radar" />
             <svg viewBox="0 0 100 100" preserveAspectRatio="none">
-              {kills.map((event, index) =>
-                event.actorPos && event.targetPos ? (
+              {visible.map((entry, index) => {
+                const event = entry.event;
+                if (event.type !== "kill" || !event.actorPos || !event.targetPos) return null;
+                return (
                   <g key={`${event.id}-pos-${index}`}>
                     <line
                       x1={event.actorPos.x}
@@ -5934,13 +6154,88 @@ function RoundReplayPanel({ left, right, maps }: { left: FieldTeam; right: Field
                     <circle cx={event.actorPos.x} cy={event.actorPos.y} r={1.5} className={`replay-dot killer ${event.team}`} />
                     <circle cx={event.targetPos.x} cy={event.targetPos.y} r={1.3} className="replay-dot victim" />
                   </g>
-                ) : null,
-              )}
+                );
+              })}
             </svg>
           </div>
         )}
       </div>
+    </>
+  );
+}
+
+// Embedded replay for a played series (one or more maps with logs), with map tabs.
+function SeriesRoundReplayPanel({ left, right, maps }: { left: ReplayTeam; right: ReplayTeam; maps: SeriesMapResult[] }) {
+  const playable = maps.filter((map) => map.eventLog && map.eventLog.events.length > 0);
+  const [mapIndex, setMapIndex] = useState(0);
+  const activeMap = playable[Math.min(mapIndex, Math.max(0, playable.length - 1))];
+  const rounds = useMemo(() => (activeMap?.eventLog ? groupEventsByRound(activeMap.eventLog.events) : []), [activeMap]);
+  if (!playable.length || !activeMap || !rounds.length) return null;
+
+  return (
+    <section className="replay-panel">
+      <div className="replay-head">
+        <div className="section-title">
+          <Play size={18} />
+          <span>Round replay</span>
+        </div>
+        {playable.length > 1 && (
+          <div className="replay-map-tabs">
+            {playable.map((map, index) => (
+              <button key={`${map.map}-${index}`} className={index === mapIndex ? "active" : ""} onClick={() => setMapIndex(index)}>
+                {mapName(map.map)}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+      <RoundReplayCore left={left} right={right} mapId={activeMap.map} rounds={rounds} />
     </section>
+  );
+}
+
+// Full-screen replay for a single stored match opened from the Vault.
+function MatchRoundReplayPanel({
+  match,
+  log,
+  onBack,
+}: {
+  match: MatchRecord | undefined;
+  log: MatchEventLog | undefined;
+  onBack: () => void;
+}) {
+  const rounds = useMemo(() => (log ? groupEventsByRound(log.events) : []), [log]);
+  return (
+    <main className="layout fullscreen-page">
+      <section className="fullscreen-head">
+        <div>
+          <div className="section-title">
+            <Play size={18} />
+            <span>Round replay</span>
+          </div>
+          <h1>
+            {match ? `${match.left.tag} ${match.leftScore}–${match.rightScore} ${match.right.tag}` : "Replay"}
+          </h1>
+          {match && (
+            <p>
+              {mapName(match.map)}
+              {match.stage ? ` · ${match.stage}` : ""}
+            </p>
+          )}
+        </div>
+        <button className="secondary" onClick={onBack}>
+          <ArrowLeft size={16} />
+          Back
+        </button>
+      </section>
+      {match && rounds.length ? (
+        <section className="replay-panel">
+          <RoundReplayCore left={match.left} right={match.right} mapId={match.map} rounds={rounds} />
+        </section>
+      ) : (
+        <div className="empty-fullscreen">This match's replay isn't saved — only the most recent matches keep their full logs.</div>
+      )}
+    </main>
   );
 }
 
@@ -7017,7 +7312,7 @@ function SeriesDetailPage({
         maps={result.maps.map((map, index) => roundTimelineMapFromResult(map, index))}
       />
 
-      <RoundReplayPanel left={result.left} right={result.right} maps={result.maps} />
+      <SeriesRoundReplayPanel left={result.left} right={result.right} maps={result.maps} />
     </main>
   );
 }

@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import { initMatch, playRound, recalculateHltvStyleRating, type FieldTeam, type PlayerLine } from "../src/sim";
-import { MatchDatabase, memoryStorage, teamRef, type RecordMatchInput } from "../src/matchDatabase";
+import { MatchDatabase, memoryStorage, teamRef, type RecordMatchInput, type StorageAdapter } from "../src/matchDatabase";
 import { defaultSettings, difficulties, mapPool, type MapId, type Player, type Role } from "../src/gameData";
 
 test("MatchDatabase: records, persists across instances, and dedupes by id", () => {
@@ -107,26 +107,167 @@ function addLine(target: PlayerLine, incoming: PlayerLine) {
   recalculateHltvStyleRating(target);
 }
 
-test("MatchDatabase: clear empties the store", () => {
+test("MatchDatabase: clear empties both the registry and the log store", () => {
   const db = new MatchDatabase(memoryStorage());
-  db.recordMatch(matchInput("x", "2026-06-01T00:00:00Z", makeTeam("you", 84), makeTeam("opp", 84), 5));
+  db.recordMatch(matchInput("x", "2026-06-01T00:00:00Z", makeTeam("you", 84), makeTeam("opp", 84), 5, { keepLog: true }));
   assert.equal(db.count(), 1);
+  assert.equal(db.eventLogIds().size, 1);
   db.clear();
   assert.equal(db.count(), 0);
+  assert.equal(db.eventLogIds().size, 0);
 });
 
-function matchInput(id: string, recordedAt: string, left: FieldTeam, right: FieldTeam, seed: number): RecordMatchInput {
-  const state = playMatch(seed, left, right, "inferno");
+test("MatchDatabase: event logs live in a separate store, not the registry blob", () => {
+  const storage = memoryStorage();
+  const db = new MatchDatabase(storage);
+  db.recordMatch(matchInput("m1", "2026-06-01T00:00:00Z", makeTeam("you", 84), makeTeam("opp", 84), 5, { keepLog: true }));
+
+  const registryRaw = storage.getItem("cssim-match-db-v1")!;
+  assert.ok(!registryRaw.includes('"events"'), "the large event log must not be embedded in the registry blob");
+  assert.equal(db.getMatch("m1")!.eventLog, undefined);
+  assert.ok(db.hasEventLog("m1"));
+  assert.equal(db.getEventLog("m1")!.map, "inferno");
+});
+
+test("MatchDatabase: the log store is ring-buffered to its cap while box scores persist", () => {
+  const db = new MatchDatabase(memoryStorage());
+  for (let i = 0; i < 45; i += 1) {
+    db.recordMatch(miniLoggedInput(`log-${String(i).padStart(2, "0")}`));
+  }
+  assert.equal(db.eventLogIds().size, 40); // capped
+  assert.equal(db.getEventLog("log-00"), undefined); // oldest evicted
+  assert.ok(db.getEventLog("log-44")); // newest kept
+  assert.equal(db.count(), 45); // every box score persisted (well under MAX_MATCHES)
+});
+
+test("MatchDatabase: a log-store quota failure never aborts the box-score write", () => {
+  const base = memoryStorage();
+  const storage: StorageAdapter = {
+    getItem: (k) => base.getItem(k),
+    removeItem: (k) => base.removeItem(k),
+    setItem: (k, v) => {
+      if (k === "cssim-match-logs-v1") throw new Error("QuotaExceededError");
+      base.setItem(k, v);
+    },
+  };
+  const db = new MatchDatabase(storage);
+  db.recordMatch(matchInput("q1", "2026-06-01T00:00:00Z", makeTeam("you", 84), makeTeam("opp", 84), 5, { keepLog: true }));
+  assert.ok(db.getMatch("q1"), "box score must still persist");
+  assert.equal(db.getEventLog("q1"), undefined, "the log was dropped silently");
+});
+
+test("MatchDatabase: recordMany commits a batch in one pass, dedupes within it, and keeps logs", () => {
+  const db = new MatchDatabase(memoryStorage());
+  const you = makeTeam("you", 84);
+  const opp = makeTeam("opp", 84);
+  db.recordMany([
+    matchInput("b1", "2026-06-01T00:00:00Z", you, opp, 1),
+    matchInput("b2", "2026-06-02T00:00:00Z", you, opp, 2, { keepLog: true }),
+    matchInput("b1", "2026-06-03T00:00:00Z", you, opp, 3), // same id later in the batch -> last wins, no dup
+  ]);
+  assert.equal(db.count(), 2);
+  assert.ok(db.getEventLog("b2"));
+});
+
+test("MatchDatabase: map filter narrows a career to one map", () => {
+  const db = new MatchDatabase(memoryStorage());
+  const you = makeTeam("you", 86);
+  const opp = makeTeam("opp", 80);
+  db.recordMatch(matchInput("inf", "2026-06-01T00:00:00Z", you, opp, 3, { map: "inferno" }));
+  db.recordMatch(matchInput("nuk", "2026-06-02T00:00:00Z", you, opp, 4, { map: "nuke" }));
+  const v = db.getMatch("inf")!.players.find((r) => r.id === you.players[0].id)!.versionKey;
+
+  assert.equal(db.playerCareer(v)!.matches, 2);
+  assert.equal(db.playerCareer(v, { map: "inferno" })!.matches, 1);
+  assert.equal(db.playerCareer(v, { map: "nuke" })!.matches, 1);
+});
+
+test("MatchDatabase: side filter sums only the requested side and skips legacy records", () => {
+  const storage = memoryStorage();
+  const db = new MatchDatabase(storage);
+  const you = makeTeam("you", 84);
+  const opp = makeTeam("opp", 84);
+  const input = matchInput("s1", "2026-06-01T00:00:00Z", you, opp, 7);
+  db.recordMatch(input);
+  const ref = db.getMatch("s1")!.players.find((r) => r.id === you.players[0].id)!;
+
+  const ct = db.playerCareer(ref.versionKey, { side: "CT" })!;
+  const t = db.playerCareer(ref.versionKey, { side: "T" })!;
+  // The CT/T splits partition the combined box exactly (the sim accrues each kill into both).
+  assert.equal(ct.line.kills, input.sideStats!.CT[ref.id].kills);
+  assert.equal(ct.line.kills + t.line.kills, db.getMatch("s1")!.box[ref.id].kills);
+
+  // Now add a LEGACY record (no sideBox) for the same player version and confirm side queries skip it.
+  const legacy = matchInput("s2", "2026-06-02T00:00:00Z", you, opp, 9);
+  delete legacy.sideStats;
+  db.recordMatch(legacy);
+  assert.equal(db.playerCareer(ref.versionKey)!.matches, 2, "combined career counts both");
+  assert.equal(db.playerCareer(ref.versionKey, { side: "CT" })!.matches, 1, "CT query skips the legacy record");
+});
+
+test("MatchDatabase: v1 records still parse and only contribute to combined (not side) queries", () => {
+  const storage = memoryStorage();
+  const seed = new MatchDatabase(storage);
+  const you = makeTeam("you", 84);
+  const opp = makeTeam("opp", 84);
+  seed.recordMatch(matchInput("v1", "2026-06-01T00:00:00Z", you, opp, 3));
+  // Rewrite the blob to look like a pre-sideBox v1 record.
+  const raw = JSON.parse(storage.getItem("cssim-match-db-v1")!);
+  raw.schemaVersion = 1;
+  raw.matches.forEach((m: { sideBox?: unknown }) => delete m.sideBox);
+  storage.setItem("cssim-match-db-v1", JSON.stringify(raw));
+
+  const db = new MatchDatabase(storage);
+  assert.ok(db.listPlayers().length > 0, "combined registry still aggregates");
+  assert.equal(db.listPlayers({ side: "CT" }).length, 0, "side queries exclude split-less legacy records");
+});
+
+function miniLoggedInput(id: string): RecordMatchInput {
+  const you = makeTeam("you", 80);
+  const opp = makeTeam("opp", 80);
+  const stats: Record<string, PlayerLine> = {};
+  [...you.players, ...opp.players].forEach((p) => (stats[p.id] = emptyLine()));
+  return {
+    id,
+    recordedAt: "2026-06-01T00:00:00Z",
+    map: "inferno",
+    left: { team: teamRef(you), players: you.players },
+    right: { team: teamRef(opp), players: opp.players },
+    leftScore: 13,
+    rightScore: 5,
+    winnerId: you.id,
+    stats,
+    eventLog: { schemaVersion: 1, map: "inferno", events: [] },
+    keepEventLog: true,
+  };
+}
+
+function matchInput(
+  id: string,
+  recordedAt: string,
+  left: FieldTeam,
+  right: FieldTeam,
+  seed: number,
+  opts: { map?: MapId; keepLog?: boolean } = {},
+): RecordMatchInput {
+  const map = opts.map ?? "inferno";
+  const state = playMatch(seed, left, right, map);
   return {
     id,
     recordedAt,
-    map: "inferno",
+    map,
     left: { team: teamRef(left), players: left.players },
     right: { team: teamRef(right), players: right.players },
     leftScore: state.you,
     rightScore: state.opponent,
     winnerId: state.winner === "you" ? left.id : right.id,
     stats: { ...state.yourStats, ...state.opponentStats },
+    sideStats: {
+      CT: { ...state.yourSideStats.CT, ...state.opponentSideStats.CT },
+      T: { ...state.yourSideStats.T, ...state.opponentSideStats.T },
+    },
+    eventLog: opts.keepLog ? { schemaVersion: 1, map, events: [] } : undefined,
+    keepEventLog: opts.keepLog,
   };
 }
 

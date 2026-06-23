@@ -58,7 +58,8 @@ export interface MatchRecord {
   winnerId: string;
   players: StoredPlayerRef[];
   box: Record<string, PlayerLine>; // keyed by per-match player id (both teams)
-  eventLog?: MatchEventLog; // kept only when requested (replays) — large
+  sideBox?: { CT: Record<string, PlayerLine>; T: Record<string, PlayerLine> }; // CT/T split for filtering
+  eventLog?: MatchEventLog; // legacy only: logs now live in a separate store (see getEventLog)
 }
 
 export interface RecordMatchInput {
@@ -76,8 +77,19 @@ export interface RecordMatchInput {
   // verbatim — NOT a re-derivation — so a player's all-time line matches exactly what the rest of the
   // app shows for the same maps. The event log is optional (replay payload), not the stat source.
   stats: Record<string, PlayerLine>;
+  // Per-side (CT/T) splits, keyed by per-match player id, so the all-time leaderboards can filter by
+  // side. Optional — records without it simply don't contribute to side-filtered queries.
+  sideStats?: { CT: Record<string, PlayerLine>; T: Record<string, PlayerLine> };
   eventLog?: MatchEventLog;
   keepEventLog?: boolean;
+}
+
+// Optional filters for the all-time career queries. `map` narrows to one map; `side` aggregates only
+// the CT or T split (records lacking a side split are skipped — never folded as their full combined
+// line, which would double-count both sides into one).
+export interface CareerQuery {
+  side?: "CT" | "T";
+  map?: MapId;
 }
 
 export interface PlayerCareerRecord {
@@ -100,18 +112,30 @@ export interface TeamRecordRow {
 }
 
 const DB_KEY = "cssim-match-db-v1";
-const SCHEMA_VERSION = 1;
-const MAX_MATCHES = 500; // ring buffer so the store can't grow unbounded in localStorage
+const LOG_KEY = "cssim-match-logs-v1";
+const SCHEMA_VERSION = 2; // v2 adds sideBox + a separate log store; v1 records still parse (fields optional)
+// Ring buffer so the registry can't grow unbounded in localStorage. Each record now carries a combined
+// box PLUS a CT/T split (~3x the stat payload), so this is kept conservative to stay well under quota.
+const MAX_MATCHES = 300;
+// Event logs are large (hundreds of events per map). They live in their OWN small ring buffer, separate
+// from the registry, so the registry stays tiny/fast and only the most recent matches are replayable.
+const MAX_EVENT_LOGS = 40;
 
 interface DbShape {
   schemaVersion: number;
   matches: MatchRecord[];
 }
 
+interface LogStoreShape {
+  schemaVersion: number;
+  logs: Array<{ id: string; log: MatchEventLog }>;
+}
+
 export class MatchDatabase {
   constructor(
     private storage: StorageAdapter,
     private key: string = DB_KEY,
+    private logKey: string = LOG_KEY,
   ) {}
 
   private read(): DbShape {
@@ -130,7 +154,55 @@ export class MatchDatabase {
     this.storage.setItem(this.key, JSON.stringify(db));
   }
 
-  recordMatch(input: RecordMatchInput): MatchRecord {
+  private readLogs(): LogStoreShape {
+    try {
+      const raw = this.storage.getItem(this.logKey);
+      if (!raw) return { schemaVersion: SCHEMA_VERSION, logs: [] };
+      const parsed = JSON.parse(raw) as LogStoreShape;
+      if (!parsed || !Array.isArray(parsed.logs)) return { schemaVersion: SCHEMA_VERSION, logs: [] };
+      return { schemaVersion: SCHEMA_VERSION, logs: parsed.logs };
+    } catch {
+      return { schemaVersion: SCHEMA_VERSION, logs: [] };
+    }
+  }
+
+  private writeLogs(store: LogStoreShape) {
+    this.storage.setItem(this.logKey, JSON.stringify(store));
+  }
+
+  // Store a replay log in the separate, capped log store. Guarded so a quota failure here NEVER aborts
+  // the (tiny, must-succeed) box-score write that already happened — on quota error we shed half the
+  // logs and retry once, then give up silently.
+  private putEventLog(id: string, log: MatchEventLog) {
+    const existing = this.readLogs().logs.filter((entry) => entry.id !== id);
+    existing.push({ id, log });
+    const capped = existing.slice(-MAX_EVENT_LOGS);
+    try {
+      this.writeLogs({ schemaVersion: SCHEMA_VERSION, logs: capped });
+    } catch {
+      try {
+        this.writeLogs({ schemaVersion: SCHEMA_VERSION, logs: capped.slice(-Math.floor(MAX_EVENT_LOGS / 2)) });
+      } catch {
+        /* drop the log silently — the box score is already persisted */
+      }
+    }
+  }
+
+  getEventLog(id: string): MatchEventLog | undefined {
+    return this.readLogs().logs.find((entry) => entry.id === id)?.log;
+  }
+
+  hasEventLog(id: string): boolean {
+    return this.readLogs().logs.some((entry) => entry.id === id);
+  }
+
+  // The set of match ids that have a stored replay log — for cheap "is this row clickable" checks.
+  eventLogIds(): Set<string> {
+    return new Set(this.readLogs().logs.map((entry) => entry.id));
+  }
+
+  // Assemble a MatchRecord (box + CT/T split) without touching storage.
+  private buildRecord(input: RecordMatchInput): MatchRecord {
     const players: StoredPlayerRef[] = [
       ...input.left.players.map((player) => playerRef(player, "left", input.left.team.id)),
       ...input.right.players.map((player) => playerRef(player, "right", input.right.team.id)),
@@ -141,7 +213,17 @@ export class MatchDatabase {
       const line = input.stats[ref.id];
       if (line) box[ref.id] = line;
     });
-    const record: MatchRecord = {
+    let sideBox: MatchRecord["sideBox"];
+    if (input.sideStats) {
+      const ct: Record<string, PlayerLine> = {};
+      const t: Record<string, PlayerLine> = {};
+      players.forEach((ref) => {
+        if (input.sideStats!.CT[ref.id]) ct[ref.id] = input.sideStats!.CT[ref.id];
+        if (input.sideStats!.T[ref.id]) t[ref.id] = input.sideStats!.T[ref.id];
+      });
+      sideBox = { CT: ct, T: t };
+    }
+    return {
       id: input.id,
       recordedAt: input.recordedAt,
       runId: input.runId,
@@ -154,19 +236,48 @@ export class MatchDatabase {
       winnerId: input.winnerId,
       players,
       box,
-      eventLog: input.keepEventLog ? input.eventLog : undefined,
+      sideBox,
+      // Logs are NOT inlined in the registry — they go to the separate log store.
     };
+  }
 
-    const db = this.read();
-    const next = db.matches.filter((match) => match.id !== record.id); // dedupe by id (re-record replaces)
-    next.push(record);
-    next.sort((a, b) => a.recordedAt.localeCompare(b.recordedAt));
-    this.write({ schemaVersion: SCHEMA_VERSION, matches: next.slice(-MAX_MATCHES) });
+  // Commit records to the registry (dedupe by id, sort by time, cap), then store any logs. The registry
+  // write is guarded so a quota error sheds the oldest records and retries rather than throwing up
+  // through the recording effect and crashing the run.
+  private commit(records: MatchRecord[], inputs: RecordMatchInput[]) {
+    // De-dupe the incoming batch by id (last wins) so the registry never holds the same id twice.
+    const byId = new Map<string, MatchRecord>();
+    records.forEach((record) => byId.set(record.id, record));
+    const next = [...this.read().matches.filter((match) => !byId.has(match.id)), ...byId.values()]
+      .sort((a, b) => a.recordedAt.localeCompare(b.recordedAt))
+      .slice(-MAX_MATCHES);
+    try {
+      this.write({ schemaVersion: SCHEMA_VERSION, matches: next });
+    } catch {
+      try {
+        this.write({ schemaVersion: SCHEMA_VERSION, matches: next.slice(-Math.floor(next.length / 2)) });
+      } catch {
+        /* give up — keep whatever was already persisted */
+      }
+    }
+    inputs.forEach((input, index) => {
+      if (input.keepEventLog && input.eventLog) this.putEventLog(records[index].id, input.eventLog);
+    });
+  }
+
+  recordMatch(input: RecordMatchInput): MatchRecord {
+    const record = this.buildRecord(input);
+    this.commit([record], [input]);
     return record;
   }
 
+  // Batched insert: reads/sorts/serializes the registry ONCE for the whole set (a Swiss round records
+  // many maps), instead of once per map.
   recordMany(inputs: RecordMatchInput[]): MatchRecord[] {
-    return inputs.map((input) => this.recordMatch(input));
+    if (!inputs.length) return [];
+    const records = inputs.map((input) => this.buildRecord(input));
+    this.commit(records, inputs);
+    return records;
   }
 
   listMatches(): MatchRecord[] {
@@ -183,6 +294,7 @@ export class MatchDatabase {
 
   clear() {
     this.storage.removeItem(this.key);
+    this.storage.removeItem(this.logKey);
   }
 
   listTeams(): TeamRecordRow[] {
@@ -201,26 +313,51 @@ export class MatchDatabase {
 
   // Career across every stored match, keyed by player VERSION — so a player folds together across
   // teams and runs of the SAME era (a drafted copy + their real-team appearances), while different
-  // eras stay separate (FalleN 2018 is a distinct record from FalleN 2026).
-  playerCareer(versionKey: string): PlayerCareerRecord | undefined {
+  // eras stay separate (FalleN 2018 is a distinct record from FalleN 2026). Optional {side, map} filters.
+  playerCareer(versionKey: string, opts: CareerQuery = {}): PlayerCareerRecord | undefined {
+    return this.aggregate(versionKey, this.read().matches, opts);
+  }
+
+  // All distinct player VERSIONS, most-played first — the persistent player registry. Each era of a
+  // player (2018 vs 2026) is its own entry. Reads the matches array ONCE for the whole registry.
+  listPlayers(opts: CareerQuery = {}): PlayerCareerRecord[] {
+    const matches = this.read().matches;
+    const keys = new Set<string>();
+    for (const match of matches) for (const ref of match.players) keys.add(ref.versionKey);
+    return [...keys]
+      .map((key) => this.aggregate(key, matches, opts))
+      .filter((career): career is PlayerCareerRecord => Boolean(career))
+      .sort((a, b) => b.matches - a.matches || b.line.rating - a.line.rating);
+  }
+
+  // Sum one player version's line across the given matches, honouring optional side/map filters. A
+  // side filter reads only that side's split and SKIPS records without one (so legacy combined-only
+  // records never get double-counted as both CT and T). Returns undefined when nothing contributed.
+  private aggregate(versionKey: string, matches: MatchRecord[], opts: CareerQuery): PlayerCareerRecord | undefined {
     const line = emptyLine();
     const teamIds = new Set<string>();
-    let matches = 0;
+    let matchCount = 0;
     let identity: StoredPlayerRef | undefined;
 
-    for (const match of this.read().matches) {
+    for (const match of matches) {
+      if (opts.map && match.map !== opts.map) continue;
       const refs = match.players.filter((ref) => ref.versionKey === versionKey);
       if (!refs.length) continue;
-      matches += 1;
+      let contributed = false;
       for (const ref of refs) {
         identity = identity ?? ref;
-        teamIds.add(ref.teamId);
-        const matchLine = match.box[ref.id];
-        if (matchLine) addLine(line, matchLine);
+        const matchLine = opts.side ? match.sideBox?.[opts.side]?.[ref.id] : match.box[ref.id];
+        if (matchLine) {
+          addCounters(line, matchLine);
+          teamIds.add(ref.teamId);
+          contributed = true;
+        }
       }
+      if (contributed) matchCount += 1;
     }
 
-    if (!identity) return undefined;
+    if (!identity || matchCount === 0) return undefined;
+    recalculateHltvStyleRating(line); // derive adr/impact/rating once, from the summed counters
     return {
       versionKey,
       handle: identity.handle,
@@ -228,21 +365,10 @@ export class MatchDatabase {
       country: identity.country,
       year: identity.year,
       era: identity.era,
-      matches,
+      matches: matchCount,
       teamIds: [...teamIds],
       line,
     };
-  }
-
-  // All distinct player VERSIONS, most-played first — the persistent player registry. Each era of a
-  // player (2018 vs 2026) is its own entry.
-  listPlayers(): PlayerCareerRecord[] {
-    const keys = new Set<string>();
-    for (const match of this.read().matches) for (const ref of match.players) keys.add(ref.versionKey);
-    return [...keys]
-      .map((key) => this.playerCareer(key))
-      .filter((career): career is PlayerCareerRecord => Boolean(career))
-      .sort((a, b) => b.matches - a.matches || b.line.rating - a.line.rating);
   }
 }
 
@@ -266,8 +392,9 @@ function playerRef(player: Player, side: "left" | "right", teamId: string): Stor
   };
 }
 
-// Sum a match line into a running career total, then refresh the derived adr/impact/rating.
-function addLine(target: PlayerLine, incoming: PlayerLine) {
+// Sum a match line's raw counters into a running career total. The derived adr/impact/rating are
+// recomputed ONCE by the caller after the whole sum, not per appearance.
+function addCounters(target: PlayerLine, incoming: PlayerLine) {
   target.kills += incoming.kills;
   target.deaths += incoming.deaths;
   target.assists += incoming.assists;
@@ -278,7 +405,6 @@ function addLine(target: PlayerLine, incoming: PlayerLine) {
   target.firstDeaths += incoming.firstDeaths;
   target.multiKills += incoming.multiKills;
   target.clutchWins += incoming.clutchWins;
-  recalculateHltvStyleRating(target);
 }
 
 function emptyLine(): PlayerLine {
