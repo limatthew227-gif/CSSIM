@@ -95,6 +95,9 @@ import {
   placementTier,
   placementLabel,
   pickTransferCandidates,
+  rollCareerMeta,
+  expectedRating,
+  developPlayer,
 } from "./career";
 import { hltvTop20Coaches, hltvTop20Rosters } from "./hltvTop20";
 import { playerPhoto } from "./playerPhotos";
@@ -400,6 +403,7 @@ interface RunSnapshot {
   careerHistory?: Array<{ event: number; tier: PlacementTier; prize: number; record: { wins: number; losses: number } }>;
   transferCandidates?: Array<{ player: Player; team: Roster }>;
   transferTrade?: { incoming: Player; outgoing: Player; delta: number } | null;
+  progressionSummary?: Array<{ handle: string; before: number; after: number; iglDelta: number }>;
 }
 
 type SavedRun = SavedRunSlot<RunSnapshot>;
@@ -729,6 +733,7 @@ function App() {
   const [careerHistory, setCareerHistory] = useState<Array<{ event: number; tier: PlacementTier; prize: number; record: { wins: number; losses: number } }>>([]);
   const [transferCandidates, setTransferCandidates] = useState<Array<{ player: Player; team: Roster }>>([]);
   const [transferTrade, setTransferTrade] = useState<{ incoming: Player; outgoing: Player; delta: number } | null>(null); // one trade per window
+  const [progressionSummary, setProgressionSummary] = useState<Array<{ handle: string; before: number; after: number; iglDelta: number }>>([]);
   const [autosave, setAutosave] = useState(() => readAutosave<RunSnapshot>()); // last-session snapshot, read once at mount
   const [navStack, setNavStack] = useState<Screen[]>([]); // back-stack for the detail pages
   const [statsScope, setStatsScope] = useState<StatsScope>("all");
@@ -1558,6 +1563,7 @@ function App() {
     setCareerHistory([]);
     setTransferCandidates([]);
     setTransferTrade(null);
+    setProgressionSummary([]);
     setPlayerFinish(null);
   }
 
@@ -1570,7 +1576,21 @@ function App() {
     setCareerMoney((money) => (careerActive ? money : STARTING_BANKROLL) + prize);
     setCareerActive(true);
     setCareerHistory((history) => [...history, { event: careerEvent, tier, prize, record: { ...record } }]);
-    const picks = pickTransferCandidates(selected, comparePool.map((entry) => entry.player));
+
+    // Develop your roster from this Major's performances (your team's versions only).
+    const ratings = majorPlayerRatings(matchResults);
+    const summary: Array<{ handle: string; before: number; after: number; iglDelta: number }> = [];
+    const developed = selected.map((player) => {
+      const meta = player.potential != null && player.age != null ? { age: player.age, potential: player.potential } : rollCareerMeta(player.ovr);
+      const rating = ratings.get(player.id) ?? expectedRating(player.ovr); // no data -> treat as par (no change)
+      const dev = developPlayer({ player, rating, placement: tier, potential: meta.potential });
+      summary.push({ handle: player.handle, before: player.ovr, after: dev.ovr, iglDelta: dev.iglDelta });
+      return { ...player, ovr: dev.ovr, stats: dev.stats, age: meta.age, potential: meta.potential };
+    });
+    setSelected(developed);
+    setProgressionSummary(summary);
+
+    const picks = pickTransferCandidates(developed, comparePool.map((entry) => entry.player));
     setTransferCandidates(picks.map((player) => ({ player, team: playerTeamMap.get(player.id) ?? currentRoster })));
     setTransferTrade(null);
     setScreen("transfer");
@@ -1721,6 +1741,7 @@ function App() {
       transferCandidates,
       transferTrade,
       playerFinish,
+      progressionSummary,
     };
   }
 
@@ -1807,6 +1828,7 @@ function App() {
     setCareerHistory(snapshot.careerHistory ?? []);
     setTransferCandidates(snapshot.transferCandidates ?? []);
     setTransferTrade(snapshot.transferTrade ?? null);
+    setProgressionSummary(snapshot.progressionSummary ?? []);
     setPlayerFinish(snapshot.playerFinish ?? null);
     setDetailPlayer(null);
     setDetailTeam(null);
@@ -2578,6 +2600,7 @@ function App() {
           roster={selected}
           candidates={transferCandidates}
           trade={transferTrade}
+          development={progressionSummary}
           onTrade={doTransfer}
           onUndo={undoTransfer}
           onStart={startNextMajor}
@@ -7682,6 +7705,7 @@ function TransferWindow({
   roster,
   candidates,
   trade,
+  development,
   onTrade,
   onUndo,
   onStart,
@@ -7692,10 +7716,12 @@ function TransferWindow({
   roster: Player[];
   candidates: Array<{ player: Player; team: Roster }>;
   trade: { incoming: Player; outgoing: Player; delta: number } | null;
+  development: Array<{ handle: string; before: number; after: number; iglDelta: number }>;
   onTrade: (incoming: Player, outgoing: Player) => void;
   onUndo: () => void;
   onStart: () => void;
 }) {
+  const moves = development.filter((row) => row.after !== row.before || row.iglDelta !== 0);
   return (
     <main className="layout fullscreen-page transfer-page">
       <section className="fullscreen-head">
@@ -7717,6 +7743,33 @@ function TransferWindow({
         </div>
       </section>
 
+      {moves.length > 0 && (
+        <section className="transfer-card development-card">
+          <div className="section-title">
+            <TrendingUp size={18} />
+            <span>Development</span>
+          </div>
+          <div className="dev-rows">
+            {moves.map((row) => {
+              const up = row.after > row.before;
+              return (
+                <div className="dev-row" key={row.handle}>
+                  <strong>{row.handle}</strong>
+                  {row.after !== row.before ? (
+                    <span className={up ? "good" : "bad"}>
+                      {row.before} → {row.after} {up ? "▲" : "▼"}
+                    </span>
+                  ) : (
+                    <span className="good">IGL +{row.iglDelta}</span>
+                  )}
+                  {row.iglDelta > 0 && row.after !== row.before && <small>IGL +{row.iglDelta}</small>}
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
       <div className="transfer-grid">
         <section className="transfer-card">
           <div className="section-title">
@@ -7729,7 +7782,11 @@ function TransferWindow({
                 <Flag country={player.country} />
                 <strong>{player.handle}</strong>
                 <span className="tr-role">{player.role}</span>
-                <span className="tr-ovr">{player.ovr}</span>
+                <span className="tr-meta">{player.age ? `age ${player.age}` : ""}</span>
+                <span className="tr-ovr">
+                  {player.ovr}
+                  {player.potential != null && player.potential > player.ovr && <em> / {player.potential}</em>}
+                </span>
                 <span className="tr-value">{fmtMoney(playerValue(player))}</span>
               </div>
             ))}
@@ -9206,6 +9263,28 @@ function resolveAutoSimMatch(state: MatchState, left: FieldTeam, right: FieldTea
 function autoSimWinThreshold(round: number) {
   if (round < 25) return 13;
   return 13 + (Math.floor((round - 25) / 6) + 1) * 3;
+}
+
+// Each of YOUR players' average HLTV-style rating across this Major (one entry per player id), from the
+// per-map box scores — the input to post-Major development.
+function majorPlayerRatings(results: SwissResult[]): Map<string, number> {
+  const sums = new Map<string, { total: number; maps: number }>();
+  for (const result of results) {
+    const isLeft = result.left.id === "user";
+    if (!isLeft && result.right.id !== "user") continue;
+    for (const map of result.maps) {
+      const stats = isLeft ? map.leftStats : map.rightStats;
+      for (const [id, line] of Object.entries(stats)) {
+        const entry = sums.get(id) ?? { total: 0, maps: 0 };
+        entry.total += line.rating;
+        entry.maps += 1;
+        sums.set(id, entry);
+      }
+    }
+  }
+  const out = new Map<string, number>();
+  for (const [id, { total, maps }] of sums) out.set(id, maps ? total / maps : 0);
+  return out;
 }
 
 function mapResultFromState(map: MapId, state: MatchState, left: FieldTeam, right: FieldTeam): SeriesMapResult {

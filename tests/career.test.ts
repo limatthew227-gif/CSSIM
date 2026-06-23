@@ -1,13 +1,14 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { playerValue, transferDelta, prizeForPlacement, placementTier, placementLabel, pickTransferCandidates } from "../src/career";
-import type { Player } from "../src/gameData";
+import { playerValue, transferDelta, prizeForPlacement, placementTier, placementLabel, pickTransferCandidates, rollCareerMeta, expectedRating, developPlayer } from "../src/career";
+import type { Player, PlayerStats } from "../src/gameData";
 import type { Role } from "../src/gameData";
 
-// Minimal fixtures — the career math only reads ovr/role/id/handle.
+// Minimal fixtures — the career math only reads ovr/role/id/handle/stats.
+const baseStats: PlayerStats = { aim: 80, clutch: 80, consistency: 80, awp: 60, igl: 60 };
 function mk(id: string, role: Role, ovr: number, handle = id): Player {
-  return { id, handle, role, ovr } as Player;
+  return { id, handle, role, ovr, stats: { ...baseStats } } as Player;
 }
 
 // A deterministic rng cycling through given values (for candidate-pick tests).
@@ -47,6 +48,47 @@ test("placementTier maps run end-state to a finish", () => {
   assert.equal(placementTier({ champion: false, reachedPlayoffs: true, playoffRound: "quarterfinal" }), "top8");
   assert.equal(placementTier({ champion: false, reachedPlayoffs: false, playoffRound: "quarterfinal" }), "swiss");
   assert.equal(placementLabel("swiss", { wins: 2, losses: 3 }), "Swiss exit (2-3)");
+});
+
+test("rollCareerMeta: younger players get more headroom toward a higher potential", () => {
+  const young = rollCareerMeta(80, () => 0); // age 18 -> +6
+  const old = rollCareerMeta(80, () => 0.99); // age ~32 -> +0
+  assert.ok(young.age < old.age);
+  assert.ok(young.potential > old.potential);
+  assert.equal(old.potential, 80, "a veteran is at his ceiling");
+  assert.ok(rollCareerMeta(95, () => 0).potential <= 96, "global cap respected");
+});
+
+test("expectedRating rises with OVR", () => {
+  assert.ok(expectedRating(90) > expectedRating(80) && expectedRating(80) > expectedRating(70));
+});
+
+test("developPlayer: overperformers rise (capped +2 and by potential), underperformers fall", () => {
+  const p = mk("rifle", "Rifler", 80);
+  const up = developPlayer({ player: p, rating: 1.4, placement: "top8", potential: 90 });
+  assert.equal(up.ovrDelta, 2, "big overperformance is capped at +2");
+  assert.equal(up.ovr, 82);
+  assert.equal(up.stats.aim, 82, "headline stat tracks the change");
+
+  const down = developPlayer({ player: p, rating: 0.7, placement: "top8", potential: 90 });
+  assert.equal(down.ovrDelta, -2, "big underperformance is capped at -2");
+
+  const capped = developPlayer({ player: mk("star", "Rifler", 90), rating: 1.5, placement: "champion", potential: 90 });
+  assert.equal(capped.ovrDelta, 0, "cannot develop past potential");
+});
+
+test("developPlayer: IGLs are placement-driven and don't drop OVR on a non-flop", () => {
+  const igl = mk("igl", "IGL", 78);
+  const champ = developPlayer({ player: igl, rating: 0.95, placement: "champion", potential: 90 });
+  assert.equal(champ.iglDelta, 2, "a title bumps the IGL stat");
+  assert.equal(champ.ovr, 80);
+  assert.equal(champ.stats.igl, 62, "IGL stat rose");
+
+  const quiet = developPlayer({ player: igl, rating: 0.95, placement: "swiss", potential: 90 });
+  assert.equal(quiet.ovrDelta, 0, "a modest IGL showing at a bad event does NOT drop OVR");
+
+  const flop = developPlayer({ player: igl, rating: 0.6, placement: "swiss", potential: 90 });
+  assert.equal(flop.ovrDelta, -1, "a genuine flop dents the IGL");
 });
 
 test("pickTransferCandidates: distinct pros of roles you field, none already yours", () => {

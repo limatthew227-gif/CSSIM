@@ -50,6 +50,10 @@ export interface Player {
   hltvMaps?: number;
   source: SourceTeam;
   maps: Record<MapId, number>;
+  // Career mode only: synthesised when this player joins your roster. age drives `potential` (the OVR
+  // ceiling they can develop toward). Absent outside a career.
+  age?: number;
+  potential?: number;
 }
 
 export interface Roster extends SourceTeam {

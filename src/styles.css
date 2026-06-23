@@ -9994,13 +9994,62 @@ input[type="range"] {
 
 .transfer-roster-row {
   display: grid;
-  grid-template-columns: auto 1fr auto 30px 74px;
+  grid-template-columns: auto 1fr auto auto auto 74px;
   align-items: center;
   gap: 9px;
   padding: 6px 8px;
   border-radius: 8px;
   background: #151a20;
   font-size: 13px;
+}
+
+.transfer-roster-row .tr-meta {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.transfer-roster-row .tr-ovr em {
+  color: var(--gold);
+  font-style: normal;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.development-card .dev-rows {
+  display: grid;
+  gap: 4px;
+}
+
+.dev-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  border-radius: 8px;
+  background: #151a20;
+  font-size: 13px;
+}
+
+.dev-row strong {
+  min-width: 96px;
+  color: #fff;
+}
+
+.dev-row span {
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+}
+
+.dev-row span.good {
+  color: var(--green);
+}
+
+.dev-row span.bad {
+  color: #ff8d8d;
+}
+
+.dev-row small {
+  color: var(--muted);
 }
 
 .transfer-roster-row .flat-flag {

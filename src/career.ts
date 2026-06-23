@@ -1,9 +1,13 @@
-import type { Player } from "./gameData";
+import type { Player, PlayerStats } from "./gameData";
 
 // Career-continuation + transfer-market math. Pure and deterministic-given-rng so it is unit-testable
 // and stays out of the seeded sim path. See the loop in App.tsx (continueCareer + the transfer window).
 
 export const STARTING_BANKROLL = 40000;
+
+export const OVR_CAP = 96; // nobody develops past this, whatever their potential
+export const MAX_OVR_GAIN = 2; // most OVR a player can add in one Major
+export const MAX_OVR_DROP = 2; // most OVR a player can shed in one Major
 
 export type PlacementTier = "champion" | "runner-up" | "top4" | "top8" | "swiss";
 
@@ -83,4 +87,65 @@ export function pickTransferCandidates(roster: Player[], pool: Player[], count =
     if (picks.length >= count) break;
   }
   return picks;
+}
+
+// ---- Player development (your team's versions only) -----------------------------------------------
+
+export interface CareerMeta {
+  age: number;
+  potential: number; // the OVR ceiling this player can develop toward
+}
+
+// Synthesised when a player joins your career (no real birthdates in the dataset). Younger players get
+// more headroom toward a higher ceiling; veterans are at or near their peak.
+export function rollCareerMeta(ovr: number, rng: () => number = Math.random): CareerMeta {
+  const age = 18 + Math.floor(rng() * 15); // 18..32
+  const headroom = age <= 20 ? 6 : age <= 23 ? 4 : age <= 26 ? 3 : age <= 29 ? 1 : 0;
+  return { age, potential: Math.min(OVR_CAP, ovr + headroom) };
+}
+
+// The HLTV-style rating a player of this OVR is "supposed" to put up. Beating it trends their OVR up,
+// falling short trends it down. Calibrated so ~+0.15 over expectation earns the full +2.
+export function expectedRating(ovr: number): number {
+  // Calibrated against the sim (scratch/rating-calibration.ts): in a roughly even fight a player rates
+  // close to this, so development is driven by genuinely beating/missing your level, not a constant bias.
+  return 1.06 + (ovr - 80) * 0.011; // OVR 80 -> 1.06, 90 -> 1.17, 70 -> 0.95
+}
+
+export interface Development {
+  ovr: number;
+  stats: PlayerStats;
+  ovrDelta: number;
+  iglDelta: number;
+}
+
+// How a player on YOUR roster develops after a Major, from this event's rating + your placement.
+// - IGLs frag less, so they're placement-driven: deep runs raise their IGL stat (and OVR); their OVR
+//   only drops if they genuinely flopped.
+// - Everyone else trends on rating-vs-expectation, capped at +/-2 and the potential ceiling.
+export function developPlayer(args: { player: Player; rating: number; placement: PlacementTier; potential: number }): Development {
+  const { player, rating, placement, potential } = args;
+  const goodRun = placement === "champion" || placement === "runner-up" || placement === "top4";
+  let ovrDelta = 0;
+  let iglDelta = 0;
+
+  if (player.role === "IGL") {
+    iglDelta = placement === "champion" ? 2 : goodRun ? 1 : 0;
+    const flopped = rating < expectedRating(player.ovr) - 0.15;
+    ovrDelta = iglDelta > 0 ? iglDelta : flopped ? -1 : 0;
+  } else {
+    ovrDelta = Math.round((rating - expectedRating(player.ovr)) * 13);
+  }
+
+  // Clamp to the per-Major bounds, the potential ceiling on the way up, and 50 on the way down.
+  ovrDelta = Math.max(-MAX_OVR_DROP, Math.min(MAX_OVR_GAIN, ovrDelta));
+  if (ovrDelta > 0) ovrDelta = Math.min(ovrDelta, Math.max(0, potential - player.ovr));
+  else ovrDelta = Math.max(ovrDelta, 50 - player.ovr);
+
+  const ovr = player.ovr + ovrDelta;
+  const stats = { ...player.stats };
+  if (player.role === "IGL" && iglDelta) stats.igl = Math.min(99, stats.igl + iglDelta);
+  else if (ovrDelta !== 0) stats.aim = Math.max(50, Math.min(99, stats.aim + ovrDelta)); // keep the card's bars roughly in step
+
+  return { ovr, stats, ovrDelta, iglDelta };
 }
