@@ -156,6 +156,25 @@ test("MatchDatabase: a log-store quota failure never aborts the box-score write"
   assert.equal(db.getEventLog("q1"), undefined, "the log was dropped silently");
 });
 
+test("MatchDatabase: a registry quota failure drops replay logs before shedding any match records", () => {
+  const base = memoryStorage();
+  const storage: StorageAdapter = {
+    getItem: (k) => base.getItem(k),
+    removeItem: (k) => base.removeItem(k),
+    setItem: (k, v) => {
+      // Simulate "no room for the registry while the heavy log store exists"; room appears once it's gone.
+      if (k === "cssim-match-db-v1" && base.getItem("cssim-match-logs-v1")) throw new Error("QuotaExceededError");
+      base.setItem(k, v);
+    },
+  };
+  const db = new MatchDatabase(storage);
+  db.recordMatch(matchInput("a", "2026-06-01T00:00:00Z", makeTeam("you", 84), makeTeam("opp", 84), 1, { keepLog: true }));
+  db.recordMatch(matchInput("b", "2026-06-02T00:00:00Z", makeTeam("you", 84), makeTeam("opp", 84), 2, { keepLog: true }));
+  // Both survive: the Vault drops logs to fit the FULL registry rather than shedding the oldest match.
+  assert.ok(db.getMatch("a"), "older record survives external quota pressure (not shed)");
+  assert.ok(db.getMatch("b"), "new record persisted");
+});
+
 test("MatchDatabase: teamProfile aggregates record, roster, head-to-head, per-map and history", () => {
   const db = new MatchDatabase(memoryStorage());
   const you = makeTeam("you", 88);
