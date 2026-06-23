@@ -2748,6 +2748,18 @@ function App() {
             </div>
             <TeamPlate team={opponent} align="right" />
           </section>
+          {/* Primary action up top so it stays reachable now that the full box score leads the page. */}
+          <div className="result-action-bar">
+            <button className="primary" onClick={continueSeries}>
+              <Play size={17} />
+              {series && !seriesIsDone({ ...series, mapResults: [...series.mapResults, mapResultFromState(match.map, match, yourTeam, opponent)] }) ? "Next map" : "Continue"}
+            </button>
+          </div>
+          <MatchStatsPanel
+            maps={resultMaps}
+            mapResults={resultMapResults}
+            teams={resultStatsTeams}
+          />
           <MatchSpotlightPanel label="Series leaders" teams={resultStatsTeams} />
           <section className="analysis-panel full series-analysis">
             <div className="series-analysis-head">
@@ -2765,19 +2777,8 @@ function App() {
                 </p>
               ))}
             </div>
-            <div className="series-analysis-actions">
-              <button className="primary" onClick={continueSeries}>
-                <Play size={17} />
-                {series && !seriesIsDone({ ...series, mapResults: [...series.mapResults, mapResultFromState(match.map, match, yourTeam, opponent)] }) ? "Next map" : "Continue"}
-              </button>
-            </div>
             <AchievementStrip achievements={achievements} />
           </section>
-          <MatchStatsPanel
-            maps={resultMaps}
-            mapResults={resultMapResults}
-            teams={resultStatsTeams}
-          />
           <MatchLineups teams={resultStatsTeams} />
           <RoundTimelinePanel
             title="Round timeline"
@@ -6643,14 +6644,6 @@ function SeriesDetailPage({
         ))}
       </section>
 
-      <MatchSpotlightPanel
-        label="Series leaders"
-        teams={[
-          { team: result.left, players: result.left.players, stats: result.leftStats },
-          { team: result.right, players: result.right.players, stats: result.rightStats },
-        ]}
-      />
-
       <MatchStatsPanel
         maps={result.maps.map((map) => map.map)}
         mapResults={result.maps}
@@ -6660,6 +6653,14 @@ function SeriesDetailPage({
         ]}
         onOpenPlayer={onOpenPlayer}
         onOpenTeam={onOpenTeam}
+      />
+
+      <MatchSpotlightPanel
+        label="Series leaders"
+        teams={[
+          { team: result.left, players: result.left.players, stats: result.leftStats },
+          { team: result.right, players: result.right.players, stats: result.rightStats },
+        ]}
       />
 
       <MatchInsightsPanel left={result.left} right={result.right} mapResults={result.maps} />

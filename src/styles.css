@@ -8227,3 +8227,15 @@ input[type="range"] {
   font-weight: 950;
   text-transform: uppercase;
 }
+
+/* Post-match: primary action bar above the leading box score ---------------- */
+.result-action-bar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 8px;
+}
+
+.result-action-bar .primary {
+  min-width: 180px;
+  justify-content: center;
+}
