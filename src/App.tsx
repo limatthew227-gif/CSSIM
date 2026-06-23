@@ -94,7 +94,7 @@ import {
   type RunSummary,
   type SavedRunSlot,
 } from "./runDatabase";
-import { eventLogFromMatchState, type MatchEventLog, type MatchEventTeam } from "./matchEvents";
+import { eventLogFromMatchState, type MatchEvent, type MatchEventLog, type MatchEventTeam } from "./matchEvents";
 import {
   analyzeEventLogs,
   matchInsightLeaders,
@@ -2801,6 +2801,7 @@ function App() {
             right={opponent}
             maps={resultMapResults.map((map, index) => roundTimelineMapFromResult(map, index))}
           />
+          <RoundReplayPanel left={yourTeam} right={opponent} maps={resultMapResults} />
         </main>
       )}
 
@@ -5807,6 +5808,139 @@ function VaultPage({ onBack }: { onBack: () => void }) {
   );
 }
 
+// ---- Round mini-replay: step through a map's rounds from the stored event log -------------------
+
+interface ReplayRound {
+  round: number;
+  events: MatchEvent[];
+}
+
+function groupEventsByRound(events: MatchEvent[]): ReplayRound[] {
+  const rounds = new Map<number, MatchEvent[]>();
+  for (const event of events) {
+    const bucket = rounds.get(event.round);
+    if (bucket) bucket.push(event);
+    else rounds.set(event.round, [event]);
+  }
+  return [...rounds.entries()].sort((a, b) => a[0] - b[0]).map(([round, list]) => ({ round, events: list }));
+}
+
+function RoundReplayPanel({ left, right, maps }: { left: FieldTeam; right: FieldTeam; maps: SeriesMapResult[] }) {
+  const playable = maps.filter((map) => map.eventLog && map.eventLog.events.length > 0);
+  const [mapIndex, setMapIndex] = useState(0);
+  const [round, setRound] = useState(1);
+
+  const activeMap = playable[Math.min(mapIndex, Math.max(0, playable.length - 1))];
+  const rounds = useMemo(() => (activeMap?.eventLog ? groupEventsByRound(activeMap.eventLog.events) : []), [activeMap]);
+  if (!playable.length || !rounds.length) return null;
+
+  const total = rounds.length;
+  const clamped = Math.min(Math.max(round, 1), total);
+  const current = rounds.find((entry) => entry.round === clamped) ?? rounds[clamped - 1] ?? rounds[0];
+  const kills = current.events.filter((event) => event.type === "kill" && event.actorId && event.targetId);
+  const over = current.events.find((event) => event.type === "round_over");
+  const winnerTeam = over && over.team !== "neutral" ? (over.team === "left" ? left : right) : undefined;
+
+  // alive reconstruction for the running count shown beside each kill
+  const alive: Record<MatchEventTeam, number> = { left: 5, right: 5, neutral: 0 };
+  const teamName = (team: MatchEventTeam) => (team === "left" ? left : right);
+  const step = (delta: number) => setRound((value) => Math.min(Math.max(Math.min(Math.max(value, 1), total) + delta, 1), total));
+
+  return (
+    <section className="replay-panel">
+      <div className="replay-head">
+        <div className="section-title">
+          <Play size={18} />
+          <span>Round replay</span>
+        </div>
+        {playable.length > 1 && (
+          <div className="replay-map-tabs">
+            {playable.map((map, index) => (
+              <button
+                key={`${map.map}-${index}`}
+                className={index === mapIndex ? "active" : ""}
+                onClick={() => {
+                  setMapIndex(index);
+                  setRound(1);
+                }}
+              >
+                {mapName(map.map)}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="replay-round-bar">
+        <button className="secondary" onClick={() => step(-1)} disabled={clamped <= 1}>
+          <ArrowLeft size={15} />
+        </button>
+        <div className="replay-round-label">
+          <strong>Round {clamped}</strong>
+          <span>
+            of {total}
+            {winnerTeam ? ` · ${winnerTeam.tag} won` : ""}
+            {over?.reason ? ` (${over.reason})` : ""}
+          </span>
+        </div>
+        <button className="secondary" onClick={() => step(1)} disabled={clamped >= total}>
+          <ArrowLeft size={15} style={{ transform: "rotate(180deg)" }} />
+        </button>
+      </div>
+
+      <div className={`replay-body${activeMap.map === "mirage" ? " has-radar" : ""}`}>
+        <ol className="replay-feed">
+          {kills.length === 0 && <li className="replay-empty">No kills recorded this round.</li>}
+          {kills.map((event, index) => {
+            const killerTeam = event.team;
+            const victimTeam = killerTeam === "left" ? "right" : killerTeam === "right" ? "left" : "neutral";
+            if (victimTeam !== "neutral") alive[victimTeam] = Math.max(0, alive[victimTeam] - 1);
+            return (
+              <li key={`${event.id}-${index}`} className="replay-kill">
+                <span className="replay-killer" style={{ color: teamName(killerTeam)?.accent }}>
+                  {event.actor}
+                </span>
+                <span className="replay-weapon">
+                  {event.firstKill && <em className="replay-badge entry">FK</em>}
+                  {event.weapon}
+                  {event.headshot && <em className="replay-badge hs">HS</em>}
+                </span>
+                <span className="replay-victim">{event.target}</span>
+                <span className="replay-alive">
+                  {alive.left}v{alive.right}
+                </span>
+              </li>
+            );
+          })}
+        </ol>
+
+        {activeMap.map === "mirage" && (
+          <div className="replay-radar">
+            <img src={mirageRadar} alt="mirage radar" />
+            <svg viewBox="0 0 100 100" preserveAspectRatio="none">
+              {kills.map((event, index) =>
+                event.actorPos && event.targetPos ? (
+                  <g key={`${event.id}-pos-${index}`}>
+                    <line
+                      x1={event.actorPos.x}
+                      y1={event.actorPos.y}
+                      x2={event.targetPos.x}
+                      y2={event.targetPos.y}
+                      className={`replay-line ${event.team}`}
+                    />
+                    <circle cx={event.actorPos.x} cy={event.actorPos.y} r={1.5} className={`replay-dot killer ${event.team}`} />
+                    <circle cx={event.targetPos.x} cy={event.targetPos.y} r={1.3} className="replay-dot victim" />
+                  </g>
+                ) : null,
+              )}
+            </svg>
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
 // ---- Player of the Major: end-of-run awards -----------------------------------------------------
 
 interface MajorAward {
@@ -6879,6 +7013,8 @@ function SeriesDetailPage({
         right={result.right}
         maps={result.maps.map((map, index) => roundTimelineMapFromResult(map, index))}
       />
+
+      <RoundReplayPanel left={result.left} right={result.right} maps={result.maps} />
     </main>
   );
 }
