@@ -2575,7 +2575,7 @@ meter::-webkit-meter-optimum-value {
 }
 
 .result-layout {
-  width: min(1760px, calc(100vw - 28px));
+  width: min(1360px, calc(100vw - 28px));
   margin-top: 8px;
   margin-bottom: 16px;
 }
@@ -2627,7 +2627,8 @@ meter::-webkit-meter-optimum-value {
 }
 
 .result-layout .series-analysis {
-  width: min(1160px, 100%);
+  width: min(1040px, 100%);
+  margin-inline: auto;
   margin-bottom: 10px;
 }
 
@@ -2665,8 +2666,9 @@ meter::-webkit-meter-optimum-value {
 }
 
 .match-stats-page {
-  width: 100%;
+  width: min(1040px, 100%);
   min-width: 0;
+  margin-inline: auto;
   margin-top: 24px;
   padding: 32px;
   border-radius: 16px;
@@ -2725,8 +2727,8 @@ meter::-webkit-meter-optimum-value {
 }
 
 .result-layout .team-stats-grid {
-  grid-template-columns: minmax(220px, 1fr) 64px 74px 58px 64px 64px 58px 52px 70px;
-  min-width: 860px;
+  grid-template-columns: minmax(300px, 1fr) 68px 76px 62px 70px 76px;
+  min-width: 760px;
 }
 
 .result-layout .team-stats-head {
@@ -2790,6 +2792,7 @@ meter::-webkit-meter-optimum-value {
 
 .fullscreen-page {
   display: grid;
+  width: min(1360px, calc(100vw - 28px));
   gap: 20px;
   align-content: start;
 }
@@ -3641,8 +3644,8 @@ button.full-table-row {
 }
 
 .series-detail-page .team-stats-grid {
-  grid-template-columns: minmax(210px, 1fr) 60px 72px 56px 64px 64px 56px 48px 68px;
-  min-width: 760px;
+  grid-template-columns: minmax(290px, 1fr) 66px 74px 60px 68px 74px;
+  min-width: 740px;
 }
 
 .series-detail-page .team-stats-head {
@@ -4012,9 +4015,9 @@ button.full-table-row {
 
 .team-stats-grid {
   display: grid;
-  grid-template-columns: minmax(290px, 1fr) 90px 96px 82px 88px 82px 82px 70px 92px;
+  grid-template-columns: minmax(360px, 1fr) 82px 88px 76px 82px 88px;
   align-items: center;
-  min-width: 1180px;
+  min-width: 860px;
 }
 
 .team-stats-head {
@@ -7209,7 +7212,7 @@ input[type="range"] {
   }
 
   .team-stats-row {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(5, minmax(0, 1fr));
     gap: 0;
     min-height: 0;
     padding: 8px;
@@ -7288,6 +7291,13 @@ input[type="range"] {
     padding: 12px;
     min-height: 0;
   }
+}
+
+/* Keep post-match analysis in one compact reading column while the score hero stays full width. */
+.result-layout > :is(.match-lineups, .round-timeline-panel, .winprob-panel, .replay-panel),
+.series-detail-page > :is(.match-insights-panel, .match-lineups, .round-timeline-panel, .winprob-panel, .replay-panel) {
+  width: min(1040px, 100%);
+  margin-inline: auto;
 }
 
 /* Advanced insights (event-log analytics) ---------------------------------- */

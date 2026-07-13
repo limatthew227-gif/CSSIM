@@ -8829,9 +8829,6 @@ function TeamStatsBlock({
         <b>Swing</b>
         <b>ADR</b>
         <b>KAST</b>
-        <b>Impact</b>
-        <b>FK-FD</b>
-        <b>2K+</b>
         <b>
           Rating
           <span>3.0</span>
@@ -8856,9 +8853,6 @@ function TeamStatsBlock({
           <span data-label="Swing" className={`swing-cell ${swingTone(swing)}`}>{formatSignedPercent(swing)}</span>
           <span data-label="ADR">{line.adr.toFixed(1)}</span>
           <span data-label="KAST">{kast.toFixed(1)}%</span>
-          <span data-label="Impact">{line.impact.toFixed(2)}</span>
-          <span data-label="FK-FD">{line.firstKills}-{line.firstDeaths}</span>
-          <span data-label="2K+">{line.multiKills}</span>
           <span data-label="Rating" className={`rating-number ${ratingTone(line.rating)}`}>{line.rating.toFixed(2)}</span>
         </RowTag>
         );
