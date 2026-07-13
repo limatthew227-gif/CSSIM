@@ -5303,8 +5303,20 @@ function SwissBoard({
         ))}
       </div>
       <div className="swiss-outcome-zone">
-        <SwissOutcome title="Qualified" tone="qualified" teams={lanes.qualified ?? []} labels={["3:0", "3:1", "3:2"]} />
-        <SwissOutcome title="Eliminated" tone="eliminated" teams={lanes.eliminated ?? []} labels={["0:3", "1:3", "2:3"]} />
+        <SwissOutcome
+          title="Qualified"
+          tone="qualified"
+          teams={lanes.qualified ?? []}
+          labels={["3:0", "3:1", "3:2"]}
+          records={{ ...records, user: record }}
+        />
+        <SwissOutcome
+          title="Eliminated"
+          tone="eliminated"
+          teams={lanes.eliminated ?? []}
+          labels={["0:3", "1:3", "2:3"]}
+          records={{ ...records, user: record }}
+        />
       </div>
     </div>
   );
@@ -5371,8 +5383,20 @@ function SpectatorSwissBoard({
         ))}
       </div>
       <div className="swiss-outcome-zone">
-        <SwissOutcome title="Qualified" tone="qualified" teams={lanes.qualified ?? []} labels={["3:0", "3:1", "3:2"]} />
-        <SwissOutcome title="Eliminated" tone="eliminated" teams={lanes.eliminated ?? []} labels={["0:3", "1:3", "2:3"]} />
+        <SwissOutcome
+          title="Qualified"
+          tone="qualified"
+          teams={lanes.qualified ?? []}
+          labels={["3:0", "3:1", "3:2"]}
+          records={records}
+        />
+        <SwissOutcome
+          title="Eliminated"
+          tone="eliminated"
+          teams={lanes.eliminated ?? []}
+          labels={["0:3", "1:3", "2:3"]}
+          records={records}
+        />
       </div>
     </div>
   );
@@ -5466,26 +5490,46 @@ function SwissOutcome({
   tone,
   teams,
   labels,
+  records,
 }: {
   title: string;
   tone: "qualified" | "eliminated";
   teams: FieldTeam[];
   labels: string[];
+  records: Record<string, SwissRecord>;
 }) {
   return (
     <div className={`swiss-outcome ${tone}`}>
       <strong>{title}</strong>
-      <div className="outcome-labels">
-        {labels.map((label) => (
-          <span key={label}>{label}</span>
-        ))}
-      </div>
-      <div className="outcome-teams">
-        {teams.length ? (
-          teams.map((team) => <SwissLaneTeam key={`${tone}-${team.id}`} team={team} />)
-        ) : (
-          <span className="empty-lane solo">?</span>
-        )}
+      <div className="outcome-records">
+        {labels.map((label) => {
+          const recordTeams = teams.filter((team) => {
+            const teamRecord = records[team.id];
+            return teamRecord && `${teamRecord.wins}:${teamRecord.losses}` === label;
+          });
+          return (
+            <div className="outcome-record-column" key={label}>
+              <span className="outcome-record-label">{label}</span>
+              <div className="outcome-record-teams">
+                {recordTeams.length ? (
+                  recordTeams.map((team) => (
+                    <span
+                      className={`outcome-team${team.id === "user" ? " user" : ""}`}
+                      key={`${tone}-${label}-${team.id}`}
+                      title={`${team.name} (${label})${team.id === "user" ? " - your team" : ""}`}
+                    >
+                      <TeamLogo team={team} small />
+                      <b>{team.tag}</b>
+                      {team.id === "user" && <small>You</small>}
+                    </span>
+                  ))
+                ) : (
+                  <span className="outcome-record-empty">-</span>
+                )}
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );

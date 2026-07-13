@@ -2404,18 +2404,87 @@ meter::-webkit-meter-optimum-value {
   color: #ff8f8f;
 }
 
-.outcome-labels {
+.outcome-records {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  color: var(--muted);
-  font-weight: 900;
-  font-size: 12px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: start;
+  gap: 6px;
 }
 
-.outcome-teams {
-  display: flex;
-  flex-direction: column;
+.outcome-record-column {
+  display: grid;
+  align-content: start;
   gap: 6px;
+  min-width: 0;
+}
+
+.outcome-record-label {
+  padding-bottom: 4px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 950;
+  text-align: center;
+}
+
+.outcome-record-teams {
+  display: grid;
+  gap: 6px;
+}
+
+.outcome-team {
+  position: relative;
+  display: grid;
+  grid-template-columns: 21px minmax(0, 1fr);
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  min-height: 31px;
+  padding: 4px 5px;
+  border: 1px solid rgba(255, 255, 255, 0.045);
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.outcome-team.user {
+  border-color: color-mix(in srgb, var(--gold), transparent 25%);
+  background: color-mix(in srgb, var(--gold), transparent 89%);
+}
+
+.outcome-team .team-logo.small {
+  width: 21px;
+  height: 21px;
+  font-size: 7px;
+}
+
+.outcome-team b {
+  overflow: hidden;
+  color: #f2f4f7;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.outcome-team small {
+  position: absolute;
+  top: -5px;
+  right: 3px;
+  padding: 0 3px;
+  background: #343932;
+  color: var(--gold);
+  font-size: 6px;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.outcome-record-empty {
+  display: grid;
+  min-height: 31px;
+  place-items: center;
+  border: 1px dashed rgba(255, 255, 255, 0.08);
+  border-radius: 4px;
+  color: #68717e;
+  font-weight: 900;
 }
 
 .swiss-roster-bar {
