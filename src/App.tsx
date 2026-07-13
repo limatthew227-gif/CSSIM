@@ -108,6 +108,7 @@ import {
   circuitPrize,
   circuitQualificationLabel,
   circuitWorldRank,
+  composeCircuitField,
   firstCircuitEventId,
   nextCircuitEvent,
   normalizeCircuitEventId,
@@ -344,6 +345,12 @@ interface CareerHistoryEntry {
   qualified?: boolean;
 }
 
+interface CircuitOffseasonTarget {
+  eventId: CircuitEventId;
+  season: number;
+  points: number;
+}
+
 interface ActiveSeries {
   id: string;
   pairId: string;
@@ -436,6 +443,9 @@ interface RunSnapshot {
   circuitEventId?: CircuitEventId;
   circuitSeason?: number;
   circuitPoints?: number;
+  circuitMajorResults?: SwissResult[];
+  circuitObserver?: boolean;
+  circuitOffseasonTarget?: CircuitOffseasonTarget | null;
   transferCandidates?: Array<{ player: Player; team: Roster }>;
   transferTrade?: { incoming: Player; outgoing: Player; delta: number } | null;
   progressionSummary?: Array<{ handle: string; before: number; after: number; iglDelta: number }>;
@@ -783,6 +793,9 @@ function App() {
   const [circuitEventId, setCircuitEventId] = useState<CircuitEventId>(firstCircuitEventId);
   const [circuitSeason, setCircuitSeason] = useState(1);
   const [circuitPoints, setCircuitPoints] = useState(0);
+  const [circuitMajorResults, setCircuitMajorResults] = useState<SwissResult[]>([]);
+  const [circuitObserver, setCircuitObserver] = useState(false);
+  const [circuitOffseasonTarget, setCircuitOffseasonTarget] = useState<CircuitOffseasonTarget | null>(null);
   const [transferCandidates, setTransferCandidates] = useState<Array<{ player: Player; team: Roster }>>([]);
   const [transferTrade, setTransferTrade] = useState<{ incoming: Player; outgoing: Player; delta: number } | null>(null); // one trade per window
   const [progressionSummary, setProgressionSummary] = useState<Array<{ handle: string; before: number; after: number; iglDelta: number }>>([]);
@@ -836,13 +849,14 @@ function App() {
   const circuitStageOnly = mode === "circuit" && !circuitEvent.hasPlayoffs;
   const circuitStageCleared = circuitStageOnly && record.wins >= 3 && swissStageResolved;
   const circuitNextEvent = nextCircuitEvent(circuitEvent);
-  const spectatorSwissResolved = runKind === "spectator" && phase === "swiss" && isNeutralSwissStageResolved(swissField, swissRecords);
+  const neutralSwissRun = runKind === "spectator" || circuitObserver;
+  const spectatorSwissResolved = neutralSwissRun && phase === "swiss" && isNeutralSwissStageResolved(swissField, swissRecords);
   const spectatorSwissPairs = useMemo(
     () =>
-      runKind === "spectator" && phase === "swiss" && !spectatorSwissResolved
+      neutralSwissRun && phase === "swiss" && !spectatorSwissResolved
         ? buildRemainingSwissPairs(swissField, swissRecords, spectatorSwissRound, swissHistory)
         : [],
-    [phase, runKind, spectatorSwissResolved, spectatorSwissRound, swissField, swissRecords, swissHistory],
+    [neutralSwissRun, phase, spectatorSwissResolved, spectatorSwissRound, swissField, swissRecords, swissHistory],
   );
   const swissDisplayPairs = useMemo(
     () => (swissUserFinished ? buildRemainingSwissPairs(swissField, swissRecords, record.wins + record.losses + 1, swissHistory) : swissPairs),
@@ -912,7 +926,7 @@ function App() {
     playoffPairs.length > 0 &&
     tournamentOutcome !== "champion" &&
     tournamentOutcome !== "complete" &&
-    (runKind === "spectator" || tournamentOutcome === "eliminated");
+    (runKind === "spectator" || circuitObserver || tournamentOutcome === "eliminated");
   const currentBestOf = phase === "playoffs" ? playoffBestOf(playoffRound) : swissBestOf(record);
   const currentSeriesLabel = phase === "playoffs" ? `${tournamentName} / ${playoffRoundLabel(playoffRound)}` : `${tournamentName} / Swiss round ${record.wins + record.losses + 1}`;
   const strengthBreakdown = teamStrengthBreakdown(yourTeam, settings);
@@ -1025,7 +1039,7 @@ function App() {
     if (transient.includes(screen)) return;
     writeAutosave(buildRunSnapshot(), buildRunSummary());
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [screen, phase, record, matchResults, careerMoney, careerEvent, selected, tournamentOutcome, circuitEventId, circuitSeason, circuitPoints]);
+  }, [screen, phase, record, matchResults, careerMoney, careerEvent, selected, tournamentOutcome, circuitEventId, circuitSeason, circuitPoints, circuitMajorResults, circuitObserver, circuitOffseasonTarget]);
 
   useEffect(() => {
     if (screen !== "veto" || !veto.pendingOpponent) return;
@@ -1152,6 +1166,9 @@ function App() {
     setCircuitEventId(firstCircuitEventId);
     setCircuitSeason(1);
     setCircuitPoints(0);
+    setCircuitMajorResults([]);
+    setCircuitObserver(false);
+    setCircuitOffseasonTarget(null);
     setTransferCandidates([]);
     setTransferTrade(null);
     setProgressionSummary([]);
@@ -1258,6 +1275,9 @@ function App() {
     setOpponent(rival);
     setPlayedOpponentIds([]);
     setMatchResults([]);
+    setCircuitMajorResults([]);
+    setCircuitObserver(false);
+    setCircuitOffseasonTarget(null);
     setSelectedResultId(undefined);
     setStatsScope("all");
     setSeries(undefined);
@@ -1512,16 +1532,21 @@ function App() {
   }
 
   function simSpectatorSwissPhase() {
-    if (runKind !== "spectator" || phase !== "swiss") return;
+    if (!neutralSwissRun || phase !== "swiss") return;
     setViewedSwissRound(null); // snap back to the live round when simming
     if (isNeutralSwissStageResolved(swissField, swissRecords)) {
-      enterNeutralPlayoffs(swissRecords, "running");
+      if (circuitObserver && !circuitEvent.hasPlayoffs) {
+        advanceObservedCircuitStage();
+      } else {
+        enterNeutralPlayoffs(swissRecords, circuitObserver ? "eliminated" : "running");
+      }
       return;
     }
 
     const pairs = buildRemainingSwissPairs(swissField, swissRecords, spectatorSwissRound, swissHistory);
     if (!pairs.length) {
-      enterNeutralPlayoffs(swissRecords, "running");
+      if (circuitObserver && !circuitEvent.hasPlayoffs) return;
+      enterNeutralPlayoffs(swissRecords, circuitObserver ? "eliminated" : "running");
       return;
     }
 
@@ -1534,7 +1559,8 @@ function App() {
     setSelectedResultId(roundResults[roundResults.length - 1]?.id);
 
     if (isNeutralSwissStageResolved(swissField, nextSwissRecords) || spectatorSwissRound >= 5) {
-      enterNeutralPlayoffs(nextSwissRecords, "running");
+      if (circuitObserver && !circuitEvent.hasPlayoffs) return;
+      enterNeutralPlayoffs(nextSwissRecords, circuitObserver ? "eliminated" : "running");
       return;
     }
 
@@ -1661,6 +1687,9 @@ function App() {
     setCircuitEventId(firstCircuitEventId);
     setCircuitSeason(1);
     setCircuitPoints(0);
+    setCircuitMajorResults([]);
+    setCircuitObserver(false);
+    setCircuitOffseasonTarget(null);
     setTransferCandidates([]);
     setTransferTrade(null);
     setProgressionSummary([]);
@@ -1668,19 +1697,12 @@ function App() {
   }
 
   // ---- Career continuation -------------------------------------------------------------------------
-  // Bank the event prize, apply development, then open the transfer window. The first call begins the career.
-  function enterTransferWindow() {
-    // playerFinish is captured when you actually resolve; fall back to deriving it only if it's missing.
-    const circuitStageTier: PlacementTier | undefined =
-      mode === "circuit" && !circuitEvent.hasPlayoffs && record.wins >= 3 ? "top8" : undefined;
-    const tier =
-      playerFinish ??
-      circuitStageTier ??
-      placementTier({ champion: tournamentOutcome === "champion", reachedPlayoffs: phase === "playoffs", playoffRound });
-    const isCircuit = mode === "circuit";
+  // Circuit stages settle independently, but player development and roster moves are an offseason-only
+  // operation after the entire Major has finished.
+  function recordCircuitStage(tier: PlacementTier) {
     const completedEvent = circuitEventById(circuitEventId);
-    const progress = isCircuit ? advanceCircuit(circuitEventId, tier, circuitSeason, circuitPoints) : undefined;
-    const prize = isCircuit ? circuitPrize(completedEvent, tier) : prizeForPlacement(tier);
+    const progress = advanceCircuit(circuitEventId, tier, circuitSeason, circuitPoints);
+    const prize = circuitPrize(completedEvent, tier);
     setCareerMoney((money) => (careerActive ? money : STARTING_BANKROLL) + prize);
     setCareerActive(true);
     setCareerHistory((history) => [
@@ -1690,33 +1712,31 @@ function App() {
         tier,
         prize,
         record: { ...record },
-        eventId: isCircuit ? completedEvent.id : undefined,
-        eventName: isCircuit ? completedEvent.name : "Major",
-        season: isCircuit ? circuitSeason : undefined,
-        points: progress?.pointsEarned,
-        qualified: progress?.qualified,
+        eventId: completedEvent.id,
+        eventName: completedEvent.name,
+        season: circuitSeason,
+        points: progress.pointsEarned,
+        qualified: progress.qualified,
       },
     ]);
-    if (progress) {
-      setCircuitEventId(progress.nextEventId);
-      setCircuitSeason(progress.season);
-      setCircuitPoints(progress.points);
-    }
+    setCircuitPoints(progress.points);
+    return progress;
+  }
 
-    // Develop your roster from this event's performances (your team's versions only).
-    const ratings = majorPlayerRatings(matchResults);
+  function openTransferForResults(tier: PlacementTier, results: SwissResult[], developmentCap?: number) {
+    const ratings = majorPlayerRatings(results);
     const summary: Array<{ handle: string; before: number; after: number; iglDelta: number }> = [];
     const developed = selected.map((player) => {
       const meta = player.potential != null && player.age != null ? { age: player.age, potential: player.potential } : rollCareerMeta(player.ovr, player.age);
-      const rating = ratings.get(player.id) ?? expectedRating(player.ovr); // no data -> treat as par (no change)
+      const rating = ratings.get(player.id) ?? expectedRating(player.ovr);
       const dev = developPlayer({
         player,
         rating,
         placement: tier,
         potential: meta.potential,
-        maxGain: isCircuit ? completedEvent.developmentCap : undefined,
-        maxDrop: isCircuit ? 1 : undefined,
-        maxIglGain: isCircuit ? completedEvent.developmentCap : undefined,
+        maxGain: developmentCap,
+        maxDrop: developmentCap == null ? undefined : 1,
+        maxIglGain: developmentCap,
       });
       summary.push({ handle: player.handle, before: player.ovr, after: dev.ovr, iglDelta: dev.iglDelta });
       return { ...player, ovr: dev.ovr, stats: dev.stats, age: meta.age, potential: meta.potential };
@@ -1728,6 +1748,160 @@ function App() {
     setTransferCandidates(picks.map((player) => ({ player, team: playerTeamMap.get(player.id) ?? currentRoster })));
     setTransferTrade(null);
     setScreen("transfer");
+  }
+
+  function startCircuitStage(event: CircuitEvent, field: FieldTeam[], observer: boolean) {
+    const nextSwissRecords = initialSwissRecords(field);
+    const rival = observer
+      ? field[0] ?? opponent
+      : selectOpponentForRecord({ wins: 0, losses: 0 }, field, nextSwissRecords, []);
+    setCircuitEventId(event.id);
+    setCircuitObserver(observer);
+    setRecord({ wins: 0, losses: 0 });
+    setPhase("swiss");
+    setPlayoffRound("quarterfinal");
+    setPlayoffPairs([]);
+    setTournamentOutcome(observer ? "eliminated" : "running");
+    setPlayerFinish(observer ? "swiss" : null);
+    setTournamentWinner(undefined);
+    setSwissField(field);
+    setSwissRecords(nextSwissRecords);
+    setSpectatorSwissRound(1);
+    setOpponent(rival);
+    setPlayedOpponentIds([]);
+    setMatchResults([]);
+    setSelectedResultId(undefined);
+    setPickems({});
+    setLastPickemDelta(0);
+    setViewedSwissRound(null);
+    setSeries(undefined);
+    setMatch(undefined);
+    setVeto(createVeto());
+    setScreen("swiss");
+  }
+
+  function advanceCircuitStage() {
+    if (!circuitStageCleared) return;
+    const progress = recordCircuitStage("top8");
+    const nextEvent = circuitEventById(progress.nextEventId);
+    const qualifiers = circuitStageQualifiers(swissField, swissRecords, yourTeam, record);
+    const nextField = buildNextCircuitField(rosterPool, nextEvent, qualifiers, [yourTeam, ...swissField], true);
+    setCircuitMajorResults((results) => [...results, ...matchResults]);
+    setCircuitSeason(progress.season);
+    setCircuitPoints(progress.points);
+    setCareerEvent((event) => event + 1);
+    startCircuitStage(nextEvent, nextField, false);
+  }
+
+  function circuitEliminationTarget(progress: ReturnType<typeof advanceCircuit>): CircuitOffseasonTarget {
+    if (circuitEvent.hasPlayoffs) {
+      return { eventId: progress.nextEventId, season: progress.season, points: progress.points };
+    }
+    return {
+      eventId: circuitEvent.id,
+      season: circuitSeason + 1,
+      points: Math.round(progress.points * 0.72),
+    };
+  }
+
+  function beginCircuitObservation() {
+    if (mode !== "circuit" || record.losses < 3 || !swissStageResolved) return;
+    const progress = recordCircuitStage("swiss");
+    const target = circuitEliminationTarget(progress);
+    setCircuitOffseasonTarget(target);
+    setCircuitObserver(true);
+
+    if (circuitEvent.hasPlayoffs) {
+      enterNeutralPlayoffs(swissRecords, "eliminated");
+      return;
+    }
+
+    const nextEvent = nextCircuitEvent(circuitEvent);
+    const qualifiers = circuitStageQualifiers(swissField, swissRecords);
+    const nextField = buildNextCircuitField(rosterPool, nextEvent, qualifiers, [yourTeam, ...swissField], false);
+    setCircuitMajorResults((results) => [...results, ...matchResults]);
+    startCircuitStage(nextEvent, nextField, true);
+  }
+
+  function advanceObservedCircuitStage() {
+    if (!circuitObserver || circuitEvent.hasPlayoffs || !spectatorSwissResolved) return;
+    const nextEvent = nextCircuitEvent(circuitEvent);
+    const qualifiers = circuitStageQualifiers(swissField, swissRecords);
+    const nextField = buildNextCircuitField(rosterPool, nextEvent, qualifiers, swissField, false);
+    setCircuitMajorResults((results) => [...results, ...matchResults]);
+    startCircuitStage(nextEvent, nextField, true);
+  }
+
+  function finishObservedCircuit() {
+    const target = circuitOffseasonTarget;
+    if (!target) return;
+    const allResults = [...circuitMajorResults, ...matchResults];
+    setCircuitEventId(target.eventId);
+    setCircuitSeason(target.season);
+    setCircuitPoints(target.points);
+    setCircuitObserver(false);
+    setCircuitOffseasonTarget(null);
+    setCircuitMajorResults([]);
+    openTransferForResults("swiss", allResults, 2);
+  }
+
+  function skipCircuitToNextSeason() {
+    if (mode !== "circuit" || record.losses < 3 || !swissStageResolved) return;
+    const progress = recordCircuitStage("swiss");
+    const target = circuitEliminationTarget(progress);
+    const simulated = simulateCircuitRemainder(
+      circuitEvent,
+      swissField,
+      swissRecords,
+      matchResults,
+      rosterPool,
+      settings,
+      difficulty,
+    );
+    setTournamentWinner(simulated.winner);
+    setCircuitEventId(target.eventId);
+    setCircuitSeason(target.season);
+    setCircuitPoints(target.points);
+    setCircuitObserver(false);
+    setCircuitOffseasonTarget(null);
+    setCircuitMajorResults([]);
+    openTransferForResults("swiss", [...circuitMajorResults, ...simulated.results], 2);
+  }
+
+  // Bank the completed Major, develop once from every stage played, then open the offseason.
+  function enterTransferWindow() {
+    const tier =
+      playerFinish ??
+      placementTier({ champion: tournamentOutcome === "champion", reachedPlayoffs: phase === "playoffs", playoffRound });
+    const isCircuit = mode === "circuit";
+    if (isCircuit && circuitObserver) {
+      finishObservedCircuit();
+      return;
+    }
+    if (isCircuit && !circuitEvent.hasPlayoffs) return;
+
+    const completedEvent = circuitEventById(circuitEventId);
+    const prize = isCircuit ? circuitPrize(completedEvent, tier) : prizeForPlacement(tier);
+    const progress = isCircuit ? recordCircuitStage(tier) : undefined;
+    if (!isCircuit) {
+      setCareerMoney((money) => (careerActive ? money : STARTING_BANKROLL) + prize);
+      setCareerActive(true);
+      setCareerHistory((history) => [
+        ...history,
+        { event: careerEvent, tier, prize, record: { ...record }, eventName: "Major" },
+      ]);
+    }
+    if (progress) {
+      setCircuitEventId(progress.nextEventId);
+      setCircuitSeason(progress.season);
+      setCircuitPoints(progress.points);
+    }
+
+    const allResults = isCircuit ? [...circuitMajorResults, ...matchResults] : matchResults;
+    setCircuitMajorResults([]);
+    setCircuitObserver(false);
+    setCircuitOffseasonTarget(null);
+    openTransferForResults(tier, allResults, isCircuit ? 2 : undefined);
   }
 
   // The role-swap: send `outgoing` (your same-role player) to their team, receive `incoming`. A positive
@@ -1771,6 +1945,9 @@ function App() {
     setOpponent(rival);
     setPlayedOpponentIds([]);
     setMatchResults([]);
+    setCircuitMajorResults([]);
+    setCircuitObserver(false);
+    setCircuitOffseasonTarget(null);
     setSelectedResultId(undefined);
     setStatsScope("all");
     setSeries(undefined);
@@ -1837,6 +2014,10 @@ function App() {
       ...result,
       maps: result.maps.map((mapResult) => ({ ...mapResult, eventLog: undefined })),
     }));
+    const slimCircuitResults = circuitMajorResults.map((result) => ({
+      ...result,
+      maps: result.maps.map((mapResult) => ({ ...mapResult, eventLog: undefined })),
+    }));
     const slimMatch = match ? { ...match, eventFeed: undefined, roundTimeline: undefined, feed: [], pendingEvents: undefined } : undefined;
     return {
       settings,
@@ -1886,6 +2067,9 @@ function App() {
       circuitEventId,
       circuitSeason,
       circuitPoints,
+      circuitMajorResults: slimCircuitResults,
+      circuitObserver,
+      circuitOffseasonTarget,
       transferCandidates,
       transferTrade,
       playerFinish,
@@ -1982,6 +2166,13 @@ function App() {
     setCircuitEventId(normalizeCircuitEventId(snapshot.circuitEventId));
     setCircuitSeason(snapshot.circuitSeason ?? 1);
     setCircuitPoints(snapshot.circuitPoints ?? 0);
+    setCircuitMajorResults(snapshot.circuitMajorResults ?? []);
+    setCircuitObserver(snapshot.circuitObserver ?? false);
+    setCircuitOffseasonTarget(
+      snapshot.circuitOffseasonTarget
+        ? { ...snapshot.circuitOffseasonTarget, eventId: normalizeCircuitEventId(snapshot.circuitOffseasonTarget.eventId) }
+        : null,
+    );
     setTransferCandidates(snapshot.transferCandidates ?? []);
     setTransferTrade(snapshot.transferTrade ?? null);
     setProgressionSummary(snapshot.progressionSummary ?? []);
@@ -2281,14 +2472,17 @@ function App() {
         </main>
       )}
 
-      {screen === "swiss" && runKind === "spectator" && (
+      {screen === "swiss" && neutralSwissRun && (
         <main className="layout swiss-stage">
+          {mode === "circuit" && circuitObserver && (
+            <CircuitProgressStrip event={circuitEvent} season={circuitSeason} points={circuitPoints} history={careerHistory} />
+          )}
           <section className="swiss-round-panel">
             <div className="swiss-round-header">
               <div className="section-title">
                 <Eye size={18} />
                 <span>
-                  Spectator mode - Swiss - {spectatorSwissResolved ? "Complete" : `Round ${spectatorSwissRound}`}
+                  {circuitObserver ? `${circuitEvent.name} - observer` : "Spectator mode"} - Swiss - {spectatorSwissResolved ? "Complete" : `Round ${spectatorSwissRound}`}
                 </span>
               </div>
               <div className="swiss-actions">
@@ -2302,7 +2496,11 @@ function App() {
                 </button>
                 <button className="primary" onClick={simSpectatorSwissPhase}>
                   <FastForward size={17} />
-                  {spectatorSwissResolved ? "Build playoffs" : "Sim games"}
+                  {spectatorSwissResolved
+                    ? circuitObserver && !circuitEvent.hasPlayoffs
+                      ? `Advance to ${circuitNextEvent.shortName}`
+                      : "Build playoffs"
+                    : "Sim games"}
                 </button>
                 <button className="secondary" onClick={restartRun}>
                   <RefreshCcw size={17} />
@@ -2314,7 +2512,9 @@ function App() {
               <strong>{spectatorSwissResolved ? "Swiss settled" : `Round ${spectatorSwissRound} ready`}</strong>
               <span>
                 {spectatorSwissResolved
-                  ? "The eight playoff teams are set. Build the bracket, then sim one playoff phase at a time."
+                  ? circuitObserver && !circuitEvent.hasPlayoffs
+                    ? `The exact eight survivors are locked into ${circuitNextEvent.shortName}.`
+                    : "The eight playoff teams are set. Build the bracket, then sim one playoff phase at a time."
                   : "Each click simulates only the visible Swiss round, saving results and player stats as it goes."}
               </span>
             </div>
@@ -2402,7 +2602,7 @@ function App() {
         </main>
       )}
 
-      {screen === "swiss" && runKind !== "spectator" && (
+      {screen === "swiss" && !neutralSwissRun && (
         <main className="layout swiss-stage">
           {mode === "circuit" && (
             <CircuitProgressStrip event={circuitEvent} season={circuitSeason} points={circuitPoints} history={careerHistory} />
@@ -2438,27 +2638,38 @@ function App() {
                     )}
                   </>
                 ) : circuitStageCleared ? (
-                  <button className="primary" onClick={enterTransferWindow}>
+                  <button className="primary" onClick={advanceCircuitStage}>
                     <ArrowRight size={17} />
                     Advance to {circuitNextEvent.shortName}
                   </button>
                 ) : runDone && record.losses >= 3 && isSwissStageResolved(swissField, swissRecords, record) ? (
-                  <>
-                    <button className="primary" onClick={enterTransferWindow}>
-                      <ArrowRight size={17} />
-                      {mode === "circuit" ? "Circuit HQ" : careerActive ? `Continue to Major ${careerEvent + 1}` : "Continue career"}
-                    </button>
-                    {!circuitStageOnly && (
+                  mode === "circuit" ? (
+                    <>
+                      <button className="primary" onClick={beginCircuitObservation}>
+                        <FastForward size={17} />
+                        Continue Major
+                      </button>
+                      <button className="secondary" onClick={skipCircuitToNextSeason}>
+                        <SkipForward size={17} />
+                        Sim to next season
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <button className="primary" onClick={enterTransferWindow}>
+                        <ArrowRight size={17} />
+                        {careerActive ? `Continue to Major ${careerEvent + 1}` : "Continue career"}
+                      </button>
                       <button className="secondary" onClick={() => enterNeutralPlayoffs(swissRecords, "eliminated")}>
                         <FastForward size={17} />
                         Continue bracket
                       </button>
-                    )}
-                    <button className="secondary" onClick={restartRun}>
-                      <RefreshCcw size={17} />
-                      Retry run
-                    </button>
-                  </>
+                      <button className="secondary" onClick={restartRun}>
+                        <RefreshCcw size={17} />
+                        Retry run
+                      </button>
+                    </>
+                  )
                 ) : runDone ? (
                   <>
                     <button className="primary" onClick={enterTransferWindow}>
@@ -2493,7 +2704,7 @@ function App() {
                     : swissCanSim
                       ? "Your run is over, but you can still sim the remaining Swiss matches or retry."
                       : circuitStageOnly
-                        ? `The run ended in ${circuitEvent.shortName}. Return to Circuit HQ to regroup.`
+                        ? `The run ended in ${circuitEvent.shortName}. Watch the qualified teams continue or sim straight to next season.`
                         : "The Swiss run ended before playoffs."}
                 </span>
               </div>
@@ -2663,14 +2874,14 @@ function App() {
                 )}
               </div>
             </div>
-            {(runKind === "spectator" || tournamentOutcome !== "running") && (
-              <div className={tournamentOutcome === "champion" || runKind === "spectator" ? "run-status qualified" : "run-status eliminated"}>
+            {(runKind === "spectator" || circuitObserver || tournamentOutcome !== "running") && (
+              <div className={tournamentOutcome === "champion" || runKind === "spectator" || circuitObserver ? "run-status qualified" : "run-status eliminated"}>
                 <strong>
                   {tournamentOutcome === "champion"
                     ? `${tournamentName} champions`
                     : tournamentOutcome === "complete"
                       ? "Tournament complete"
-                      : runKind === "spectator"
+                      : runKind === "spectator" || circuitObserver
                         ? "Spectator bracket"
                         : "Eliminated"}
                 </strong>
@@ -2679,7 +2890,7 @@ function App() {
                     ? "Your five lifted the trophy."
                     : tournamentOutcome === "complete"
                       ? `${tournamentWinner?.name ?? "The winner"} lifted the trophy.`
-                      : runKind === "spectator"
+                      : runKind === "spectator" || circuitObserver
                         ? "Sim one playoff phase at a time: quarterfinals, semifinals, then the BO5 final."
                         : "Your run is over, but you can keep simming the bracket to the end."}
                 </span>
@@ -2687,7 +2898,8 @@ function App() {
             )}
             {(tournamentOutcome === "champion" || tournamentOutcome === "complete") && (
               <MajorAwardsPanel
-                results={matchResults}
+                results={mode === "circuit" ? [...circuitMajorResults, ...matchResults] : matchResults}
+                championId={tournamentOutcome === "champion" ? "user" : tournamentWinner?.id}
                 championName={tournamentOutcome === "champion" ? yourTeam.name : tournamentWinner?.name}
                 onOpenPlayer={openPlayerDetail}
               />
@@ -2725,11 +2937,11 @@ function App() {
 
           <section className="swiss-roster-bar">
             <div className="record-pill">
-              <strong>{runKind === "spectator" ? playoffPairs.length : `${record.wins}-${record.losses}`}</strong>
-              <span>{runKind === "spectator" ? "series this phase" : "Swiss record"}</span>
+              <strong>{runKind === "spectator" || circuitObserver ? playoffPairs.length : `${record.wins}-${record.losses}`}</strong>
+              <span>{runKind === "spectator" || circuitObserver ? "series this phase" : "Swiss record"}</span>
             </div>
             <div className="compact-roster">
-              {runKind === "spectator"
+              {runKind === "spectator" || circuitObserver
                 ? playoffPairs.flatMap((pair) => [pair.left, pair.right]).map((team) => (
                     <span key={team.id}>
                       <b>{team.tag}</b>
@@ -7418,7 +7630,7 @@ interface MajorAward {
 
 // Curate the standout performers across an entire Major, from the aggregated box scores plus the
 // event-log analytics (aces / headshot rate). The MVP is the headline; the rest celebrate a niche.
-function buildMajorAwards(results: SwissResult[]): MajorAward[] {
+function buildMajorAwards(results: SwissResult[], championId?: string): MajorAward[] {
   const rows = buildPlayerDatabase(results).filter((row) => row.matches > 0);
   if (!rows.length) return [];
   const logs = results.flatMap((result) => result.maps.map((map) => map.eventLog).filter((log): log is MatchEventLog => Boolean(log)));
@@ -7436,7 +7648,16 @@ function buildMajorAwards(results: SwissResult[]): MajorAward[] {
       return !acc || value > acc.score ? { item, score: value } : acc;
     }, undefined)?.item;
 
-  const mvp = best(eligible.length ? eligible : rows, (row) => row.line.rating);
+  const championRows = championId ? rows.filter((row) => row.team.id === championId) : [];
+  const championEligible = championRows.filter((row) => row.matches >= minMaps);
+  const mvpPool = championId
+    ? championEligible.length
+      ? championEligible
+      : championRows
+    : eligible.length
+      ? eligible
+      : rows;
+  const mvp = best(mvpPool, (row) => row.line.rating);
   if (mvp) {
     awards.push({
       key: "mvp",
@@ -7508,14 +7729,16 @@ function buildMajorAwards(results: SwissResult[]): MajorAward[] {
 
 function MajorAwardsPanel({
   results,
+  championId,
   championName,
   onOpenPlayer,
 }: {
   results: SwissResult[];
+  championId?: string;
   championName?: string;
   onOpenPlayer: (player: Player, team: FieldTeam) => void;
 }) {
-  const awards = useMemo(() => buildMajorAwards(results), [results]);
+  const awards = useMemo(() => buildMajorAwards(results, championId), [results, championId]);
   if (!awards.length) return null;
 
   return (
@@ -9389,6 +9612,104 @@ function buildSwissField(rosterPool: Roster[]) {
 
 function buildCircuitField(rosterPool: Roster[], event: CircuitEvent) {
   return pickCircuitRosters(rosterPool, event, SWISS_OPPONENT_COUNT).map(toTournamentTeam);
+}
+
+function circuitStageQualifiers(
+  field: FieldTeam[],
+  records: Record<string, SwissRecord>,
+  user?: FieldTeam,
+  userRecord?: SwissRecord,
+) {
+  const qualified = field.filter((team) => (records[team.id]?.wins ?? 0) >= 3);
+  if (user && (userRecord?.wins ?? 0) >= 3) qualified.unshift(user);
+  return qualified.slice(0, SWISS_FIELD_SIZE / 2);
+}
+
+function buildNextCircuitField(
+  rosterPool: Roster[],
+  event: CircuitEvent,
+  qualifiers: FieldTeam[],
+  previousField: FieldTeam[],
+  userParticipating: boolean,
+) {
+  const targetSize = userParticipating ? SWISS_OPPONENT_COUNT : SWISS_FIELD_SIZE;
+  const carried = qualifiers.filter((team) => !userParticipating || team.id !== "user");
+  const excluded = new Set([...previousField.map((team) => team.id), ...carried.map((team) => team.id)]);
+  const inviteCount = Math.max(0, targetSize - carried.length);
+  const invites = pickCircuitRosters(rosterPool, event, inviteCount, Math.random, excluded).map(toTournamentTeam);
+  return composeCircuitField(carried, invites, targetSize);
+}
+
+function simulateNeutralSwissStage(
+  field: FieldTeam[],
+  settings: CustomSettings,
+  difficulty: Difficulty,
+) {
+  let records = initialSwissRecords(field);
+  const results: SwissResult[] = [];
+  for (let round = 1; round <= 5 && !isNeutralSwissStageResolved(field, records); round += 1) {
+    const history = buildSwissHistory(results);
+    const pairs = buildRemainingSwissPairs(field, records, round, history);
+    if (!pairs.length) break;
+    const roundResults = pairs.map((pair) => simulateSwissSeries(pair, round, settings, difficulty, records));
+    results.push(...roundResults);
+    records = applyResultsToSwissRecords(records, roundResults);
+  }
+  return { records, results };
+}
+
+function simulateNeutralPlayoffs(
+  field: FieldTeam[],
+  records: Record<string, SwissRecord>,
+  settings: CustomSettings,
+  difficulty: Difficulty,
+) {
+  let round: PlayoffRound = "quarterfinal";
+  let pairs = buildNeutralInitialPlayoffPairs(field, records, settings, difficulty);
+  const results: SwissResult[] = [];
+  let winner: FieldTeam | undefined;
+  while (pairs.length) {
+    const roundResults = pairs.map((pair) => simulatePlayoffSeries(pair, round, settings, difficulty));
+    results.push(...roundResults);
+    const winners = roundResults.map((result) => (result.winnerId === result.left.id ? result.left : result.right));
+    if (round === "final") {
+      winner = winners[0];
+      break;
+    }
+    round = round === "quarterfinal" ? "semifinal" : "final";
+    pairs = buildNeutralNextPlayoffPairs(round, winners);
+  }
+  return { results, winner };
+}
+
+function simulateCircuitRemainder(
+  startingEvent: CircuitEvent,
+  startingField: FieldTeam[],
+  startingRecords: Record<string, SwissRecord>,
+  startingResults: SwissResult[],
+  rosterPool: Roster[],
+  settings: CustomSettings,
+  difficulty: Difficulty,
+) {
+  let event = startingEvent;
+  let field = startingField;
+  let records = startingRecords;
+  const results = [...startingResults];
+
+  while (!event.hasPlayoffs) {
+    const qualifiers = circuitStageQualifiers(field, records);
+    const nextEvent = nextCircuitEvent(event);
+    const nextField = buildNextCircuitField(rosterPool, nextEvent, qualifiers, field, false);
+    const stage = simulateNeutralSwissStage(nextField, settings, difficulty);
+    event = nextEvent;
+    field = nextField;
+    records = stage.records;
+    results.push(...stage.results);
+  }
+
+  const playoffs = simulateNeutralPlayoffs(field, records, settings, difficulty);
+  results.push(...playoffs.results);
+  return { results, winner: playoffs.winner };
 }
 
 function buildSpectatorField(rosterPool: Roster[]) {

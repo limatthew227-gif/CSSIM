@@ -49,7 +49,7 @@ export const circuitEvents: CircuitEvent[] = [
     id: "mrq",
     name: "Major Regional Qualifier",
     shortName: "MRQ",
-    description: "Regional contenders play for the sixteen places in Stage 1.",
+    description: "Regional contenders play for eight places in Stage 1.",
     rankMin: 27,
     rankMax: 99,
     qualifiesAt: "top8",
@@ -62,7 +62,7 @@ export const circuitEvents: CircuitEvent[] = [
     id: "stage-1",
     name: "Major Stage 1",
     shortName: "Stage 1",
-    description: "Sixteen MRQ qualifiers enter; eight survive into Stage 2.",
+    description: "Eight MRQ survivors meet eight direct invites; eight survive into Stage 2.",
     rankMin: 17,
     rankMax: 50,
     qualifiesAt: "top8",
@@ -201,17 +201,29 @@ export function pickCircuitRosters(
   event: CircuitEvent,
   count: number,
   rng: () => number = Math.random,
+  excludedIds: Iterable<string> = [],
 ) {
-  const eligible = shuffled(rosters.filter((roster) => isCircuitEligible(roster, event)), rng);
+  const excluded = new Set(excludedIds);
+  const available = rosters.filter((roster) => !excluded.has(roster.id));
+  const eligible = shuffled(available.filter((roster) => isCircuitEligible(roster, event)), rng);
   if (eligible.length >= count) return eligible.slice(0, count);
 
   // The bundled database fills every intended rank band. This fallback protects smaller imported
   // databases by preferring teams nearest to the event's eligibility window.
   const selected = new Set(eligible.map((roster) => roster.id));
-  const fallback = shuffled(rosters.filter((roster) => !selected.has(roster.id)), rng).sort((a, b) => {
+  const fallback = shuffled(available.filter((roster) => !selected.has(roster.id)), rng).sort((a, b) => {
     return distanceFromBand(a.rank ?? 99, event) - distanceFromBand(b.rank ?? 99, event);
   });
   return [...eligible, ...fallback].slice(0, count);
+}
+
+export function composeCircuitField<T extends { id: string }>(qualifiers: T[], directInvites: T[], size: number) {
+  const seen = new Set<string>();
+  return [...qualifiers, ...directInvites].filter((team) => {
+    if (seen.has(team.id)) return false;
+    seen.add(team.id);
+    return true;
+  }).slice(0, size);
 }
 
 function shuffled<T>(items: T[], rng: () => number) {

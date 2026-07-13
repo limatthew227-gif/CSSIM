@@ -9,6 +9,7 @@ import {
   circuitPrize,
   circuitQualificationLabel,
   circuitWorldRank,
+  composeCircuitField,
   isCircuitEligible,
   normalizeCircuitEventId,
   pickCircuitRosters,
@@ -30,6 +31,26 @@ test("MRQ only selects rank 27+ and unranked teams when the pool can fill it", (
   assert.ok(field.every((team) => team.rank == null || team.rank >= 27));
   assert.equal(circuitFieldLabel(event), "HLTV #27+ and unranked");
   assert.equal(circuitQualificationLabel(event), "Top 8 to Stage 1");
+});
+
+test("direct invites never recycle teams eliminated in the preceding stage", () => {
+  const event = circuitEventById("stage-1");
+  const pool = Array.from({ length: 50 }, (_, index) => roster(`team-${index + 1}`, index + 1));
+  const priorField = new Set(["team-17", "team-18", "team-27", "team-28", "team-35"]);
+  const invites = pickCircuitRosters(pool, event, 8, () => 0.42, priorField);
+
+  assert.equal(invites.length, 8);
+  assert.ok(invites.every((team) => !priorField.has(team.id)));
+});
+
+test("the next stage preserves qualifiers before filling direct-invite slots", () => {
+  const qualifiers = Array.from({ length: 8 }, (_, index) => roster(`qualified-${index + 1}`, 40 + index));
+  const invites = Array.from({ length: 10 }, (_, index) => roster(`invite-${index + 1}`, index + 1));
+  const field = composeCircuitField(qualifiers, [qualifiers[0], ...invites], 16);
+
+  assert.deepEqual(field.slice(0, 8).map((team) => team.id), qualifiers.map((team) => team.id));
+  assert.equal(field.length, 16);
+  assert.equal(new Set(field.map((team) => team.id)).size, 16);
 });
 
 test("Circuit qualification advances on the required finish and repeats after an early exit", () => {
