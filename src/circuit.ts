@@ -1,7 +1,7 @@
 import type { PlacementTier } from "./career";
 import type { Roster } from "./gameData";
 
-export type CircuitEventId = "open-cup" | "challenger" | "regional" | "major-qualifier" | "major";
+export type CircuitEventId = "mrq" | "stage-1" | "stage-2" | "stage-3";
 
 export interface CircuitEvent {
   id: CircuitEventId;
@@ -10,7 +10,8 @@ export interface CircuitEvent {
   description: string;
   rankMin: number;
   rankMax: number;
-  qualifiesAt: PlacementTier | "season";
+  qualifiesAt: PlacementTier;
+  hasPlayoffs: boolean;
   developmentCap: 1 | 2;
   pointMultiplier: number;
   prizes: Record<PlacementTier, number>;
@@ -41,63 +42,57 @@ const basePoints: Record<PlacementTier, number> = {
   champion: 55,
 };
 
+// The Circuit mirrors Austin's route into the Major: a qualifying gateway followed by three
+// 16-team Swiss stages. Only Stage 3 produces the eight-team playoff bracket.
 export const circuitEvents: CircuitEvent[] = [
   {
-    id: "open-cup",
-    name: "Open Cup",
-    shortName: "Open",
-    description: "Lower-ranked and unranked teams fight for a Challenger invitation.",
-    rankMin: 6,
+    id: "mrq",
+    name: "Major Regional Qualifier",
+    shortName: "MRQ",
+    description: "Regional contenders play for the sixteen places in Stage 1.",
+    rankMin: 27,
     rankMax: 99,
     qualifiesAt: "top8",
+    hasPlayoffs: false,
     developmentCap: 1,
     pointMultiplier: 1,
-    prizes: { swiss: 8000, top8: 12000, top4: 18000, "runner-up": 25000, champion: 35000 },
+    prizes: { swiss: 6000, top8: 12000, top4: 12000, "runner-up": 12000, champion: 12000 },
   },
   {
-    id: "challenger",
-    name: "Challenger Series",
-    shortName: "Challenger",
-    description: "Established tier-two teams enter as the road begins to narrow.",
-    rankMin: 4,
-    rankMax: 30,
+    id: "stage-1",
+    name: "Major Stage 1",
+    shortName: "Stage 1",
+    description: "Sixteen MRQ qualifiers enter; eight survive into Stage 2.",
+    rankMin: 17,
+    rankMax: 50,
     qualifiesAt: "top8",
+    hasPlayoffs: false,
     developmentCap: 1,
-    pointMultiplier: 1.25,
-    prizes: { swiss: 10000, top8: 18000, top4: 30000, "runner-up": 45000, champion: 65000 },
+    pointMultiplier: 1.3,
+    prizes: { swiss: 9000, top8: 18000, top4: 18000, "runner-up": 18000, champion: 18000 },
   },
   {
-    id: "regional",
-    name: "Regional Finals",
-    shortName: "Regional",
-    description: "A top-four finish is required against teams closing in on the elite.",
-    rankMin: 2,
-    rankMax: 24,
-    qualifiesAt: "top4",
+    id: "stage-2",
+    name: "Major Stage 2",
+    shortName: "Stage 2",
+    description: "Eight Stage 1 survivors meet eight direct invites; eight advance.",
+    rankMin: 9,
+    rankMax: 34,
+    qualifiesAt: "top8",
+    hasPlayoffs: false,
     developmentCap: 2,
-    pointMultiplier: 1.55,
-    prizes: { swiss: 12000, top8: 25000, top4: 45000, "runner-up": 70000, champion: 100000 },
+    pointMultiplier: 1.7,
+    prizes: { swiss: 12000, top8: 28000, top4: 28000, "runner-up": 28000, champion: 28000 },
   },
   {
-    id: "major-qualifier",
-    name: "Major Qualifier",
-    shortName: "Qualifier",
-    description: "The strongest available field plays for eight Major places.",
+    id: "stage-3",
+    name: "Major Stage 3",
+    shortName: "Stage 3",
+    description: "The final Swiss field decides the eight teams in the Major playoffs.",
     rankMin: 1,
     rankMax: 20,
     qualifiesAt: "top8",
-    developmentCap: 2,
-    pointMultiplier: 1.9,
-    prizes: { swiss: 15000, top8: 30000, top4: 55000, "runner-up": 90000, champion: 140000 },
-  },
-  {
-    id: "major",
-    name: "The Major",
-    shortName: "Major",
-    description: "The full top-level field and the largest rewards of the season.",
-    rankMin: 1,
-    rankMax: 20,
-    qualifiesAt: "season",
+    hasPlayoffs: true,
     developmentCap: 2,
     pointMultiplier: 2.6,
     prizes: { swiss: 12000, top8: 40000, top4: 70000, "runner-up": 130000, champion: 250000 },
@@ -106,12 +101,33 @@ export const circuitEvents: CircuitEvent[] = [
 
 export const firstCircuitEventId: CircuitEventId = circuitEvents[0].id;
 
-export function circuitEventById(id: CircuitEventId) {
-  return circuitEvents.find((event) => event.id === id) ?? circuitEvents[0];
+const legacyEventIds: Record<string, CircuitEventId> = {
+  "open-cup": "mrq",
+  challenger: "stage-1",
+  regional: "stage-2",
+  "major-qualifier": "stage-3",
+  major: "stage-3",
+};
+
+export function normalizeCircuitEventId(id: unknown): CircuitEventId {
+  if (typeof id !== "string") return firstCircuitEventId;
+  if (circuitEvents.some((event) => event.id === id)) return id as CircuitEventId;
+  return legacyEventIds[id] ?? firstCircuitEventId;
 }
 
-export function circuitEventIndex(id: CircuitEventId) {
-  return Math.max(0, circuitEvents.findIndex((event) => event.id === id));
+export function circuitEventById(id: CircuitEventId | string) {
+  const normalized = normalizeCircuitEventId(id);
+  return circuitEvents.find((event) => event.id === normalized) ?? circuitEvents[0];
+}
+
+export function circuitEventIndex(id: CircuitEventId | string) {
+  const normalized = normalizeCircuitEventId(id);
+  return Math.max(0, circuitEvents.findIndex((event) => event.id === normalized));
+}
+
+export function nextCircuitEvent(event: CircuitEvent) {
+  const index = circuitEventIndex(event.id);
+  return circuitEvents[Math.min(circuitEvents.length - 1, index + 1)];
 }
 
 export function circuitPrize(event: CircuitEvent, tier: PlacementTier) {
@@ -123,7 +139,7 @@ export function circuitPointsAward(event: CircuitEvent, tier: PlacementTier) {
 }
 
 export function qualifiesForNextEvent(event: CircuitEvent, tier: PlacementTier) {
-  return event.qualifiesAt === "season" || placements[tier] >= placements[event.qualifiesAt];
+  return placements[tier] >= placements[event.qualifiesAt];
 }
 
 export function advanceCircuit(
@@ -133,14 +149,13 @@ export function advanceCircuit(
   currentPoints: number,
 ): CircuitProgress {
   const event = circuitEventById(currentEventId);
-  const index = circuitEventIndex(currentEventId);
   const pointsEarned = circuitPointsAward(event, tier);
   const qualified = qualifiesForNextEvent(event, tier);
   const totalPoints = currentPoints + pointsEarned;
 
-  if (event.id !== "major") {
+  if (!event.hasPlayoffs) {
     return {
-      nextEventId: qualified ? circuitEvents[Math.min(circuitEvents.length - 1, index + 1)].id : event.id,
+      nextEventId: qualified ? nextCircuitEvent(event).id : event.id,
       season,
       points: totalPoints,
       pointsEarned,
@@ -149,16 +164,16 @@ export function advanceCircuit(
     };
   }
 
-  // Ranking points partially decay between seasons. A deep Major run grants a later starting seed,
-  // while a Swiss exit sends the team back through more of the circuit.
+  // Ranking points partially decay between seasons. Deep playoff runs retain a Stage 3 seed,
+  // while earlier exits re-enter lower in the next Austin-style path.
   const nextEventId: CircuitEventId =
-    placements[tier] >= placements.top4 ? "major-qualifier" : tier === "top8" ? "regional" : "challenger";
+    placements[tier] >= placements.top4 ? "stage-3" : tier === "top8" ? "stage-2" : "stage-1";
   return {
     nextEventId,
     season: season + 1,
     points: Math.round(totalPoints * 0.72),
     pointsEarned,
-    qualified: true,
+    qualified,
     seasonComplete: true,
   };
 }
@@ -173,15 +188,7 @@ export function circuitFieldLabel(event: CircuitEvent) {
 }
 
 export function circuitQualificationLabel(event: CircuitEvent) {
-  if (event.qualifiesAt === "season") return "Season finale";
-  const labels: Record<PlacementTier, string> = {
-    swiss: "Swiss finish",
-    top8: "Top 8",
-    top4: "Top 4",
-    "runner-up": "Final",
-    champion: "Title",
-  };
-  return `${labels[event.qualifiesAt]} to advance`;
+  return event.hasPlayoffs ? "Top 8 to playoffs" : `Top 8 to ${nextCircuitEvent(event).shortName}`;
 }
 
 export function isCircuitEligible(roster: Roster, event: CircuitEvent) {
@@ -198,8 +205,8 @@ export function pickCircuitRosters(
   const eligible = shuffled(rosters.filter((roster) => isCircuitEligible(roster, event)), rng);
   if (eligible.length >= count) return eligible.slice(0, count);
 
-  // The bundled database always fills every event from its intended rank band. This fallback only
-  // protects small imported databases, preferring teams nearest to the event's eligibility window.
+  // The bundled database fills every intended rank band. This fallback protects smaller imported
+  // databases by preferring teams nearest to the event's eligibility window.
   const selected = new Set(eligible.map((roster) => roster.id));
   const fallback = shuffled(rosters.filter((roster) => !selected.has(roster.id)), rng).sort((a, b) => {
     return distanceFromBand(a.rank ?? 99, event) - distanceFromBand(b.rank ?? 99, event);

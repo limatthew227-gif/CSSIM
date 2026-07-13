@@ -1,0 +1,1696 @@
+{
+  "source": "HLTV player profiles",
+  "snapshot": "2026-07-13",
+  "players": [
+    {
+      "id": 3741,
+      "ign": "NiKo",
+      "team": "Falcons",
+      "rank": 1,
+      "age": 29
+    },
+    {
+      "id": 12018,
+      "ign": "TeSeS",
+      "team": "Falcons",
+      "rank": 1,
+      "age": 25
+    },
+    {
+      "id": 19230,
+      "ign": "m0NESY",
+      "team": "Falcons",
+      "rank": 1,
+      "age": 21
+    },
+    {
+      "id": 24177,
+      "ign": "kyousuke",
+      "team": "Falcons",
+      "rank": 1,
+      "age": 18
+    },
+    {
+      "id": 429,
+      "ign": "karrigan",
+      "team": "Falcons",
+      "rank": 1,
+      "age": 36
+    },
+    {
+      "id": 7322,
+      "ign": "apEX",
+      "team": "Vitality",
+      "rank": 2,
+      "age": 33
+    },
+    {
+      "id": 11893,
+      "ign": "ZywOo",
+      "team": "Vitality",
+      "rank": 2,
+      "age": 25
+    },
+    {
+      "id": 16693,
+      "ign": "flameZ",
+      "team": "Vitality",
+      "rank": 2,
+      "age": 23
+    },
+    {
+      "id": 18462,
+      "ign": "mezii",
+      "team": "Vitality",
+      "rank": 2,
+      "age": 27
+    },
+    {
+      "id": 11816,
+      "ign": "ropz",
+      "team": "Vitality",
+      "rank": 2,
+      "age": 26
+    },
+    {
+      "id": 18317,
+      "ign": "magixx",
+      "team": "Spirit",
+      "rank": 3,
+      "age": 23
+    },
+    {
+      "id": 21167,
+      "ign": "donk",
+      "team": "Spirit",
+      "rank": 3,
+      "age": 19
+    },
+    {
+      "id": 20423,
+      "ign": "zont1x",
+      "team": "Spirit",
+      "rank": 3,
+      "age": 20
+    },
+    {
+      "id": 16920,
+      "ign": "sh1ro",
+      "team": "Spirit",
+      "rank": 3,
+      "age": 24
+    },
+    {
+      "id": 19808,
+      "ign": "tN1R",
+      "team": "Spirit",
+      "rank": 3,
+      "age": 25
+    },
+    {
+      "id": 12553,
+      "ign": "yuurih",
+      "team": "FURIA",
+      "rank": 4,
+      "age": 26
+    },
+    {
+      "id": 15631,
+      "ign": "KSCERATO",
+      "team": "FURIA",
+      "rank": 4,
+      "age": 26
+    },
+    {
+      "id": 2023,
+      "ign": "FalleN",
+      "team": "FURIA",
+      "rank": 4,
+      "age": 35
+    },
+    {
+      "id": 24144,
+      "ign": "molodoy",
+      "team": "FURIA",
+      "rank": 4,
+      "age": 21
+    },
+    {
+      "id": 13915,
+      "ign": "YEKINDAR",
+      "team": "FURIA",
+      "rank": 4,
+      "age": 26
+    },
+    {
+      "id": 18987,
+      "ign": "b1t",
+      "team": "Natus Vincere",
+      "rank": 5,
+      "age": 23
+    },
+    {
+      "id": 9816,
+      "ign": "Aleksib",
+      "team": "Natus Vincere",
+      "rank": 5,
+      "age": 29
+    },
+    {
+      "id": 14759,
+      "ign": "iM",
+      "team": "Natus Vincere",
+      "rank": 5,
+      "age": 26
+    },
+    {
+      "id": 20127,
+      "ign": "w0nderful",
+      "team": "Natus Vincere",
+      "rank": 5,
+      "age": 21
+    },
+    {
+      "id": 22673,
+      "ign": "makazze",
+      "team": "Natus Vincere",
+      "rank": 5,
+      "age": 19
+    },
+    {
+      "id": 12092,
+      "ign": "max",
+      "team": "9z",
+      "rank": 6,
+      "age": 27
+    },
+    {
+      "id": 22613,
+      "ign": "HUASOPEEK",
+      "team": "9z",
+      "rank": 6,
+      "age": 23
+    },
+    {
+      "id": 20394,
+      "ign": "luchov",
+      "team": "9z",
+      "rank": 6,
+      "age": 25
+    },
+    {
+      "id": 14737,
+      "ign": "meyern",
+      "team": "9z",
+      "rank": 6,
+      "age": 23
+    },
+    {
+      "id": 14736,
+      "ign": "dgt",
+      "team": "9z",
+      "rank": 6,
+      "age": 25
+    },
+    {
+      "id": 21243,
+      "ign": "Wicadia",
+      "team": "Aurora",
+      "rank": 7,
+      "age": 21
+    },
+    {
+      "id": 8574,
+      "ign": "woxic",
+      "team": "Aurora",
+      "rank": 7,
+      "age": 27
+    },
+    {
+      "id": 7938,
+      "ign": "XANTARES",
+      "team": "Aurora",
+      "rank": 7,
+      "age": 30
+    },
+    {
+      "id": 18850,
+      "ign": "Jimpphat",
+      "team": "Aurora",
+      "rank": 7,
+      "age": 19
+    },
+    {
+      "id": 19677,
+      "ign": "kyxsan",
+      "team": "Aurora",
+      "rank": 7,
+      "age": 26
+    },
+    {
+      "id": 3972,
+      "ign": "huNter-",
+      "team": "G2",
+      "rank": 8,
+      "age": 30
+    },
+    {
+      "id": 20447,
+      "ign": "HeavyGod",
+      "team": "G2",
+      "rank": 8,
+      "age": 23
+    },
+    {
+      "id": 21062,
+      "ign": "MATYS",
+      "team": "G2",
+      "rank": 8,
+      "age": 24
+    },
+    {
+      "id": 9436,
+      "ign": "NertZ",
+      "team": "G2",
+      "rank": 8,
+      "age": 27
+    },
+    {
+      "id": 20425,
+      "ign": "r1nkle",
+      "team": "G2",
+      "rank": 8,
+      "age": 21
+    },
+    {
+      "id": 18506,
+      "ign": "S1ren",
+      "team": "BetBoom",
+      "rank": 9,
+      "age": 23
+    },
+    {
+      "id": 21667,
+      "ign": "Magnojez",
+      "team": "BetBoom",
+      "rank": 9,
+      "age": 21
+    },
+    {
+      "id": 11840,
+      "ign": "Boombl4",
+      "team": "BetBoom",
+      "rank": 9,
+      "age": 27
+    },
+    {
+      "id": 20357,
+      "ign": "d1Ledez",
+      "team": "BetBoom",
+      "rank": 9,
+      "age": 23
+    },
+    {
+      "id": 15662,
+      "ign": "zorte",
+      "team": "BetBoom",
+      "rank": 9,
+      "age": 28
+    },
+    {
+      "id": 18072,
+      "ign": "torzsi",
+      "team": "MOUZ",
+      "rank": 10,
+      "age": 24
+    },
+    {
+      "id": 20312,
+      "ign": "xertioN",
+      "team": "MOUZ",
+      "rank": 10,
+      "age": 21
+    },
+    {
+      "id": 18221,
+      "ign": "Spinx",
+      "team": "MOUZ",
+      "rank": 10,
+      "age": 25
+    },
+    {
+      "id": 24457,
+      "ign": "xelex",
+      "team": "MOUZ",
+      "rank": 10,
+      "age": 18
+    },
+    {
+      "id": 15698,
+      "ign": "dumau",
+      "team": "Legacy",
+      "rank": 11,
+      "age": 22
+    },
+    {
+      "id": 19045,
+      "ign": "latto",
+      "team": "Legacy",
+      "rank": 11,
+      "age": 23
+    },
+    {
+      "id": 19686,
+      "ign": "n1ssim",
+      "team": "Legacy",
+      "rank": 11,
+      "age": 25
+    },
+    {
+      "id": 12521,
+      "ign": "arT",
+      "team": "Legacy",
+      "rank": 11,
+      "age": 30
+    },
+    {
+      "id": 19869,
+      "ign": "try",
+      "team": "Legacy",
+      "rank": 11,
+      "age": 21
+    },
+    {
+      "id": 22674,
+      "ign": "cmtry",
+      "team": "FUT",
+      "rank": 12,
+      "age": 18
+    },
+    {
+      "id": 20584,
+      "ign": "dem0n",
+      "team": "FUT",
+      "rank": 12,
+      "age": 18
+    },
+    {
+      "id": 23553,
+      "ign": "dziugss",
+      "team": "FUT",
+      "rank": 12,
+      "age": 17
+    },
+    {
+      "id": 22203,
+      "ign": "Krabeni",
+      "team": "FUT",
+      "rank": 12,
+      "age": 21
+    },
+    {
+      "id": 19187,
+      "ign": "xfl0ud",
+      "team": "FUT",
+      "rank": 12,
+      "age": 23
+    },
+    {
+      "id": 21708,
+      "ign": "npl",
+      "team": "B8",
+      "rank": 13,
+      "age": 20
+    },
+    {
+      "id": 23643,
+      "ign": "esenthial",
+      "team": "B8",
+      "rank": 13,
+      "age": 20
+    },
+    {
+      "id": 20112,
+      "ign": "alex666",
+      "team": "B8",
+      "rank": 13,
+      "age": 24
+    },
+    {
+      "id": 22842,
+      "ign": "kensizor",
+      "team": "B8",
+      "rank": 13,
+      "age": 20
+    },
+    {
+      "id": 25619,
+      "ign": "s1zzi",
+      "team": "B8",
+      "rank": 13,
+      "age": 16
+    },
+    {
+      "id": 13776,
+      "ign": "Jame",
+      "team": "PARIVISION",
+      "rank": 14,
+      "age": 27
+    },
+    {
+      "id": 22471,
+      "ign": "xiELO",
+      "team": "PARIVISION",
+      "rank": 14,
+      "age": 20
+    },
+    {
+      "id": 23685,
+      "ign": "zweih",
+      "team": "PARIVISION",
+      "rank": 14,
+      "age": 18
+    },
+    {
+      "id": 8528,
+      "ign": "HObbit",
+      "team": "PARIVISION",
+      "rank": 14,
+      "age": 32
+    },
+    {
+      "id": 24807,
+      "ign": "slaxejezzz",
+      "team": "PARIVISION",
+      "rank": 14,
+      "age": 18
+    },
+    {
+      "id": 20301,
+      "ign": "Tauson",
+      "team": "GamerLegion",
+      "rank": 15,
+      "age": 20
+    },
+    {
+      "id": 22279,
+      "ign": "PR",
+      "team": "GamerLegion",
+      "rank": 15,
+      "age": 18
+    },
+    {
+      "id": 9278,
+      "ign": "REZ",
+      "team": "GamerLegion",
+      "rank": 15,
+      "age": 28
+    },
+    {
+      "id": 23766,
+      "ign": "hypex",
+      "team": "GamerLegion",
+      "rank": 15,
+      "age": 22
+    },
+    {
+      "id": 2553,
+      "ign": "Snax",
+      "team": "GamerLegion",
+      "rank": 15,
+      "age": 33
+    },
+    {
+      "id": 20194,
+      "ign": "bLitz",
+      "team": "The MongolZ",
+      "rank": 16,
+      "age": 25
+    },
+    {
+      "id": 20275,
+      "ign": "Techno",
+      "team": "The MongolZ",
+      "rank": 16,
+      "age": 21
+    },
+    {
+      "id": 21809,
+      "ign": "910",
+      "team": "The MongolZ",
+      "rank": 16,
+      "age": 24
+    },
+    {
+      "id": 26013,
+      "ign": "DarkMeister",
+      "team": "The MongolZ",
+      "rank": 16,
+      "age": 18
+    },
+    {
+      "id": 25510,
+      "ign": "tikuak",
+      "team": "The MongolZ",
+      "rank": 16,
+      "age": 17
+    },
+    {
+      "id": 9960,
+      "ign": "frozen",
+      "team": "FaZe",
+      "rank": 17,
+      "age": 23
+    },
+    {
+      "id": 22383,
+      "ign": "jcobbb",
+      "team": "FaZe",
+      "rank": 17,
+      "age": 22
+    },
+    {
+      "id": 10394,
+      "ign": "Twistzz",
+      "team": "FaZe",
+      "rank": 17,
+      "age": 26
+    },
+    {
+      "id": 22866,
+      "ign": "JBOEN",
+      "team": "FaZe",
+      "rank": 17,
+      "age": 20
+    },
+    {
+      "id": 20304,
+      "ign": "Staehr",
+      "team": "Astralis",
+      "rank": 18,
+      "age": 21
+    },
+    {
+      "id": 17956,
+      "ign": "jabbi",
+      "team": "Astralis",
+      "rank": 18,
+      "age": 22
+    },
+    {
+      "id": 10096,
+      "ign": "HooXi",
+      "team": "Astralis",
+      "rank": 18,
+      "age": 31
+    },
+    {
+      "id": 16726,
+      "ign": "phzy",
+      "team": "Astralis",
+      "rank": 18,
+      "age": 23
+    },
+    {
+      "id": 21217,
+      "ign": "ryu",
+      "team": "Astralis",
+      "rank": 18,
+      "age": 21
+    },
+    {
+      "id": 19645,
+      "ign": "JamYoung",
+      "team": "TYLOO",
+      "rank": 19,
+      "age": 24
+    },
+    {
+      "id": 20895,
+      "ign": "Mercury",
+      "team": "TYLOO",
+      "rank": 19,
+      "age": 25
+    },
+    {
+      "id": 21621,
+      "ign": "Moseyuh",
+      "team": "TYLOO",
+      "rank": 19,
+      "age": 21
+    },
+    {
+      "id": 20702,
+      "ign": "Jee",
+      "team": "TYLOO",
+      "rank": 19,
+      "age": 21
+    },
+    {
+      "id": 24857,
+      "ign": "Zero",
+      "team": "TYLOO",
+      "rank": 19,
+      "age": 20
+    },
+    {
+      "id": 18141,
+      "ign": "biguzera",
+      "team": "paiN",
+      "rank": 20,
+      "age": 29
+    },
+    {
+      "id": 20171,
+      "ign": "snow",
+      "team": "paiN",
+      "rank": 20,
+      "age": 19
+    },
+    {
+      "id": 18714,
+      "ign": "piriajr",
+      "team": "paiN",
+      "rank": 20,
+      "age": 23
+    },
+    {
+      "id": 16816,
+      "ign": "vsm",
+      "team": "paiN",
+      "rank": 20,
+      "age": 27
+    },
+    {
+      "id": 18835,
+      "ign": "saffee",
+      "team": "paiN",
+      "rank": 20,
+      "age": 31
+    },
+    {
+      "id": 14148,
+      "ign": "sjuush",
+      "team": "Ninjas in Pyjamas",
+      "rank": 27,
+      "age": 27
+    },
+    {
+      "id": 922,
+      "ign": "Snappi",
+      "team": "Ninjas in Pyjamas",
+      "rank": 27,
+      "age": 36
+    },
+    {
+      "id": 23372,
+      "ign": "xKacpersky",
+      "team": "Ninjas in Pyjamas",
+      "rank": 27,
+      "age": 19
+    },
+    {
+      "id": 10994,
+      "ign": "stavn",
+      "team": "Ninjas in Pyjamas",
+      "rank": 27,
+      "age": 24
+    },
+    {
+      "id": 22035,
+      "ign": "n0te",
+      "team": "Ninjas in Pyjamas",
+      "rank": 27,
+      "age": 20
+    },
+    {
+      "id": 8520,
+      "ign": "NAF",
+      "team": "Liquid",
+      "rank": 28,
+      "age": 28
+    },
+    {
+      "id": 16820,
+      "ign": "siuhy",
+      "team": "Liquid",
+      "rank": 28,
+      "age": 23
+    },
+    {
+      "id": 8738,
+      "ign": "EliGE",
+      "team": "Liquid",
+      "rank": 28,
+      "age": 28
+    },
+    {
+      "id": 11617,
+      "ign": "malbsMd",
+      "team": "Liquid",
+      "rank": 28,
+      "age": 23
+    },
+    {
+      "id": 24203,
+      "ign": "Jorko",
+      "team": "Liquid",
+      "rank": 28,
+      "age": 17
+    },
+    {
+      "id": 24282,
+      "ign": "Dawy",
+      "team": "Inner Circle",
+      "rank": 29,
+      "age": 18
+    },
+    {
+      "id": 24168,
+      "ign": "onic",
+      "team": "Inner Circle",
+      "rank": 29,
+      "age": 21
+    },
+    {
+      "id": 16147,
+      "ign": "cptkurtka023",
+      "team": "Inner Circle",
+      "rank": 29,
+      "age": 26
+    },
+    {
+      "id": 23415,
+      "ign": "zeRRoFIX",
+      "team": "Inner Circle",
+      "rank": 29,
+      "age": 19
+    },
+    {
+      "id": 19592,
+      "ign": "headtr1ck",
+      "team": "Inner Circle",
+      "rank": 29,
+      "age": 22
+    },
+    {
+      "id": 16551,
+      "ign": "Westmelon",
+      "team": "Lynn Vision",
+      "rank": 30,
+      "age": 25
+    },
+    {
+      "id": 18744,
+      "ign": "z4KR",
+      "team": "Lynn Vision",
+      "rank": 30,
+      "age": 23
+    },
+    {
+      "id": 22922,
+      "ign": "EmiliaQAQ",
+      "team": "Lynn Vision",
+      "rank": 30,
+      "age": 21
+    },
+    {
+      "id": 20254,
+      "ign": "Starry",
+      "team": "Lynn Vision",
+      "rank": 30,
+      "age": 21
+    },
+    {
+      "id": 23100,
+      "ign": "C4LLM3SU3",
+      "team": "Lynn Vision",
+      "rank": 30,
+      "age": 22
+    },
+    {
+      "id": 20558,
+      "ign": "gafolo",
+      "team": "Sharks",
+      "rank": 31,
+      "age": 24
+    },
+    {
+      "id": 21921,
+      "ign": "rdnzao",
+      "team": "Sharks",
+      "rank": 31,
+      "age": 23
+    },
+    {
+      "id": 22911,
+      "ign": "doc",
+      "team": "Sharks",
+      "rank": 31,
+      "age": 23
+    },
+    {
+      "id": 21170,
+      "ign": "koala",
+      "team": "Sharks",
+      "rank": 31,
+      "age": 21
+    },
+    {
+      "id": 21221,
+      "ign": "maxxkor",
+      "team": "Sharks",
+      "rank": 31,
+      "age": 23
+    },
+    {
+      "id": 22536,
+      "ign": "mag1k3Y",
+      "team": "Nemesis",
+      "rank": 32,
+      "age": 21
+    },
+    {
+      "id": 23047,
+      "ign": "Sdaim",
+      "team": "Nemesis",
+      "rank": 32,
+      "age": 21
+    },
+    {
+      "id": 18670,
+      "ign": "SELLTER",
+      "team": "Nemesis",
+      "rank": 32,
+      "age": 23
+    },
+    {
+      "id": 22930,
+      "ign": "tex1y",
+      "team": "Nemesis",
+      "rank": 32,
+      "age": 19
+    },
+    {
+      "id": 20709,
+      "ign": "r3salt",
+      "team": "Nemesis",
+      "rank": 32,
+      "age": 21
+    },
+    {
+      "id": 13497,
+      "ign": "Lucky",
+      "team": "3DMAX",
+      "rank": 33,
+      "age": 28
+    },
+    {
+      "id": 13138,
+      "ign": "Maka",
+      "team": "3DMAX",
+      "rank": 33,
+      "age": 29
+    },
+    {
+      "id": 21969,
+      "ign": "Graviti",
+      "team": "3DMAX",
+      "rank": 33,
+      "age": 22
+    },
+    {
+      "id": 14176,
+      "ign": "misutaaa",
+      "team": "3DMAX",
+      "rank": 33,
+      "age": 23
+    },
+    {
+      "id": 20482,
+      "ign": "Kursy",
+      "team": "3DMAX",
+      "rank": 33,
+      "age": 24
+    },
+    {
+      "id": 11140,
+      "ign": "INS",
+      "team": "FlyQuest",
+      "rank": 34,
+      "age": 27
+    },
+    {
+      "id": 17384,
+      "ign": "Vexite",
+      "team": "FlyQuest",
+      "rank": 34,
+      "age": 21
+    },
+    {
+      "id": 18214,
+      "ign": "nettik",
+      "team": "FlyQuest",
+      "rank": 34,
+      "age": 22
+    },
+    {
+      "id": 4679,
+      "ign": "jks",
+      "team": "FlyQuest",
+      "rank": 34,
+      "age": 30
+    },
+    {
+      "id": 3849,
+      "ign": "JW",
+      "team": "EYEBALLERS",
+      "rank": 35,
+      "age": 31
+    },
+    {
+      "id": 22914,
+      "ign": "dex",
+      "team": "EYEBALLERS",
+      "rank": 35,
+      "age": 25
+    },
+    {
+      "id": 21012,
+      "ign": "Ro1f",
+      "team": "EYEBALLERS",
+      "rank": 35,
+      "age": 21
+    },
+    {
+      "id": 20879,
+      "ign": "maxster",
+      "team": "EYEBALLERS",
+      "rank": 35,
+      "age": 21
+    },
+    {
+      "id": 7528,
+      "ign": "KRIMZ",
+      "team": "EYEBALLERS",
+      "rank": 35,
+      "age": 32
+    },
+    {
+      "id": 7687,
+      "ign": "nitr0",
+      "team": "NRG",
+      "rank": 36,
+      "age": 30
+    },
+    {
+      "id": 8711,
+      "ign": "Sonic",
+      "team": "NRG",
+      "rank": 36,
+      "age": 27
+    },
+    {
+      "id": 13578,
+      "ign": "Grim",
+      "team": "NRG",
+      "rank": 36,
+      "age": 25
+    },
+    {
+      "id": 12840,
+      "ign": "hallzerk",
+      "team": "NRG",
+      "rank": 36,
+      "age": 25
+    },
+    {
+      "id": 20333,
+      "ign": "Jeorge",
+      "team": "NRG",
+      "rank": 36,
+      "age": 23
+    },
+    {
+      "id": 16847,
+      "ign": "mhL",
+      "team": "Wildcard",
+      "rank": 37,
+      "age": 24
+    },
+    {
+      "id": 17378,
+      "ign": "reck",
+      "team": "Wildcard",
+      "rank": 37,
+      "age": 22
+    },
+    {
+      "id": 18838,
+      "ign": "HexT",
+      "team": "Wildcard",
+      "rank": 37,
+      "age": 24
+    },
+    {
+      "id": 8311,
+      "ign": "nEMANHA",
+      "team": "Wildcard",
+      "rank": 37,
+      "age": 28
+    },
+    {
+      "id": 17353,
+      "ign": "Cxzi",
+      "team": "Wildcard",
+      "rank": 37,
+      "age": 26
+    },
+    {
+      "id": 20119,
+      "ign": "nilo",
+      "team": "HEROIC",
+      "rank": 38,
+      "age": 21
+    },
+    {
+      "id": 21983,
+      "ign": "Chr1zN",
+      "team": "HEROIC",
+      "rank": 38,
+      "age": 19
+    },
+    {
+      "id": 21163,
+      "ign": "susp",
+      "team": "HEROIC",
+      "rank": 38,
+      "age": 21
+    },
+    {
+      "id": 13666,
+      "ign": "Brollan",
+      "team": "HEROIC",
+      "rank": 38,
+      "age": 24
+    },
+    {
+      "id": 21239,
+      "ign": "MartinezSa",
+      "team": "HEROIC",
+      "rank": 38,
+      "age": 25
+    },
+    {
+      "id": 15385,
+      "ign": "KalubeR",
+      "team": "Acend",
+      "rank": 39,
+      "age": 25
+    },
+    {
+      "id": 21657,
+      "ign": "Skrimo",
+      "team": "Acend",
+      "rank": 39,
+      "age": 22
+    },
+    {
+      "id": 11217,
+      "ign": "SPELLAN",
+      "team": "Acend",
+      "rank": 39,
+      "age": 28
+    },
+    {
+      "id": 20097,
+      "ign": "h4rn",
+      "team": "Acend",
+      "rank": 39,
+      "age": 26
+    },
+    {
+      "id": 15369,
+      "ign": "REDSTAR",
+      "team": "Acend",
+      "rank": 39,
+      "age": 24
+    },
+    {
+      "id": 8371,
+      "ign": "alex",
+      "team": "Gentle Mates",
+      "rank": 40,
+      "age": 30
+    },
+    {
+      "id": 19509,
+      "ign": "dav1g",
+      "team": "Gentle Mates",
+      "rank": 40,
+      "age": 25
+    },
+    {
+      "id": 9254,
+      "ign": "mopoz",
+      "team": "Gentle Mates",
+      "rank": 40,
+      "age": 29
+    },
+    {
+      "id": 18749,
+      "ign": "sausol",
+      "team": "Gentle Mates",
+      "rank": 40,
+      "age": 26
+    },
+    {
+      "id": 21574,
+      "ign": "Boye",
+      "team": "Echo",
+      "rank": 41,
+      "age": 22
+    },
+    {
+      "id": 16731,
+      "ign": "IceBerg",
+      "team": "Echo",
+      "rank": 41,
+      "age": 25
+    },
+    {
+      "id": 21571,
+      "ign": "leakz",
+      "team": "Echo",
+      "rank": 41,
+      "age": 23
+    },
+    {
+      "id": 24104,
+      "ign": "NickyB",
+      "team": "Echo",
+      "rank": 41,
+      "age": 21
+    },
+    {
+      "id": 21379,
+      "ign": "salazar",
+      "team": "Echo",
+      "rank": 41,
+      "age": 21
+    },
+    {
+      "id": 24568,
+      "ign": "flouzer",
+      "team": "Nuclear TigeRES",
+      "rank": 42,
+      "age": 18
+    },
+    {
+      "id": 22878,
+      "ign": "senka",
+      "team": "Nuclear TigeRES",
+      "rank": 42,
+      "age": 20
+    },
+    {
+      "id": 23762,
+      "ign": "z1k4",
+      "team": "Nuclear TigeRES",
+      "rank": 42,
+      "age": 23
+    },
+    {
+      "id": 22880,
+      "ign": "m1QUSE",
+      "team": "Nuclear TigeRES",
+      "rank": 42,
+      "age": 19
+    },
+    {
+      "id": 25807,
+      "ign": "ayuki",
+      "team": "Nuclear TigeRES",
+      "rank": 42,
+      "age": 18
+    },
+    {
+      "id": 21385,
+      "ign": "mizu",
+      "team": "HOTU",
+      "rank": 43,
+      "age": 22
+    },
+    {
+      "id": 24806,
+      "ign": "frontales",
+      "team": "HOTU",
+      "rank": 43,
+      "age": 23
+    },
+    {
+      "id": 16612,
+      "ign": "n0rb3r7",
+      "team": "HOTU",
+      "rank": 43,
+      "age": 25
+    },
+    {
+      "id": 18752,
+      "ign": "kade0",
+      "team": "HOTU",
+      "rank": 43,
+      "age": 26
+    },
+    {
+      "id": 22535,
+      "ign": "dwushka",
+      "team": "HOTU",
+      "rank": 43,
+      "age": 21
+    },
+    {
+      "id": 24952,
+      "ign": "tO0RO",
+      "team": "Virtus.pro",
+      "rank": 44,
+      "age": 18
+    },
+    {
+      "id": 23637,
+      "ign": "b1st",
+      "team": "Virtus.pro",
+      "rank": 44,
+      "age": 18
+    },
+    {
+      "id": 8789,
+      "ign": "mir",
+      "team": "Virtus.pro",
+      "rank": 44,
+      "age": 30
+    },
+    {
+      "id": 24950,
+      "ign": "AquaRS",
+      "team": "Virtus.pro",
+      "rank": 44,
+      "age": 19
+    },
+    {
+      "id": 24292,
+      "ign": "F0R3VER",
+      "team": "Virtus.pro",
+      "rank": 44,
+      "age": 19
+    },
+    {
+      "id": 12810,
+      "ign": "SHOCK",
+      "team": "SINNERS",
+      "rank": 45,
+      "age": 25
+    },
+    {
+      "id": 11199,
+      "ign": "beastik",
+      "team": "SINNERS",
+      "rank": 45,
+      "age": 28
+    },
+    {
+      "id": 23295,
+      "ign": "kisserek",
+      "team": "SINNERS",
+      "rank": 45,
+      "age": 23
+    },
+    {
+      "id": 23459,
+      "ign": "stressarN",
+      "team": "SINNERS",
+      "rank": 45,
+      "age": 23
+    },
+    {
+      "id": 21113,
+      "ign": "MoDo",
+      "team": "SINNERS",
+      "rank": 45,
+      "age": 23
+    },
+    {
+      "id": 20625,
+      "ign": "Banjo",
+      "team": "FOKUS",
+      "rank": 46,
+      "age": 22
+    },
+    {
+      "id": 24332,
+      "ign": "Matheos",
+      "team": "FOKUS",
+      "rank": 46,
+      "age": 23
+    },
+    {
+      "id": 20358,
+      "ign": "volt",
+      "team": "FOKUS",
+      "rank": 46,
+      "age": 24
+    },
+    {
+      "id": 16486,
+      "ign": "ztr",
+      "team": "FOKUS",
+      "rank": 46,
+      "age": 22
+    },
+    {
+      "id": 16555,
+      "ign": "Ax1Le",
+      "team": "TDK",
+      "rank": 47,
+      "age": 24
+    },
+    {
+      "id": 16921,
+      "ign": "nafany",
+      "team": "TDK",
+      "rank": 47,
+      "age": 25
+    },
+    {
+      "id": 18510,
+      "ign": "sugaR",
+      "team": "TDK",
+      "rank": 47,
+      "age": 27
+    },
+    {
+      "id": 20387,
+      "ign": "Xant3r",
+      "team": "TDK",
+      "rank": 47,
+      "age": 22
+    },
+    {
+      "id": 20958,
+      "ign": "bajmi",
+      "team": "Walczaki",
+      "rank": 48,
+      "age": 23
+    },
+    {
+      "id": 22703,
+      "ign": "moonwalk",
+      "team": "Walczaki",
+      "rank": 48,
+      "age": 23
+    },
+    {
+      "id": 21263,
+      "ign": "olimp",
+      "team": "Walczaki",
+      "rank": 48,
+      "age": 26
+    },
+    {
+      "id": 20245,
+      "ign": "SaMey",
+      "team": "Walczaki",
+      "rank": 48,
+      "age": 26
+    },
+    {
+      "id": 21143,
+      "ign": "sk1tt",
+      "team": "Walczaki",
+      "rank": 48,
+      "age": 23
+    },
+    {
+      "id": 20521,
+      "ign": "Alisson",
+      "team": "LP",
+      "rank": 49,
+      "age": 23
+    },
+    {
+      "id": 23550,
+      "ign": "divine",
+      "team": "LP",
+      "rank": 49,
+      "age": 21
+    },
+    {
+      "id": 21284,
+      "ign": "happ",
+      "team": "LP",
+      "rank": 49,
+      "age": 24
+    },
+    {
+      "id": 17132,
+      "ign": "Leomonster",
+      "team": "LP",
+      "rank": 49,
+      "age": 23
+    },
+    {
+      "id": 14010,
+      "ign": "zmb",
+      "team": "LP",
+      "rank": 49,
+      "age": 27
+    },
+    {
+      "id": 19171,
+      "ign": "mhN1",
+      "team": "INFINITE",
+      "rank": 50,
+      "age": 25
+    },
+    {
+      "id": 19815,
+      "ign": "Dytor",
+      "team": "INFINITE",
+      "rank": 50,
+      "age": 23
+    },
+    {
+      "id": 9911,
+      "ign": "kreaz",
+      "team": "INFINITE",
+      "rank": 50,
+      "age": 28
+    },
+    {
+      "id": 20870,
+      "ign": "sl3nd",
+      "team": "INFINITE",
+      "rank": 50,
+      "age": 21
+    },
+    {
+      "id": 12945,
+      "ign": "Blytz",
+      "team": "INFINITE",
+      "rank": 50,
+      "age": 26
+    },
+    {
+      "id": 7998,
+      "ign": "s1mple",
+      "age": 28,
+      "team": "BC.Game",
+      "rank": null
+    },
+    {
+      "id": 8918,
+      "ign": "electroNic",
+      "age": 27,
+      "team": "BC.Game",
+      "rank": null
+    },
+    {
+      "id": 7594,
+      "ign": "flamie",
+      "age": 29,
+      "rank": null
+    },
+    {
+      "id": 7592,
+      "ign": "device",
+      "age": 30,
+      "team": "100 Thieves",
+      "rank": null
+    },
+    {
+      "id": 9032,
+      "ign": "Magisk",
+      "age": 28,
+      "team": "BC.Game",
+      "rank": null
+    },
+    {
+      "id": 7412,
+      "ign": "gla1ve",
+      "age": 31,
+      "team": "100 Thieves",
+      "rank": null
+    },
+    {
+      "id": 4954,
+      "ign": "Xyp9x",
+      "age": 30,
+      "rank": null
+    },
+    {
+      "id": 8564,
+      "ign": "fer",
+      "age": 34,
+      "rank": null
+    },
+    {
+      "id": 9217,
+      "ign": "TACO",
+      "age": 31,
+      "rank": null
+    },
+    {
+      "id": 20968,
+      "ign": "soulfly",
+      "age": 22,
+      "team": "Aurora",
+      "rank": null
+    },
+    {
+      "id": 22965,
+      "ign": "saadzin",
+      "age": 22,
+      "team": "Imperial",
+      "rank": null
+    },
+    {
+      "id": 21001,
+      "ign": "mzinho",
+      "age": 19,
+      "team": "BC.Game",
+      "rank": null
+    },
+    {
+      "id": 23402,
+      "ign": "cobrazera",
+      "age": 20,
+      "team": "The MongolZ",
+      "rank": null
+    },
+    {
+      "id": 19235,
+      "ign": "BELCHONOKK",
+      "age": 22,
+      "team": "PARIVISION",
+      "rank": null
+    },
+    {
+      "id": 22929,
+      "ign": "nota",
+      "age": 19,
+      "team": "PARIVISION",
+      "rank": null
+    },
+    {
+      "id": 20761,
+      "ign": "lauNX",
+      "age": 21,
+      "team": "FUT",
+      "rank": null
+    },
+    {
+      "id": 18053,
+      "ign": "broky",
+      "age": 25,
+      "team": "FaZe",
+      "rank": null
+    },
+    {
+      "id": 21972,
+      "ign": "Neityu",
+      "age": 20,
+      "team": "ENCE",
+      "rank": null
+    },
+    {
+      "id": 19874,
+      "ign": "MaSvAl",
+      "age": 23,
+      "team": "magic",
+      "rank": null
+    },
+    {
+      "id": 22075,
+      "ign": "sFade8",
+      "age": 22,
+      "team": "magic",
+      "rank": null
+    },
+    {
+      "id": 23858,
+      "ign": "mo0N",
+      "age": 20,
+      "team": "magic",
+      "rank": null
+    },
+    {
+      "id": 24173,
+      "ign": "tenzy",
+      "age": 21,
+      "team": "magic",
+      "rank": null
+    },
+    {
+      "id": 19310,
+      "ign": "LNZ",
+      "age": 23,
+      "team": "MIBR",
+      "rank": null
+    },
+    {
+      "id": 20987,
+      "ign": "brnz4n",
+      "age": 22,
+      "team": "MIBR",
+      "rank": null
+    },
+    {
+      "id": 21037,
+      "ign": "insani",
+      "age": 22,
+      "team": "MIBR",
+      "rank": null
+    },
+    {
+      "id": 21288,
+      "ign": "venomzera",
+      "age": 21,
+      "team": "MIBR",
+      "rank": null
+    },
+    {
+      "id": 23192,
+      "ign": "kl1m",
+      "age": 20,
+      "team": "G2 Ares",
+      "rank": null
+    },
+    {
+      "id": 20462,
+      "ign": "story",
+      "age": 24,
+      "team": "SAW",
+      "rank": null
+    }
+  ]
+}

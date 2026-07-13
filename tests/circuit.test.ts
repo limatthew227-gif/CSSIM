@@ -10,6 +10,7 @@ import {
   circuitQualificationLabel,
   circuitWorldRank,
   isCircuitEligible,
+  normalizeCircuitEventId,
   pickCircuitRosters,
   qualifiesForNextEvent,
 } from "../src/circuit";
@@ -19,54 +20,69 @@ function roster(id: string, rank?: number): Roster {
   return { id, rank } as Roster;
 }
 
-test("Open Cup only selects lower-ranked and unranked teams when the pool can fill it", () => {
-  const event = circuitEventById("open-cup");
-  const pool = Array.from({ length: 24 }, (_, index) => roster(`team-${index + 1}`, index + 1));
+test("MRQ only selects rank 27+ and unranked teams when the pool can fill it", () => {
+  const event = circuitEventById("mrq");
+  const pool = Array.from({ length: 50 }, (_, index) => roster(`team-${index + 1}`, index + 1));
   pool.push(roster("custom-unranked"));
   const field = pickCircuitRosters(pool, event, 16, () => 0.42);
   assert.equal(field.length, 16);
   assert.ok(field.every((team) => isCircuitEligible(team, event)));
-  assert.ok(field.every((team) => team.rank == null || team.rank >= 6));
-  assert.equal(circuitFieldLabel(event), "HLTV #6+ and unranked");
-  assert.equal(circuitQualificationLabel(event), "Top 8 to advance");
+  assert.ok(field.every((team) => team.rank == null || team.rank >= 27));
+  assert.equal(circuitFieldLabel(event), "HLTV #27+ and unranked");
+  assert.equal(circuitQualificationLabel(event), "Top 8 to Stage 1");
 });
 
 test("Circuit qualification advances on the required finish and repeats after an early exit", () => {
-  const open = circuitEventById("open-cup");
-  assert.equal(qualifiesForNextEvent(open, "top8"), true);
-  assert.equal(qualifiesForNextEvent(open, "swiss"), false);
+  const mrq = circuitEventById("mrq");
+  assert.equal(qualifiesForNextEvent(mrq, "top8"), true);
+  assert.equal(qualifiesForNextEvent(mrq, "swiss"), false);
 
-  const promoted = advanceCircuit("open-cup", "top8", 1, 0);
-  assert.equal(promoted.nextEventId, "challenger");
+  const promoted = advanceCircuit("mrq", "top8", 1, 0);
+  assert.equal(promoted.nextEventId, "stage-1");
   assert.equal(promoted.qualified, true);
 
-  const repeat = advanceCircuit("open-cup", "swiss", 1, 0);
-  assert.equal(repeat.nextEventId, "open-cup");
+  const repeat = advanceCircuit("mrq", "swiss", 1, 0);
+  assert.equal(repeat.nextEventId, "mrq");
   assert.equal(repeat.qualified, false);
   assert.ok(repeat.points > 0, "an early exit still earns some ranking progress");
 });
 
-test("Regional Finals require top four while the qualifier awards a Major place at top eight", () => {
-  assert.equal(qualifiesForNextEvent(circuitEventById("regional"), "top8"), false);
-  assert.equal(qualifiesForNextEvent(circuitEventById("regional"), "top4"), true);
-  assert.equal(advanceCircuit("major-qualifier", "top8", 1, 120).nextEventId, "major");
+test("Stage 1 and Stage 2 feed the next Swiss stage; only Stage 3 has playoffs", () => {
+  const stage1 = circuitEventById("stage-1");
+  const stage2 = circuitEventById("stage-2");
+  const stage3 = circuitEventById("stage-3");
+  assert.equal(stage1.hasPlayoffs, false);
+  assert.equal(stage2.hasPlayoffs, false);
+  assert.equal(stage3.hasPlayoffs, true);
+  assert.equal(advanceCircuit("stage-1", "top8", 1, 60).nextEventId, "stage-2");
+  assert.equal(advanceCircuit("stage-2", "top8", 1, 120).nextEventId, "stage-3");
+  assert.equal(circuitQualificationLabel(stage3), "Top 8 to playoffs");
 });
 
-test("Major completion starts a new season with seeding based on the finish", () => {
-  const deepRun = advanceCircuit("major", "top4", 2, 300);
+test("Stage 3 completion starts a new season with seeding based on the finish", () => {
+  const deepRun = advanceCircuit("stage-3", "top4", 2, 300);
   assert.equal(deepRun.season, 3);
-  assert.equal(deepRun.nextEventId, "major-qualifier");
+  assert.equal(deepRun.nextEventId, "stage-3");
   assert.equal(deepRun.seasonComplete, true);
   assert.ok(deepRun.points < 300 + deepRun.pointsEarned, "off-season decay is applied");
 
-  const swissExit = advanceCircuit("major", "swiss", 1, 180);
-  assert.equal(swissExit.nextEventId, "challenger");
+  const swissExit = advanceCircuit("stage-3", "swiss", 1, 180);
+  assert.equal(swissExit.nextEventId, "stage-1");
+  assert.equal(swissExit.qualified, false);
+});
+
+test("legacy Circuit save IDs migrate into the Austin path", () => {
+  assert.equal(normalizeCircuitEventId("open-cup"), "mrq");
+  assert.equal(normalizeCircuitEventId("challenger"), "stage-1");
+  assert.equal(normalizeCircuitEventId("regional"), "stage-2");
+  assert.equal(normalizeCircuitEventId("major-qualifier"), "stage-3");
+  assert.equal(normalizeCircuitEventId("major"), "stage-3");
 });
 
 test("Higher-tier events award more points and prize money", () => {
-  const open = circuitEventById("open-cup");
-  const major = circuitEventById("major");
-  assert.ok(circuitPointsAward(major, "top4") > circuitPointsAward(open, "top4"));
-  assert.ok(circuitPrize(major, "champion") > circuitPrize(open, "champion"));
+  const mrq = circuitEventById("mrq");
+  const stage3 = circuitEventById("stage-3");
+  assert.ok(circuitPointsAward(stage3, "top4") > circuitPointsAward(mrq, "top4"));
+  assert.ok(circuitPrize(stage3, "champion") > circuitPrize(mrq, "champion"));
   assert.ok(circuitWorldRank(180) < circuitWorldRank(20));
 });

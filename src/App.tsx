@@ -109,6 +109,8 @@ import {
   circuitQualificationLabel,
   circuitWorldRank,
   firstCircuitEventId,
+  nextCircuitEvent,
+  normalizeCircuitEventId,
   pickCircuitRosters,
   type CircuitEvent,
   type CircuitEventId,
@@ -829,7 +831,11 @@ function App() {
   const swissHistory = useMemo(() => buildSwissHistory(matchResults), [matchResults]); // who has played whom in Swiss
   const swissPairs = useMemo(() => buildSwissPairs(yourTeam, opponent, swissField, record, swissRecords, swissHistory), [yourTeam, opponent, swissField, record, swissRecords, swissHistory]);
   const swissUserFinished = runKind === "player" && phase === "swiss" && (record.wins >= 3 || record.losses >= 3);
-  const swissCanSim = swissUserFinished && !isSwissStageResolved(swissField, swissRecords, record);
+  const swissStageResolved = phase === "swiss" && isSwissStageResolved(swissField, swissRecords, record);
+  const swissCanSim = swissUserFinished && !swissStageResolved;
+  const circuitStageOnly = mode === "circuit" && !circuitEvent.hasPlayoffs;
+  const circuitStageCleared = circuitStageOnly && record.wins >= 3 && swissStageResolved;
+  const circuitNextEvent = nextCircuitEvent(circuitEvent);
   const spectatorSwissResolved = runKind === "spectator" && phase === "swiss" && isNeutralSwissStageResolved(swissField, swissRecords);
   const spectatorSwissPairs = useMemo(
     () =>
@@ -898,7 +904,9 @@ function App() {
     () => matchResults.find((result) => result.id === selectedResultId) ?? matchResults[matchResults.length - 1],
     [matchResults, selectedResultId],
   );
-  const runDone = runKind === "player" && (tournamentOutcome !== "running" || (phase === "swiss" && record.losses >= 3));
+  const runDone =
+    runKind === "player" &&
+    (tournamentOutcome !== "running" || (phase === "swiss" && record.losses >= 3) || circuitStageCleared);
   const canSimPlayoffPhase =
     phase === "playoffs" &&
     playoffPairs.length > 0 &&
@@ -1411,6 +1419,10 @@ function App() {
     setRecord(nextRecord);
     if (nextRecord.wins >= 3) {
       if (isSwissStageResolved(swissField, nextSwissRecords, nextRecord)) {
+        if (mode === "circuit" && !circuitEvent.hasPlayoffs) {
+          setScreen("swiss");
+          return;
+        }
         enterPlayoffs(nextSwissRecords);
         return;
       }
@@ -1425,6 +1437,10 @@ function App() {
       setTournamentOutcome("eliminated");
       setPlayerFinish("swiss");
       if (isSwissStageResolved(swissField, nextSwissRecords, nextRecord)) {
+        if (mode === "circuit" && !circuitEvent.hasPlayoffs) {
+          setScreen("swiss");
+          return;
+        }
         enterNeutralPlayoffs(nextSwissRecords, "eliminated");
         return;
       }
@@ -1480,6 +1496,11 @@ function App() {
     if (simulatedResults.length) {
       setMatchResults((current) => [...current, ...simulatedResults]);
       setSelectedResultId(simulatedResults[simulatedResults.length - 1].id);
+    }
+
+    if (mode === "circuit" && !circuitEvent.hasPlayoffs) {
+      setScreen("swiss");
+      return;
     }
 
     if (record.wins >= 3) {
@@ -1650,7 +1671,12 @@ function App() {
   // Bank the event prize, apply development, then open the transfer window. The first call begins the career.
   function enterTransferWindow() {
     // playerFinish is captured when you actually resolve; fall back to deriving it only if it's missing.
-    const tier = playerFinish ?? placementTier({ champion: tournamentOutcome === "champion", reachedPlayoffs: phase === "playoffs", playoffRound });
+    const circuitStageTier: PlacementTier | undefined =
+      mode === "circuit" && !circuitEvent.hasPlayoffs && record.wins >= 3 ? "top8" : undefined;
+    const tier =
+      playerFinish ??
+      circuitStageTier ??
+      placementTier({ champion: tournamentOutcome === "champion", reachedPlayoffs: phase === "playoffs", playoffRound });
     const isCircuit = mode === "circuit";
     const completedEvent = circuitEventById(circuitEventId);
     const progress = isCircuit ? advanceCircuit(circuitEventId, tier, circuitSeason, circuitPoints) : undefined;
@@ -1948,8 +1974,12 @@ function App() {
     setCareerActive(snapshot.careerActive ?? false);
     setCareerMoney(snapshot.careerMoney ?? 0);
     setCareerEvent(snapshot.careerEvent ?? 1);
-    setCareerHistory(snapshot.careerHistory ?? []);
-    setCircuitEventId(snapshot.circuitEventId ?? firstCircuitEventId);
+    setCareerHistory(
+      (snapshot.careerHistory ?? []).map((entry) =>
+        entry.eventId ? { ...entry, eventId: normalizeCircuitEventId(entry.eventId) } : entry,
+      ),
+    );
+    setCircuitEventId(normalizeCircuitEventId(snapshot.circuitEventId));
     setCircuitSeason(snapshot.circuitSeason ?? 1);
     setCircuitPoints(snapshot.circuitPoints ?? 0);
     setTransferCandidates(snapshot.transferCandidates ?? []);
@@ -2089,7 +2119,7 @@ function App() {
                 <div className="circuit-setup-note">
                   <Award size={17} />
                   <span>
-                    Begin in the Open Cup against {circuitFieldLabel(circuitEvents[0])}, then qualify through five event levels to reach the Major.
+                    Begin in the MRQ against {circuitFieldLabel(circuitEvents[0])}, then survive Stage 1, Stage 2, and Stage 3 to reach the Major playoffs.
                   </span>
                 </div>
               )}
@@ -2407,16 +2437,23 @@ function App() {
                       </button>
                     )}
                   </>
+                ) : circuitStageCleared ? (
+                  <button className="primary" onClick={enterTransferWindow}>
+                    <ArrowRight size={17} />
+                    Advance to {circuitNextEvent.shortName}
+                  </button>
                 ) : runDone && record.losses >= 3 && isSwissStageResolved(swissField, swissRecords, record) ? (
                   <>
                     <button className="primary" onClick={enterTransferWindow}>
                       <ArrowRight size={17} />
                       {mode === "circuit" ? "Circuit HQ" : careerActive ? `Continue to Major ${careerEvent + 1}` : "Continue career"}
                     </button>
-                    <button className="secondary" onClick={() => enterNeutralPlayoffs(swissRecords, "eliminated")}>
-                      <FastForward size={17} />
-                      Continue bracket
-                    </button>
+                    {!circuitStageOnly && (
+                      <button className="secondary" onClick={() => enterNeutralPlayoffs(swissRecords, "eliminated")}>
+                        <FastForward size={17} />
+                        Continue bracket
+                      </button>
+                    )}
                     <button className="secondary" onClick={restartRun}>
                       <RefreshCcw size={17} />
                       Retry run
@@ -2447,11 +2484,17 @@ function App() {
                 <span>
                   {record.wins >= 3
                     ? swissCanSim
-                      ? "Your playoff spot is locked. Sim the remaining Swiss matches to build the bracket."
-                      : "The Swiss field is settled and the playoff bracket is ready."
+                      ? circuitStageOnly
+                        ? `Your ${circuitNextEvent.shortName} place is locked. Sim the remaining Swiss matches to settle the field.`
+                        : "Your playoff spot is locked. Sim the remaining Swiss matches to build the bracket."
+                      : circuitStageOnly
+                        ? `${circuitEvent.shortName} is complete. Your roster advances to ${circuitNextEvent.shortName}.`
+                        : "The Swiss field is settled and the playoff bracket is ready."
                     : swissCanSim
                       ? "Your run is over, but you can still sim the remaining Swiss matches or retry."
-                      : "The Swiss run ended before playoffs."}
+                      : circuitStageOnly
+                        ? `The run ended in ${circuitEvent.shortName}. Return to Circuit HQ to regroup.`
+                        : "The Swiss run ended before playoffs."}
                 </span>
               </div>
             )}
@@ -2672,6 +2715,13 @@ function App() {
               </div>
             </div>
           </section>
+
+          <PlayoffBracket
+            currentRound={playoffRound}
+            pairs={playoffPairs}
+            results={matchResults}
+            onOpenResult={openSeriesResult}
+          />
 
           <section className="swiss-roster-bar">
             <div className="record-pill">
@@ -5086,6 +5136,103 @@ function SwissTeamName({
       <strong>{team.name}</strong>
       <span>{record ? `${record.wins}-${record.losses}` : projectedRecordLabel(team, completedRounds)}</span>
     </div>
+  );
+}
+
+function PlayoffBracket({
+  currentRound,
+  pairs,
+  results,
+  onOpenResult,
+}: {
+  currentRound: PlayoffRound;
+  pairs: SwissPair[];
+  results: SwissResult[];
+  onOpenResult: (id: string) => void;
+}) {
+  const rounds: Array<{ id: PlayoffRound; label: string; count: number; bestOf: number }> = [
+    { id: "quarterfinal", label: "Quarterfinals", count: 4, bestOf: 3 },
+    { id: "semifinal", label: "Semifinals", count: 2, bestOf: 3 },
+    { id: "final", label: "Grand final", count: 1, bestOf: 5 },
+  ];
+
+  return (
+    <section className="playoff-bracket-shell">
+      <div className="playoff-bracket-head">
+        <div className="section-title">
+          <Trophy size={18} />
+          <span>Champions stage</span>
+        </div>
+        <span>Eight teams · single elimination</span>
+      </div>
+      <div className="playoff-bracket-grid">
+        {rounds.map((round, roundIndex) => {
+          const completed = results.filter((result) => result.stage === round.id);
+          const completedIds = new Set(completed.map((result) => result.pairId));
+          const livePairs = round.id === currentRound ? pairs.filter((pair) => !completedIds.has(pair.id)) : [];
+          const entries: Array<{ result?: SwissResult; pair?: SwissPair }> = [
+            ...completed.map((result) => ({ result, pair: { id: result.pairId, left: result.left, right: result.right } })),
+            ...livePairs.map((pair) => ({ pair })),
+          ].slice(0, round.count);
+          while (entries.length < round.count) entries.push({});
+
+          return (
+            <div className={`playoff-bracket-round round-${roundIndex + 1}`} key={round.id}>
+              <div className="playoff-bracket-round-head">
+                <span>0{roundIndex + 1}</span>
+                <strong>{round.label}</strong>
+                <b>BO{round.bestOf}</b>
+              </div>
+              <div className="playoff-bracket-matches">
+                {entries.map((entry, index) => {
+                  const pair = entry.pair;
+                  const result = entry.result;
+                  if (!pair) {
+                    return (
+                      <div className="playoff-bracket-match placeholder" key={`${round.id}-placeholder-${index}`}>
+                        <span>Awaiting winner</span>
+                      </div>
+                    );
+                  }
+                  const active = Boolean(pair.active && !result);
+                  return (
+                    <button
+                      type="button"
+                      className={`playoff-bracket-match${result ? " completed" : ""}${active ? " active" : ""}`}
+                      key={result?.id ?? pair.id}
+                      disabled={!result}
+                      onClick={() => result && onOpenResult(result.id)}
+                    >
+                      <PlayoffBracketTeam team={pair.left} score={result?.leftScore} winner={result?.winnerId === pair.left.id} />
+                      <PlayoffBracketTeam team={pair.right} score={result?.rightScore} winner={result?.winnerId === pair.right.id} />
+                      <small>{result ? "View match" : active ? "Your series" : `BO${round.bestOf}`}</small>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function PlayoffBracketTeam({
+  team,
+  score,
+  winner,
+}: {
+  team: FieldTeam;
+  score?: number;
+  winner: boolean;
+}) {
+  return (
+    <span className={`playoff-bracket-team${winner ? " winner" : ""}`}>
+      <TeamLogo team={team} small />
+      <b>{team.name}</b>
+      <em>{score ?? "–"}</em>
+    </span>
   );
 }
 
@@ -7893,6 +8040,7 @@ function TransferCandidateCard({
           </strong>
           <span>
             {candidate.team.tag} · {candidate.player.role} · OVR {candidate.player.ovr}
+            {candidate.player.age != null ? ` · Age ${candidate.player.age}` : ""}
           </span>
         </div>
         <span className="candidate-value">{fmtMoney(playerValue(candidate.player))}</span>
@@ -8371,7 +8519,8 @@ function PlayerDetailPage({
               <Flag country={player.country} /> {player.handle}
             </h1>
             <p>
-              {player.realName} / {player.role} /{" "}
+              {player.realName} / {player.role}
+              {player.age != null ? ` / Age ${player.age}` : ""} /{" "}
               <button type="button" className="inline-link" onClick={() => onOpenTeam(team)}>
                 {team.name}
               </button>{" "}

@@ -11,6 +11,7 @@
     "preview": "vite preview --host 127.0.0.1",
     "generate:mirage-nav": "tsx scripts/generate-mirage-nav-mesh.ts",
     "verify:hltv": "node scripts/verify-hltv-top20.mjs",
+    "scrape:hltv-ages": "node scripts/scrape-hltv-player-ages.mjs --refresh",
     "scrape:hltv-splits": "python3 scripts/scrape-hltv-player-splits.py",
     "scrape:hltv-splits:uc": "python3 scripts/scrape-hltv-player-splits-uc.py --write-ts"
   },

@@ -10,6 +10,7 @@ import {
   rateStatsForRole,
 } from "./gameData";
 import { hltvPlayerSplits2026 } from "./hltvPlayerSplits2026";
+import { hltvPlayerAge2026 } from "./hltvPlayerAges2026";
 import { teamLogoUrls } from "./teamLogos";
 
 type CoachStyle = Coach["style"];
@@ -378,6 +379,7 @@ export function makeHltvRoster(team: HltvTeamSeed): Roster {
         ovr: rateStatsForRole(stats, player.role === "Support" && player.fragSupport ? "Rifler" : player.role),
         hltvRating: effectiveHltvRating(player, team),
         hltvMaps: ratingSample(player, team, "overall").maps,
+        age: source.year === "2026" ? hltvPlayerAge2026(player.handle) : undefined,
         source,
         maps: playerMapPool(index, player, team, maps),
       };
