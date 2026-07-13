@@ -15,7 +15,18 @@ import type { Vec } from "./mapGeometry";
 import { getNavGrid, hasLineOfSight, snapToWalkable } from "./mapGeometry";
 import { getNode, nearestNode, neighbors, spawnNodeId } from "./mirageNav";
 import { findRoute, corridorPath } from "./pathfinder";
-import { objectiveFor, roundStateFor, type Situation, type Site } from "./roundAI";
+import { roundStateFor, type Situation, type Site } from "./roundAI";
+import {
+  assignMirageJobs,
+  ctObjectiveForMirageJob,
+  postPlantObjectiveForMirageJob,
+  routeForMirageJob,
+  selectMirageCtPushers,
+  type MirageEconomy,
+  type MirageCallStyle,
+  type MirageJob,
+  type MiragePlan,
+} from "./miragePlans";
 
 const GRID = getNavGrid("mirage");
 
@@ -63,12 +74,14 @@ export interface MirageSimInput {
   you: Team;
   opponent: Team;
   side: "CT" | "T"; // your team's side
-  strategy: number; // mirageStrategy
+  plan: MiragePlan;
   skill: Map<string, number>; // `${team}:${playerId}` -> duel skill (from killWeight); higher wins more
   awp: Set<string>; // `${team}:${playerId}` entries holding an AWP
   weapons: Record<string, string>; // `${team}:${playerId}` -> weapon name (for the feed)
   teamBias: number; // -0.5..0.5: >0 favours "you" per duel (from team-strength probability)
-  tactic?: string; // "aggressive" makes CTs more likely to push out to the extremities
+  tactics: Record<TeamKey, MirageCallStyle>;
+  utilityCounts: Record<TeamKey, number>;
+  economies: Record<TeamKey, MirageEconomy>;
 }
 interface Team {
   players: Player[];
@@ -94,6 +107,8 @@ export interface TimelineFrame {
 export interface MirageSimResult {
   events: SimEvent[];
   timeline: TimelineFrame[];
+  planId: MiragePlan["id"];
+  planLabel: string;
   youWin: boolean;
   tPlantedBomb: boolean;
   bombOutcome: "none" | "defused" | "exploded";
@@ -106,6 +121,7 @@ interface SimP {
   team: TeamKey;
   side: "CT" | "T";
   idx: number;
+  job: MirageJob;
   pts: Vec[];
   cum: number[];
   len: number;
@@ -126,31 +142,6 @@ interface SimP {
 
 function playerKey(team: TeamKey, id: string) {
   return `${team}:${id}`;
-}
-
-// T-side approach plans — distinct routes per player so a take spreads across the map (ramp, palace,
-// mid->connector->A, mid->cat->short->B, apps, underpass lurk) instead of funnelling one choke. Each
-// step is a real graph edge; the final node is what they hold. idx 0-4 = roster slots.
-function tPlan(idx: number, strategy: number): string[] {
-  const A_PALACE = ["palace", "asite"]; // T spawn -> palace -> drop A
-  const A_MID = ["sidealley", "topmid", "mid", "connector", "asite"]; // mid -> connector -> A
-  const B_APPS = ["sidealley", "house", "backalley", "bapps", "van", "bsite"]; // apps -> van -> B
-  const B_MID = ["sidealley", "topmid", "mid", "catwalk", "bsite"]; // mid -> short (catwalk) -> B
-  const MID = ["sidealley", "topmid", "mid"]; // mid control / lurk
-  const MID_LURK = ["sidealley", "topmid", "mid", "underpass", "backalley", "bapps"]; // underpass UP to apps
-  if (strategy === 1) return [A_PALACE, A_MID, A_PALACE, A_MID, MID][idx]; // stack A
-  if (strategy === 2) return [B_APPS, B_APPS, B_MID, B_MID, MID_LURK][idx]; // stack B
-  return [A_PALACE, A_MID, B_APPS, B_MID, MID][idx]; // split A/B
-}
-
-// CT objective per slot. `push` sends them out toward the enemy (aggressive peek) instead of holding
-// their site — CT-reachable forward positions only.
-function ctObjective(idx: number, push: boolean): string {
-  if (idx === 0) return push ? "connector" : "asite"; // A anchor / push up connector
-  if (idx === 3) return push ? "mid" : "jungle"; // A support: jungle hold / mid push
-  if (idx === 1) return push ? "catwalk" : "bsite"; // B anchor / push catwalk
-  if (idx === 4) return push ? "underpass" : "market"; // B support: market hold / underpass push
-  return push ? "topmid" : "window"; // mid player: snipers hold / top-mid push
 }
 
 // Route through a sequence of callouts (each leg via findRoute), corridor-snapped to the floor.
@@ -217,44 +208,45 @@ function siteNode(site: Site): Vec {
 }
 
 export function simulateMirageRound(input: MirageSimInput): MirageSimResult {
-  const { side, strategy, skill, awp, teamBias } = input;
+  const { side, plan, skill, awp, teamBias } = input;
   const tKey: TeamKey = side === "T" ? "you" : "opponent";
   const ctKey: TeamKey = side === "CT" ? "you" : "opponent";
   const sideOf = (team: TeamKey): "CT" | "T" => (team === tKey ? "T" : "CT");
 
-  const bombSite: Site = strategy === 2 ? "bsite" : strategy === 1 ? "asite" : Math.random() < 0.5 ? "asite" : "bsite";
+  const bombSite = plan.site;
 
   // Build the 10 players with role-based objectives (spread across approaches).
-  const sit0: Situation = {
-    bombPlanted: false,
-    enemyAwperPressure: 0.4,
-    hasUtility: false,
-    availableUtility: 0,
-    saving: false,
+  const situationFor = (team: TeamKey): Situation => {
+    const enemy = team === "you" ? "opponent" : "you";
+    const utilityCount = input.utilityCounts[team] ?? 0;
+    const enemyHasAwp = [...awp].some((key) => key.startsWith(`${enemy}:`));
+    return {
+      bombPlanted: false,
+      enemyAwperPressure: enemyHasAwp ? 0.75 : 0.18,
+      hasUtility: utilityCount > 0,
+      availableUtility: Math.min(1, utilityCount / 10),
+      saving: input.economies[team] === "ECO" && input.tactics[team] === "cautious",
+    };
   };
-  const aggressiveRound = input.tactic === "aggressive";
   const make = (team: TeamKey, players: Player[]): SimP[] => {
     const pside = sideOf(team);
-    // Decide which CTs push out (cap 2 so the site isn't abandoned). Aggressive-style riflers push,
-    // an "aggressive" round call pushes more, plus a small baseline peek chance.
-    const ctPush: boolean[] = players.map((ref) =>
-      pside === "CT" &&
-      (ref.style === "Aggressive" || (aggressiveRound && Math.random() < 0.7) || Math.random() < 0.1),
-    );
-    let pushBudget = 2;
+    const jobs = assignMirageJobs(players, (player) => awp.has(playerKey(team, player.id)) || awp.has(player.id));
+    const pushers = pside === "CT"
+      ? selectMirageCtPushers(players, jobs, input.tactics[team])
+      : new Set<string>();
+    const situation = situationFor(team);
     return players.map((ref, idx) => {
       let route: { pts: Vec[]; cum: number[]; len: number };
       let objective: string;
+      const job = jobs.get(ref.id) ?? "trader";
       if (pside === "T") {
-        const plan = tPlan(idx, strategy);
-        const r = buildPlanRoute("tspawn", plan, sit0);
+        const routePlan = routeForMirageJob(plan, job);
+        const r = buildPlanRoute("tspawn", routePlan, situation);
         route = { pts: r.pts, cum: r.cum, len: r.len };
         objective = r.lastNode;
       } else {
-        const push = ctPush[idx] && pushBudget > 0;
-        if (push) pushBudget -= 1;
-        objective = ctObjective(idx, push);
-        route = buildRoute("ctspawn", objective, sit0);
+        objective = ctObjectiveForMirageJob(job, pushers.has(ref.id));
+        route = buildRoute("ctspawn", objective, situation);
       }
       // start spread in a pentagon around the spawn centre so the 5 dots don't stack. Not snapped to
       // the mesh (the strict spawn floor is tiny and would collapse them) — it's just the visual start
@@ -270,6 +262,7 @@ export function simulateMirageRound(input: MirageSimInput): MirageSimResult {
         team,
         side: pside,
         idx,
+        job,
         ...route,
         dist: 0,
         pos: pad,
@@ -324,10 +317,10 @@ export function simulateMirageRound(input: MirageSimInput): MirageSimResult {
   let plantedSite: Site | null = null;
   const replan = (plantSite: Site) => {
     plantedSite = plantSite;
-    const sit: Situation = { ...sit0, bombPlanted: true, plantSite };
     for (const p of ps) {
       if (!p.alive) continue;
-      const obj = objectiveFor(p.side, p.idx, strategy, sit);
+      const sit: Situation = { ...situationFor(p.team), bombPlanted: true, plantSite };
+      const obj = postPlantObjectiveForMirageJob(p.side, p.job, plantSite);
       const route = withStart(buildRoute(p.nodeId, obj, sit), p.pos);
       p.pts = route.pts;
       p.cum = route.cum;
@@ -342,10 +335,13 @@ export function simulateMirageRound(input: MirageSimInput): MirageSimResult {
   };
 
   // Reposition a player from where they are to a new callout (peek/re-angle/rotate) — keeps play dynamic.
-  const sitNow = (): Situation => (plantedSite ? { ...sit0, bombPlanted: true, plantSite: plantedSite } : sit0);
+  const sitNow = (team: TeamKey): Situation => {
+    const situation = situationFor(team);
+    return plantedSite ? { ...situation, bombPlanted: true, plantSite: plantedSite } : situation;
+  };
   const repositionTo = (p: SimP, toNodeId: string) => {
     const fromNode = nearestNode(p.pos.x, p.pos.y).id;
-    const route = withStart(buildRoute(fromNode, toNodeId, sitNow()), p.pos);
+    const route = withStart(buildRoute(fromNode, toNodeId, sitNow(p.team)), p.pos);
     p.pts = route.pts;
     p.cum = route.cum;
     p.len = route.len;
@@ -606,6 +602,8 @@ export function simulateMirageRound(input: MirageSimInput): MirageSimResult {
   return {
     events,
     timeline,
+    planId: plan.id,
+    planLabel: plan.label,
     youWin: winner === "you",
     tPlantedBomb: planted,
     bombOutcome,

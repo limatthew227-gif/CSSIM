@@ -3,9 +3,10 @@
  * chokepoints, available utility and round state, so the AI picks realistic routes (e.g. avoid a dry
  * A-ramp with no smokes, avoid mid/window vs a strong AWP, take the fastest rotate after a plant).
  */
-import { mirageNodes, neighbors, getNode, type MapEdge, type MapNode } from "./mirageNav";
-import { getNavGrid, findPath } from "./mapGeometry";
+import { mirageNodes, neighbors, getNode, nearestNode, type MapEdge, type MapNode } from "./mirageNav";
+import { getNavGrid, findPath, hasLineOfSight, type NavGrid } from "./mapGeometry";
 import type { MapId } from "./gameData";
+import { findMirageNavPath } from "./mirageNavMeshPath";
 
 type XY = { x: number; y: number };
 
@@ -24,12 +25,35 @@ export function corridorPath(mapId: MapId, points: XY[]): XY[] {
     const key = `${mapId}:${a.x.toFixed(1)},${a.y.toFixed(1)}>${b.x.toFixed(1)},${b.y.toFixed(1)}`;
     let seg = corridorCache.get(key);
     if (!seg) {
-      seg = findPath(grid, a, b);
+      const meshPath = mapId === "mirage"
+        ? findMirageNavPath(a, b, { startNodeId: nearestNode(a.x, a.y).id, endNodeId: nearestNode(b.x, b.y).id })
+        : null;
+      const projected = meshPath ? refineProjectedNavPath(grid, meshPath) : null;
+      seg = projected && projectedPathIsClear(grid, projected) ? projected : findPath(grid, a, b);
       if (corridorCache.size < 4000) corridorCache.set(key, seg);
     }
     for (let j = 1; j < seg.length; j += 1) out.push(seg[j]); // seg[0] === a, already in out
   }
   return out;
+}
+
+function refineProjectedNavPath(grid: NavGrid, points: XY[]) {
+  if (points.length < 2) return points;
+  const refined: XY[] = [points[0]];
+  for (let index = 1; index < points.length; index += 1) {
+    const from = refined[refined.length - 1];
+    const to = points[index];
+    const leg = hasLineOfSight(grid, from, to) ? [from, to] : findPath(grid, from, to);
+    for (let legIndex = 1; legIndex < leg.length; legIndex += 1) refined.push(leg[legIndex]);
+  }
+  return refined;
+}
+
+function projectedPathIsClear(grid: NavGrid, points: XY[]) {
+  for (let index = 1; index < points.length; index += 1) {
+    if (!hasLineOfSight(grid, points[index - 1], points[index])) return false;
+  }
+  return true;
 }
 
 export interface RoundState {

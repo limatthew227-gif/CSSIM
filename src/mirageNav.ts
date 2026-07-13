@@ -98,6 +98,7 @@ export const mirageEdges: MapEdge[] = [
   e("palace", "tramp", { exposure: 0.3 }),
   e("palace", "scaffolding", { exposure: 0.4 }),
   e("palacealley", "tramp", { exposure: 0.3 }),
+  e("tramp", "scaffolding", { exposure: 0.5, chokepoint: 0.5, utilityValue: 0.6, tags: ["a-execute"] }),
   e("asite", "aramp", { exposure: 0.6, chokepoint: 0.5, tags: ["a-execute"] }),
   e("asite", "scaffolding", { exposure: 0.4 }),
   e("asite", "connector", { exposure: 0.5, chokepoint: 0.4, tags: ["mid-to-a"] }),

@@ -6,7 +6,49 @@
 //   npx tsx scripts/parse-nav.ts [path-to.nav]   -> prints stats + writes scratch/nav-walkable.svg
 import { readFileSync, writeFileSync } from "node:fs";
 
-export interface NavArea { id: number; nwX: number; nwY: number; seX: number; seY: number; z: number; place: number; }
+export interface NavHidingSpot {
+  id: number;
+  x: number;
+  y: number;
+  z: number;
+  flags: number;
+}
+
+export interface NavEncounterPath {
+  fromAreaId: number;
+  fromDirection: number;
+  toAreaId: number;
+  toDirection: number;
+  spots: Array<{ areaId: number; order: number }>;
+}
+
+export interface NavVisibleArea {
+  id: number;
+  attributes: number;
+}
+
+export interface NavArea {
+  id: number;
+  attributeFlags: number;
+  nwX: number;
+  nwY: number;
+  nwZ: number;
+  seX: number;
+  seY: number;
+  seZ: number;
+  neZ: number;
+  swZ: number;
+  z: number;
+  place: number;
+  connections: number[][];
+  hidingSpots: NavHidingSpot[];
+  encounterPaths: NavEncounterPath[];
+  ladderConnections: [number[], number[]];
+  earliestOccupy: [number, number];
+  lightIntensity: [number, number, number, number];
+  visibleAreas: NavVisibleArea[];
+  inheritVisibilityFrom: number;
+}
 
 export function parseNavAreas(path: string): { version: number; places: string[]; areas: NavArea[]; endedAt: number; size: number } {
   const b = readFileSync(path);
@@ -30,22 +72,75 @@ export function parseNavAreas(path: string): { version: number; places: string[]
   const areas: NavArea[] = [];
   for (let i = 0; i < areaCount; i += 1) {
     const id = u32();
-    if (version >= 13) u32(); else if (version >= 9) u16(); else u8(); // attributeFlags
-    const nwX = f32(), nwY = f32(); f32();
-    const seX = f32(), seY = f32(); const seZ = f32();
-    const neZ = f32(); f32(); // neZ, swZ
-    for (let d = 0; d < 4; d += 1) { const c = u32(); o += c * 4; } // connections
-    const hc = u8(); o += hc * (4 + 12 + 1); // hiding spots
+    const attributeFlags = version >= 13 ? u32() : version >= 9 ? u16() : u8();
+    const nwX = f32(), nwY = f32(), nwZ = f32();
+    const seX = f32(), seY = f32(), seZ = f32();
+    const neZ = f32(), swZ = f32();
+    const connections: number[][] = [];
+    for (let d = 0; d < 4; d += 1) {
+      const count = u32();
+      const direction: number[] = [];
+      for (let c = 0; c < count; c += 1) direction.push(u32());
+      connections.push(direction);
+    }
+    const hidingSpots: NavHidingSpot[] = [];
+    const hidingSpotCount = u8();
+    for (let h = 0; h < hidingSpotCount; h += 1) {
+      hidingSpots.push({ id: u32(), x: f32(), y: f32(), z: f32(), flags: u8() });
+    }
     if (version < 15) { const ac = u8(); o += ac * (4 * 3 + 2); } // approach areas
-    const ec = u32(); // encounter paths
-    for (let e = 0; e < ec; e += 1) { o += 4 + 1 + 4 + 1; const sc = u8(); o += sc * (4 + 1); }
+    const encounterPaths: NavEncounterPath[] = [];
+    const encounterPathCount = u32();
+    for (let e = 0; e < encounterPathCount; e += 1) {
+      const fromAreaId = u32();
+      const fromDirection = u8();
+      const toAreaId = u32();
+      const toDirection = u8();
+      const spots: NavEncounterPath["spots"] = [];
+      const spotCount = u8();
+      for (let s = 0; s < spotCount; s += 1) spots.push({ areaId: u32(), order: u8() });
+      encounterPaths.push({ fromAreaId, fromDirection, toAreaId, toDirection, spots });
+    }
     const place = u16();
-    for (let d = 0; d < 2; d += 1) { const c = u32(); o += c * 4; } // ladder connections
-    f32(); f32(); // earliest occupy times
-    if (version >= 11) { f32(); f32(); f32(); f32(); } // light intensity
-    if (version >= 16) { const vc = u32(); o += vc * (4 + 1); u32(); } // visible areas + inheritVisibilityFrom
+    const ladderConnections: [number[], number[]] = [[], []];
+    for (let d = 0; d < 2; d += 1) {
+      const count = u32();
+      for (let c = 0; c < count; c += 1) ladderConnections[d].push(u32());
+    }
+    const earliestOccupy: [number, number] = [f32(), f32()];
+    const lightIntensity: [number, number, number, number] = version >= 11
+      ? [f32(), f32(), f32(), f32()]
+      : [1, 1, 1, 1];
+    const visibleAreas: NavVisibleArea[] = [];
+    let inheritVisibilityFrom = 0;
+    if (version >= 16) {
+      const visibleCount = u32();
+      for (let v = 0; v < visibleCount; v += 1) visibleAreas.push({ id: u32(), attributes: u8() });
+      inheritVisibilityFrom = u32();
+    }
     const gc = u8(); o += gc * 14; // trailing "garbage" block (the missing piece)
-    areas.push({ id, nwX, nwY, seX, seY, z: (neZ + seZ) / 2, place });
+    areas.push({
+      id,
+      attributeFlags,
+      nwX,
+      nwY,
+      nwZ,
+      seX,
+      seY,
+      seZ,
+      neZ,
+      swZ,
+      z: (nwZ + neZ + seZ + swZ) / 4,
+      place,
+      connections,
+      hidingSpots,
+      encounterPaths,
+      ladderConnections,
+      earliestOccupy,
+      lightIntensity,
+      visibleAreas,
+      inheritVisibilityFrom,
+    });
   }
   return { version, places, areas, endedAt: o, size: b.length };
 }

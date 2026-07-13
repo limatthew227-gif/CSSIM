@@ -15,6 +15,7 @@ import { findRoute, pointAlongRoute, nodeIndexAt, corridorPath } from "./pathfin
 import { mirageStrategy, spawnNodeId, areConnected, getNode, type MapNode } from "./mirageNav";
 import { objectiveFor, roundStateFor, type Situation, type Site } from "./roundAI";
 import { simulateMirageRound, type TimelineFrame } from "./mirageRoundSim";
+import { inferMirageCallStyle, selectMiragePlan } from "./miragePlans";
 
 export interface BonusLine {
   label: string;
@@ -2326,8 +2327,29 @@ export function generateDynamicRound(
     fillSkill("you", you.players, yourWeapons, opponent.rank);
     fillSkill("opponent", opponent.players, opponentWeapons, you.rank);
     const teamBias = clamp(initialProbability, 0.01, 0.99) - 0.5; // team strength still tilts duels
+    const tactics = {
+      you: parsedTactic.style,
+      opponent: inferMirageCallStyle(opponent.players),
+    } as const;
+    const utilityCounts = { you: yourUtilCount, opponent: opponentUtilCount };
+    const economies = { you: yourBuyState, opponent: opponentBuyState };
+    const tEconomy = economies[tTeamKey];
+    const tUtilityCount = utilityCounts[tTeamKey];
+    const plan = selectMiragePlan({ tactic: tactics[tTeamKey], economy: tEconomy, utilityCount: tUtilityCount });
 
-    const sim = simulateMirageRound({ you, opponent, side, strategy, skill, awp: awpSet, weapons: weaponsAll, teamBias, tactic: parsedTactic.style });
+    const sim = simulateMirageRound({
+      you,
+      opponent,
+      side,
+      plan,
+      skill,
+      awp: awpSet,
+      weapons: weaponsAll,
+      teamBias,
+      tactics,
+      utilityCounts,
+      economies,
+    });
 
     const idMap = new Map<string, Player>([
       ...you.players.map((pl) => [scopedKey("you", pl.id), pl] as const),
@@ -2363,7 +2385,7 @@ export function generateDynamicRound(
       const fr = sim.timeline.length ? frameAt(ut).players.find((p) => p.id === scopedKey(teamKey, thrower.id)) : undefined;
       const from = fr ? { x: fr.x, y: fr.y } : undefined;
       // T util lands on the site being hit; CT util contests mid / the choke.
-      const targetNode = getNode(teamKey === tTeamKey ? (strategy === 2 ? "bsite" : "asite") : "mid");
+      const targetNode = getNode(teamKey === tTeamKey ? plan.site : "mid");
       const targetPos = targetNode ? { x: targetNode.x, y: targetNode.y } : undefined;
       utilLines.push({ round, killer: thrower.handle, killerId: thrower.id, victim: "", victimId: "", weapon: type, team: teamKey, first: false, type, killerPos: from ?? targetPos, targetPos, t: ut });
     }
