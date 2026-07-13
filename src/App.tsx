@@ -114,6 +114,7 @@ import {
   type CircuitEventId,
 } from "./circuit";
 import { hltvTop20Coaches, hltvTop20Rosters } from "./hltvTop20";
+import { hltvRanked27To50Coaches, hltvRanked27To50Rosters } from "./hltvRanked27To50";
 import { playerPhoto } from "./playerPhotos";
 import { simulateRadarPlayers, MAP_LAYOUTS, getStepDelay } from "./radarSim";
 import { mapGeometries, hasPixelNav } from "./mapGeometry";
@@ -218,6 +219,8 @@ const utilityLabels: Record<string, string> = {
 };
 
 const COACH_SHORTLIST_SIZE = 5;
+const builtInHltvRosters = [...hltvTop20Rosters, ...hltvRanked27To50Rosters];
+const builtInHltvCoaches = [...hltvTop20Coaches, ...hltvRanked27To50Coaches];
 const ROUND_STYLE_OPTIONS: Array<{ id: RoundStyleCall; label: string }> = [
   { id: "standard", label: "Standard" },
   { id: "aggressive", label: "Aggro" },
@@ -799,8 +802,8 @@ function App() {
   const [timeouts, setTimeouts] = useState(2);
   const [timeoutPlan, setTimeoutPlan] = useState<TimeoutPlan>({ boost: 0, rounds: 0 });
   const [liveFeedView, setLiveFeedView] = useState<LiveFeedView>("feed");
-  const builtInRosterCount = hltvTop20Rosters.length;
-  const rosterPool = useMemo(() => [...hltvTop20Rosters, ...customRosters], [customRosters]);
+  const builtInRosterCount = builtInHltvRosters.length;
+  const rosterPool = useMemo(() => [...builtInHltvRosters, ...customRosters], [customRosters]);
   const labTeams = useMemo(() => rosterPool.map(toTournamentTeam), [rosterPool]);
   const comparePool = useMemo(() => rosterPool.flatMap((roster) => roster.players.map((player) => ({ player, team: roster }))), [rosterPool]);
   const playerTeamMap = useMemo(() => {
@@ -808,7 +811,7 @@ function App() {
     rosterPool.forEach((roster) => roster.players.forEach((player) => map.set(player.id, roster)));
     return map;
   }, [rosterPool]);
-  const coachPool = useMemo(() => hltvTop20Coaches, []);
+  const coachPool = useMemo(() => builtInHltvCoaches, []);
   const visibleCoachOptions = coachOptions.length ? coachOptions : coachPool.slice(0, COACH_SHORTLIST_SIZE);
   const activeCall = parseTactic(tactic);
   const circuitEvent = circuitEventById(circuitEventId);
@@ -9181,8 +9184,8 @@ function hashText(value: string) {
 
 function coachForRoster(roster: Roster) {
   if (!roster.id.startsWith("hltv-")) return undefined;
-  const teamId = roster.id.replace(/^hltv-/, "").replace(/-2026-06-08$/, "");
-  return hltvTop20Coaches.find((coach) => coach.id === `hltv-coach-${teamId}`);
+  const teamId = roster.id.replace(/^hltv-/, "").replace(/-20\d{2}-\d{2}-\d{2}$/, "");
+  return builtInHltvCoaches.find((coach) => coach.id === `hltv-coach-${teamId}`);
 }
 
 function toTournamentTeam(roster: Roster): FieldTeam {
@@ -9193,7 +9196,8 @@ function toTournamentTeam(roster: Roster): FieldTeam {
 }
 
 function buildSwissField(rosterPool: Roster[]) {
-  return shuffle(rosterPool).slice(0, SWISS_OPPONENT_COUNT).map(toTournamentTeam);
+  const majorPool = rosterPool.filter((roster) => roster.rank == null || roster.rank <= 20);
+  return shuffle(majorPool).slice(0, SWISS_OPPONENT_COUNT).map(toTournamentTeam);
 }
 
 function buildCircuitField(rosterPool: Roster[], event: CircuitEvent) {

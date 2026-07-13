@@ -20,7 +20,7 @@ interface RatingSample {
   maps: number;
 }
 
-interface HltvPlayerSeed {
+export interface HltvPlayerSeed {
   handle: string;
   realName: string;
   country: string;
@@ -34,10 +34,11 @@ interface HltvPlayerSeed {
   recentRating?: number;
 }
 
-interface HltvTeamSeed {
+export interface HltvTeamSeed {
   id: string;
   rosterId?: string;
   logoKey?: string;
+  logoUrl?: string;
   era?: SourceTeam["era"];
   year?: string;
   rankingLabel?: string;
@@ -97,7 +98,10 @@ function estimateMaps(team: HltvTeamSeed, filter: RatingFilter) {
   const base = clampNumber(team.coachMaps * 0.45, 42, 140);
   if (filter === "overall") return Math.round(base);
 
-  const rankPressure = (team.rank - 1) / 19;
+  // The original card model was calibrated for the top 20. Keep that curve intact, then cap the
+  // opposition pressure so lower-ranked teams still receive meaningful samples instead of one-map
+  // placeholders once the database extends beyond #20.
+  const rankPressure = clampNumber((team.rank - 1) / 19, 0, 1.25);
   const factor =
     filter === "top50"
       ? 0.68 - rankPressure * 0.23
@@ -114,7 +118,7 @@ function inferRating(player: HltvPlayerSeed, team: HltvTeamSeed, filter: RatingF
   const baseRating = effectiveHltvRating(player, team);
   if (filter === "overall") return clampRating(baseRating);
 
-  const rankPressure = (team.rank - 1) / 19;
+  const rankPressure = clampNumber((team.rank - 1) / 19, 0, 1.25);
   const baseDrop =
     filter === "top5"
       ? 0.03 + rankPressure * 0.11
@@ -195,7 +199,7 @@ function weightedSampleConfidence(player: HltvPlayerSeed, team: HltvTeamSeed) {
 }
 
 function teamContextRating(team: HltvTeamSeed) {
-  const rankValue = (21 - team.rank) / 20;
+  const rankValue = team.rank <= 20 ? (21 - team.rank) / 20 : -Math.min(0.4, (team.rank - 20) / 75);
   const pointValue = clampNumber(Math.log10(team.points) / 3, 0.55, 1);
   const winValue = clampNumber((team.coachWinrate - 50) / 100, -0.08, 0.25);
   return 0.955 + rankValue * 0.105 + pointValue * 0.04 + winValue * 0.055;
@@ -337,7 +341,7 @@ function playerMapPool(index: number, player: HltvPlayerSeed, team: HltvTeamSeed
   );
 }
 
-function makeRoster(team: HltvTeamSeed): Roster {
+export function makeHltvRoster(team: HltvTeamSeed): Roster {
   const source: SourceTeam = {
     tag: team.tag,
     name: team.name,
@@ -345,7 +349,7 @@ function makeRoster(team: HltvTeamSeed): Roster {
     era: team.era ?? "CS2",
     year: team.year ?? "2026",
     accent: team.accent,
-    logo: teamLogoUrls[team.logoKey ?? team.id],
+    logo: team.logoUrl ?? teamLogoUrls[team.logoKey ?? team.id],
   };
   const maps = teamMapPool(team);
   const rankingLabel = team.rankingLabel ?? `HLTV #${team.rank} on June 8, 2026`;
@@ -395,7 +399,7 @@ function coachRating(team: HltvTeamSeed) {
   );
 }
 
-function makeCoach(team: HltvTeamSeed): Coach {
+export function makeHltvCoach(team: HltvTeamSeed): Coach {
   const trophyText = `${team.coachTrophies} ${team.coachTrophies === 1 ? "trophy" : "trophies"}`;
   return {
     id: `hltv-coach-${team.id}`,
@@ -1384,5 +1388,5 @@ const hltvTeams: HltvTeamSeed[] = [
   },
 ];
 
-export const hltvTop20Rosters: Roster[] = hltvTeams.map(makeRoster);
-export const hltvTop20Coaches: Coach[] = hltvTeams.map(makeCoach);
+export const hltvTop20Rosters: Roster[] = hltvTeams.map(makeHltvRoster);
+export const hltvTop20Coaches: Coach[] = hltvTeams.map(makeHltvCoach);
