@@ -915,11 +915,15 @@ function App() {
     });
     return recs;
   }, [matchResults, viewedSwissRound]);
+  const normalizedCircuitArchive = useMemo(
+    () => normalizeCircuitResultArchive(circuitMajorResults, circuitEvent),
+    [circuitEvent, circuitMajorResults],
+  );
   const majorRunResults = useMemo(
     () => mode === "circuit"
-      ? [...circuitMajorResults, ...tagCircuitResults(matchResults, circuitEvent)]
+      ? [...normalizedCircuitArchive, ...tagCircuitResults(matchResults, circuitEvent)]
       : matchResults,
-    [circuitEvent, circuitMajorResults, matchResults, mode],
+    [circuitEvent, matchResults, mode, normalizedCircuitArchive],
   );
   const playerDatabase = useMemo(() => buildPlayerDatabase(matchResults), [matchResults]);
   const selectedResult = useMemo(
@@ -2026,7 +2030,7 @@ function App() {
       ...result,
       maps: result.maps.map((mapResult) => ({ ...mapResult, eventLog: undefined })),
     }));
-    const slimCircuitResults = circuitMajorResults.map((result) => ({
+    const slimCircuitResults = normalizeCircuitResultArchive(circuitMajorResults, circuitEvent).map((result) => ({
       ...result,
       maps: result.maps.map((mapResult) => ({ ...mapResult, eventLog: undefined })),
     }));
@@ -2175,10 +2179,11 @@ function App() {
         entry.eventId ? { ...entry, eventId: normalizeCircuitEventId(entry.eventId) } : entry,
       ),
     );
-    setCircuitEventId(normalizeCircuitEventId(snapshot.circuitEventId));
+    const loadedCircuitEventId = normalizeCircuitEventId(snapshot.circuitEventId);
+    setCircuitEventId(loadedCircuitEventId);
     setCircuitSeason(snapshot.circuitSeason ?? 1);
     setCircuitPoints(snapshot.circuitPoints ?? 0);
-    setCircuitMajorResults(snapshot.circuitMajorResults ?? []);
+    setCircuitMajorResults(normalizeCircuitResultArchive(snapshot.circuitMajorResults ?? [], circuitEventById(loadedCircuitEventId)));
     setCircuitObserver(snapshot.circuitObserver ?? false);
     setCircuitOffseasonTarget(
       snapshot.circuitOffseasonTarget
@@ -9065,7 +9070,7 @@ function buildTeamStageGroups(team: FieldTeam, games: SwissResult[]): TeamStageG
   return [...grouped.entries()]
     .map(([key, stageGames]) => ({
       key,
-      name: stageGames[0]?.eventName ?? "Current event",
+      name: stageGames[0]?.eventName ?? "Major",
       games: stageGames,
       wins: stageGames.filter((result) => result.winnerId === team.id).length,
       maps: stageGames.reduce((sum, result) => sum + result.maps.length, 0),
@@ -9783,6 +9788,30 @@ function tagCircuitResults(results: SwissResult[], event: CircuitEvent) {
       eventId: event.id,
       eventName: event.name,
     };
+  });
+}
+
+function normalizeCircuitResultArchive(results: SwissResult[], currentEvent: CircuitEvent) {
+  if (!results.some((result) => !result.eventId)) return results;
+
+  const segments: SwissResult[][] = [];
+  results.forEach((result) => {
+    const segment = segments[segments.length - 1];
+    const previous = segment?.[segment.length - 1];
+    const crossedTaggedBoundary = Boolean(previous && (previous.eventId || result.eventId) && previous.eventId !== result.eventId);
+    const crossedLegacyBoundary = Boolean(previous && !previous.eventId && !result.eventId && result.round < previous.round);
+    if (!segment || crossedTaggedBoundary || crossedLegacyBoundary) segments.push([result]);
+    else segment.push(result);
+  });
+
+  // Archived blocks always precede the active stage. Working backward from that stage also
+  // migrates careers that began at Stage 1 or Stage 2 instead of at the MRQ.
+  const currentIndex = circuitEventIndex(currentEvent.id);
+  const firstArchivedIndex = Math.max(0, currentIndex - segments.length);
+  return segments.flatMap((segment, index) => {
+    if (segment[0]?.eventId) return segment;
+    const inferredEvent = circuitEvents[Math.min(currentIndex, firstArchivedIndex + index)] ?? currentEvent;
+    return tagCircuitResults(segment, inferredEvent);
   });
 }
 
