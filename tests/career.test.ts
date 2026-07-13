@@ -79,6 +79,9 @@ test("developPlayer: overperformers rise (capped +2 and by potential), underperf
 
   const capped = developPlayer({ player: mk("star", "Rifler", 90), rating: 1.5, placement: "champion", potential: 90 });
   assert.equal(capped.ovrDelta, 0, "cannot develop past potential");
+
+  const minor = developPlayer({ player: p, rating: 1.4, placement: "champion", potential: 90, maxGain: 1, maxIglGain: 1 });
+  assert.equal(minor.ovrDelta, 1, "lower-tier events can use a slower development cap");
 });
 
 test("developPlayer: IGLs are placement-driven and don't drop OVR on a non-flop", () => {

@@ -99,6 +99,20 @@ import {
   expectedRating,
   developPlayer,
 } from "./career";
+import {
+  advanceCircuit,
+  circuitEventById,
+  circuitEventIndex,
+  circuitEvents,
+  circuitFieldLabel,
+  circuitPrize,
+  circuitQualificationLabel,
+  circuitWorldRank,
+  firstCircuitEventId,
+  pickCircuitRosters,
+  type CircuitEvent,
+  type CircuitEventId,
+} from "./circuit";
 import { hltvTop20Coaches, hltvTop20Rosters } from "./hltvTop20";
 import { playerPhoto } from "./playerPhotos";
 import { simulateRadarPlayers, MAP_LAYOUTS, getStepDelay } from "./radarSim";
@@ -216,7 +230,7 @@ const BUY_CALL_OPTIONS: Array<{ id: BuyCall; label: string }> = [
 ];
 
 type Screen = "setup" | "teams" | "draft" | "coach" | "swiss" | "playoffs" | "veto" | "match" | "result" | "stats" | "results" | "series-detail" | "player-detail" | "team-detail" | "balance-lab" | "vault" | "vault-replay" | "vault-team" | "compare" | "transfer";
-type Mode = "classic" | "random" | "spectator";
+type Mode = "classic" | "random" | "circuit" | "spectator";
 type RunKind = "player" | "spectator";
 type SwissRecord = { wins: number; losses: number };
 type TimeoutPlan = { boost: number; rounds: number };
@@ -313,6 +327,18 @@ interface SwissLaneResult {
   result: SwissResult;
 }
 
+interface CareerHistoryEntry {
+  event: number;
+  tier: PlacementTier;
+  prize: number;
+  record: SwissRecord;
+  eventId?: CircuitEventId;
+  eventName?: string;
+  season?: number;
+  points?: number;
+  qualified?: boolean;
+}
+
 interface ActiveSeries {
   id: string;
   pairId: string;
@@ -401,7 +427,10 @@ interface RunSnapshot {
   careerMoney?: number;
   careerEvent?: number;
   playerFinish?: PlacementTier | null;
-  careerHistory?: Array<{ event: number; tier: PlacementTier; prize: number; record: { wins: number; losses: number } }>;
+  careerHistory?: CareerHistoryEntry[];
+  circuitEventId?: CircuitEventId;
+  circuitSeason?: number;
+  circuitPoints?: number;
   transferCandidates?: Array<{ player: Player; team: Roster }>;
   transferTrade?: { incoming: Player; outgoing: Player; delta: number } | null;
   progressionSummary?: Array<{ handle: string; before: number; after: number; iglDelta: number }>;
@@ -744,8 +773,11 @@ function App() {
   // Career continuation: keep this drafted roster across Majors, earn prize money, run a transfer window.
   const [careerActive, setCareerActive] = useState(false);
   const [careerMoney, setCareerMoney] = useState(0);
-  const [careerEvent, setCareerEvent] = useState(1); // Major number currently being played (1-based)
-  const [careerHistory, setCareerHistory] = useState<Array<{ event: number; tier: PlacementTier; prize: number; record: { wins: number; losses: number } }>>([]);
+  const [careerEvent, setCareerEvent] = useState(1); // career event number currently being played (1-based)
+  const [careerHistory, setCareerHistory] = useState<CareerHistoryEntry[]>([]);
+  const [circuitEventId, setCircuitEventId] = useState<CircuitEventId>(firstCircuitEventId);
+  const [circuitSeason, setCircuitSeason] = useState(1);
+  const [circuitPoints, setCircuitPoints] = useState(0);
   const [transferCandidates, setTransferCandidates] = useState<Array<{ player: Player; team: Roster }>>([]);
   const [transferTrade, setTransferTrade] = useState<{ incoming: Player; outgoing: Player; delta: number } | null>(null); // one trade per window
   const [progressionSummary, setProgressionSummary] = useState<Array<{ handle: string; before: number; after: number; iglDelta: number }>>([]);
@@ -779,6 +811,8 @@ function App() {
   const coachPool = useMemo(() => hltvTop20Coaches, []);
   const visibleCoachOptions = coachOptions.length ? coachOptions : coachPool.slice(0, COACH_SHORTLIST_SIZE);
   const activeCall = parseTactic(tactic);
+  const circuitEvent = circuitEventById(circuitEventId);
+  const tournamentName = mode === "circuit" ? circuitEvent.name : "Major";
 
   const formAdjustedPlayers = useMemo(
     () =>
@@ -869,7 +903,7 @@ function App() {
     tournamentOutcome !== "complete" &&
     (runKind === "spectator" || tournamentOutcome === "eliminated");
   const currentBestOf = phase === "playoffs" ? playoffBestOf(playoffRound) : swissBestOf(record);
-  const currentSeriesLabel = phase === "playoffs" ? playoffRoundLabel(playoffRound) : `Swiss round ${record.wins + record.losses + 1}`;
+  const currentSeriesLabel = phase === "playoffs" ? `${tournamentName} / ${playoffRoundLabel(playoffRound)}` : `${tournamentName} / Swiss round ${record.wins + record.losses + 1}`;
   const strengthBreakdown = teamStrengthBreakdown(yourTeam, settings);
   const opponentStrengthBreakdown = teamStrengthBreakdown(opponent, settings, difficulty, true);
   const strength = strengthBreakdown.total;
@@ -980,7 +1014,7 @@ function App() {
     if (transient.includes(screen)) return;
     writeAutosave(buildRunSnapshot(), buildRunSummary());
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [screen, phase, record, matchResults, careerMoney, careerEvent, selected, tournamentOutcome]);
+  }, [screen, phase, record, matchResults, careerMoney, careerEvent, selected, tournamentOutcome, circuitEventId, circuitSeason, circuitPoints]);
 
   useEffect(() => {
     if (screen !== "veto" || !veto.pendingOpponent) return;
@@ -1100,6 +1134,16 @@ function App() {
     setLastPickemDelta(0);
     setAchievements([]);
     setPlayerForm({});
+    setCareerActive(false);
+    setCareerMoney(0);
+    setCareerEvent(1);
+    setCareerHistory([]);
+    setCircuitEventId(firstCircuitEventId);
+    setCircuitSeason(1);
+    setCircuitPoints(0);
+    setTransferCandidates([]);
+    setTransferTrade(null);
+    setProgressionSummary([]);
     setUsedRosterIds([]);
     setPhase("swiss");
     setPlayoffRound("quarterfinal");
@@ -1186,7 +1230,9 @@ function App() {
   function chooseCoach(nextCoach: Coach) {
     setRunKind("player");
     setCoach(nextCoach);
-    const nextSwissField = buildSwissField(rosterPool);
+    const nextSwissField = mode === "circuit"
+      ? buildCircuitField(rosterPool, circuitEventById(circuitEventId))
+      : buildSwissField(rosterPool);
     const nextSwissRecords = initialSwissRecords(nextSwissField);
     const rival = selectOpponentForRecord({ wins: 0, losses: 0 }, nextSwissField, nextSwissRecords, []);
     setPhase("swiss");
@@ -1588,6 +1634,9 @@ function App() {
     setCareerMoney(0);
     setCareerEvent(1);
     setCareerHistory([]);
+    setCircuitEventId(firstCircuitEventId);
+    setCircuitSeason(1);
+    setCircuitPoints(0);
     setTransferCandidates([]);
     setTransferTrade(null);
     setProgressionSummary([]);
@@ -1595,22 +1644,51 @@ function App() {
   }
 
   // ---- Career continuation -------------------------------------------------------------------------
-  // Banked this Major's prize, then open the transfer window. The first call begins the career.
+  // Bank the event prize, apply development, then open the transfer window. The first call begins the career.
   function enterTransferWindow() {
     // playerFinish is captured when you actually resolve; fall back to deriving it only if it's missing.
     const tier = playerFinish ?? placementTier({ champion: tournamentOutcome === "champion", reachedPlayoffs: phase === "playoffs", playoffRound });
-    const prize = prizeForPlacement(tier);
+    const isCircuit = mode === "circuit";
+    const completedEvent = circuitEventById(circuitEventId);
+    const progress = isCircuit ? advanceCircuit(circuitEventId, tier, circuitSeason, circuitPoints) : undefined;
+    const prize = isCircuit ? circuitPrize(completedEvent, tier) : prizeForPlacement(tier);
     setCareerMoney((money) => (careerActive ? money : STARTING_BANKROLL) + prize);
     setCareerActive(true);
-    setCareerHistory((history) => [...history, { event: careerEvent, tier, prize, record: { ...record } }]);
+    setCareerHistory((history) => [
+      ...history,
+      {
+        event: careerEvent,
+        tier,
+        prize,
+        record: { ...record },
+        eventId: isCircuit ? completedEvent.id : undefined,
+        eventName: isCircuit ? completedEvent.name : "Major",
+        season: isCircuit ? circuitSeason : undefined,
+        points: progress?.pointsEarned,
+        qualified: progress?.qualified,
+      },
+    ]);
+    if (progress) {
+      setCircuitEventId(progress.nextEventId);
+      setCircuitSeason(progress.season);
+      setCircuitPoints(progress.points);
+    }
 
-    // Develop your roster from this Major's performances (your team's versions only).
+    // Develop your roster from this event's performances (your team's versions only).
     const ratings = majorPlayerRatings(matchResults);
     const summary: Array<{ handle: string; before: number; after: number; iglDelta: number }> = [];
     const developed = selected.map((player) => {
       const meta = player.potential != null && player.age != null ? { age: player.age, potential: player.potential } : rollCareerMeta(player.ovr, player.age);
       const rating = ratings.get(player.id) ?? expectedRating(player.ovr); // no data -> treat as par (no change)
-      const dev = developPlayer({ player, rating, placement: tier, potential: meta.potential });
+      const dev = developPlayer({
+        player,
+        rating,
+        placement: tier,
+        potential: meta.potential,
+        maxGain: isCircuit ? completedEvent.developmentCap : undefined,
+        maxDrop: isCircuit ? 1 : undefined,
+        maxIglGain: isCircuit ? completedEvent.developmentCap : undefined,
+      });
       summary.push({ handle: player.handle, before: player.ovr, after: dev.ovr, iglDelta: dev.iglDelta });
       return { ...player, ovr: dev.ovr, stats: dev.stats, age: meta.age, potential: meta.potential };
     });
@@ -1642,11 +1720,13 @@ function App() {
     setTransferTrade(null);
   }
 
-  // Start the next Major with the (possibly traded) roster — mirrors chooseCoach's reset but keeps the
+  // Start the next event with the (possibly traded) roster — mirrors chooseCoach's reset but keeps the
   // roster, coach and bankroll.
-  function startNextMajor() {
+  function startNextTournament() {
     setCareerEvent((event) => event + 1);
-    const nextSwissField = buildSwissField(rosterPool);
+    const nextSwissField = mode === "circuit"
+      ? buildCircuitField(rosterPool, circuitEventById(circuitEventId))
+      : buildSwissField(rosterPool);
     const nextSwissRecords = initialSwissRecords(nextSwissField);
     const rival = selectOpponentForRecord({ wins: 0, losses: 0 }, nextSwissField, nextSwissRecords, []);
     setRecord({ wins: 0, losses: 0 });
@@ -1774,6 +1854,9 @@ function App() {
       careerMoney,
       careerEvent,
       careerHistory,
+      circuitEventId,
+      circuitSeason,
+      circuitPoints,
       transferCandidates,
       transferTrade,
       playerFinish,
@@ -1784,13 +1867,14 @@ function App() {
   function buildRunSummary(): RunSummary {
     const recordLabel = runKind === "spectator" ? `${matchResults.length} series` : `${record.wins}-${record.losses}`;
     const phaseLabel = phase === "playoffs" ? playoffRoundLabel(playoffRound) : "Swiss";
+    const eventLabel = mode === "circuit" ? circuitEvent.name : "Major";
     const detail = match
-      ? `${phaseLabel} / ${mapName(match.map)} ${match.you}-${match.opponent}`
+      ? `${eventLabel} / ${phaseLabel} / ${mapName(match.map)} ${match.you}-${match.opponent}`
       : tournamentOutcome === "champion"
-        ? "Champion"
+        ? `${eventLabel} champion`
         : tournamentOutcome === "eliminated"
-          ? "Eliminated"
-          : `${phaseLabel} / ${matchResults.length} saved series`;
+          ? `${eventLabel} eliminated`
+          : `${eventLabel} / ${phaseLabel} / ${matchResults.length} saved series`;
     return {
       teamName: runKind === "spectator" ? "Spectator run" : teamName,
       mode,
@@ -1862,6 +1946,9 @@ function App() {
     setCareerMoney(snapshot.careerMoney ?? 0);
     setCareerEvent(snapshot.careerEvent ?? 1);
     setCareerHistory(snapshot.careerHistory ?? []);
+    setCircuitEventId(snapshot.circuitEventId ?? firstCircuitEventId);
+    setCircuitSeason(snapshot.circuitSeason ?? 1);
+    setCircuitPoints(snapshot.circuitPoints ?? 0);
     setTransferCandidates(snapshot.transferCandidates ?? []);
     setTransferTrade(snapshot.transferTrade ?? null);
     setProgressionSummary(snapshot.progressionSummary ?? []);
@@ -1967,7 +2054,7 @@ function App() {
           <section className="hero-panel">
             <div className="section-title">
               <Trophy size={18} />
-              <span>Major run</span>
+              <span>Tournament run</span>
             </div>
             <div className="setup-form">
               <label>
@@ -1985,12 +2072,24 @@ function App() {
                     <Dice5 size={16} />
                     Random
                   </button>
+                  <button className={mode === "circuit" ? "selected" : ""} onClick={() => setMode("circuit")}>
+                    <Award size={16} />
+                    Circuit
+                  </button>
                   <button className={mode === "spectator" ? "selected" : ""} onClick={() => setMode("spectator")}>
                     <Eye size={16} />
                     Spectator
                   </button>
                 </div>
               </div>
+              {mode === "circuit" && (
+                <div className="circuit-setup-note">
+                  <Award size={17} />
+                  <span>
+                    Begin in the Open Cup against {circuitFieldLabel(circuitEvents[0])}, then qualify through five event levels to reach the Major.
+                  </span>
+                </div>
+              )}
               <div>
                 <span className="label">Difficulty</span>
                 <div className="difficulty-grid">
@@ -2008,7 +2107,7 @@ function App() {
               </div>
               <button className="primary large" onClick={startDraft}>
                 {mode === "spectator" ? <FastForward size={19} /> : <Dice5 size={19} />}
-                {mode === "spectator" ? "Start spectator" : "Start draft"}
+                {mode === "spectator" ? "Start spectator" : mode === "circuit" ? "Start circuit draft" : "Start draft"}
               </button>
             </div>
           </section>
@@ -2272,12 +2371,15 @@ function App() {
 
       {screen === "swiss" && runKind !== "spectator" && (
         <main className="layout swiss-stage">
+          {mode === "circuit" && (
+            <CircuitProgressStrip event={circuitEvent} season={circuitSeason} points={circuitPoints} history={careerHistory} />
+          )}
           <section className="swiss-round-panel">
             <div className="swiss-round-header">
               <div className="section-title">
                 <Trophy size={18} />
                 <span>
-                  Major run - Swiss - {record.wins >= 3 ? "Qualified" : record.losses >= 3 ? "Eliminated" : `Round ${record.wins + record.losses + 1}`}
+                  {tournamentName} - Swiss - {record.wins >= 3 ? "Qualified" : record.losses >= 3 ? "Eliminated" : `Round ${record.wins + record.losses + 1}`}
                 </span>
               </div>
               <div className="swiss-actions">
@@ -2306,7 +2408,7 @@ function App() {
                   <>
                     <button className="primary" onClick={enterTransferWindow}>
                       <ArrowRight size={17} />
-                      {careerActive ? `Continue to Major ${careerEvent + 1}` : "Continue career"}
+                      {mode === "circuit" ? "Circuit HQ" : careerActive ? `Continue to Major ${careerEvent + 1}` : "Continue career"}
                     </button>
                     <button className="secondary" onClick={() => enterNeutralPlayoffs(swissRecords, "eliminated")}>
                       <FastForward size={17} />
@@ -2321,7 +2423,7 @@ function App() {
                   <>
                     <button className="primary" onClick={enterTransferWindow}>
                       <ArrowRight size={17} />
-                      {careerActive ? `Continue to Major ${careerEvent + 1}` : "Continue career"}
+                      {mode === "circuit" ? "Circuit HQ" : careerActive ? `Continue to Major ${careerEvent + 1}` : "Continue career"}
                     </button>
                     <button className="secondary" onClick={restartRun}>
                       <RefreshCcw size={17} />
@@ -2468,11 +2570,14 @@ function App() {
 
       {screen === "playoffs" && (
         <main className="layout swiss-stage">
+          {mode === "circuit" && runKind === "player" && (
+            <CircuitProgressStrip event={circuitEvent} season={circuitSeason} points={circuitPoints} history={careerHistory} />
+          )}
           <section className="swiss-round-panel">
             <div className="swiss-round-header">
               <div className="section-title">
                 <Trophy size={18} />
-                <span>Playoffs - {playoffRoundLabel(playoffRound)}</span>
+                <span>{tournamentName} playoffs - {playoffRoundLabel(playoffRound)}</span>
               </div>
               <div className="swiss-actions">
                 <button className="secondary" onClick={() => setScreen("stats")}>
@@ -2497,7 +2602,7 @@ function App() {
                   <>
                     <button className="primary" onClick={enterTransferWindow}>
                       <ArrowRight size={17} />
-                      {careerActive ? `Continue to Major ${careerEvent + 1}` : "Continue career"}
+                      {mode === "circuit" ? "Circuit HQ" : careerActive ? `Continue to Major ${careerEvent + 1}` : "Continue career"}
                     </button>
                     <button className="secondary" onClick={restartRun}>
                       <RefreshCcw size={17} />
@@ -2516,7 +2621,7 @@ function App() {
               <div className={tournamentOutcome === "champion" || runKind === "spectator" ? "run-status qualified" : "run-status eliminated"}>
                 <strong>
                   {tournamentOutcome === "champion"
-                    ? "Major champions"
+                    ? `${tournamentName} champions`
                     : tournamentOutcome === "complete"
                       ? "Tournament complete"
                       : runKind === "spectator"
@@ -2639,7 +2744,8 @@ function App() {
           development={progressionSummary}
           onTrade={doTransfer}
           onUndo={undoTransfer}
-          onStart={startNextMajor}
+          circuit={mode === "circuit" ? { event: circuitEvent, season: circuitSeason, points: circuitPoints, history: careerHistory } : undefined}
+          onStart={startNextTournament}
         />
       )}
 
@@ -7140,7 +7246,7 @@ function buildMajorAwards(results: SwissResult[]): MajorAward[] {
   if (mvp) {
     awards.push({
       key: "mvp",
-      title: "Major MVP",
+      title: "Event MVP",
       row: mvp,
       value: mvp.line.rating.toFixed(2),
       detail: `${mvp.line.kills}-${mvp.line.deaths} K–D · ${mvp.line.adr.toFixed(0)} ADR over ${mvp.matches} maps`,
@@ -7223,7 +7329,7 @@ function MajorAwardsPanel({
       <div className="awards-head">
         <div className="section-title">
           <Trophy size={18} />
-          <span>Player of the Major</span>
+          <span>Player of the event</span>
         </div>
         <span>{championName ? `${championName} — champions` : "Tournament awards"}</span>
       </div>
@@ -7707,6 +7813,53 @@ function PlayerCareerPanel({
 
 const fmtMoney = (amount: number) => `$${Math.round(amount).toLocaleString()}`;
 
+function CircuitProgressStrip({
+  event,
+  season,
+  points,
+  history,
+}: {
+  event: CircuitEvent;
+  season: number;
+  points: number;
+  history: CareerHistoryEntry[];
+}) {
+  const activeIndex = circuitEventIndex(event.id);
+  const completed = new Set(
+    history.filter((entry) => entry.season === season && entry.eventId).map((entry) => entry.eventId),
+  );
+  return (
+    <section className="circuit-progress" aria-label="Circuit progression">
+      <div className="circuit-progress-meta">
+        <div>
+          <Award size={17} />
+          <strong>Season {season}</strong>
+          <span>{event.name}</span>
+        </div>
+        <p>{event.description} · {circuitFieldLabel(event)} · {circuitQualificationLabel(event)}</p>
+        <div className="circuit-rank">
+          <span>World rank</span>
+          <b>#{circuitWorldRank(points)}</b>
+          <em>{points} pts</em>
+        </div>
+      </div>
+      <div className="circuit-track">
+        {circuitEvents.map((step, index) => {
+          const isActive = step.id === event.id;
+          const isDone = completed.has(step.id) || index < activeIndex;
+          return (
+            <div className={`circuit-step ${isActive ? "active" : isDone ? "done" : "locked"}`} key={step.id}>
+              <span>{isDone && !isActive ? "✓" : index + 1}</span>
+              <strong>{step.shortName}</strong>
+              <small>{isActive ? circuitQualificationLabel(step) : index < activeIndex ? "cleared" : "locked"}</small>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 function TransferCandidateCard({
   candidate,
   roster,
@@ -7774,17 +7927,19 @@ function TransferWindow({
   candidates,
   trade,
   development,
+  circuit,
   onTrade,
   onUndo,
   onStart,
 }: {
   eventNumber: number;
-  lastResult?: { tier: PlacementTier; prize: number; record: { wins: number; losses: number } };
+  lastResult?: CareerHistoryEntry;
   money: number;
   roster: Player[];
   candidates: Array<{ player: Player; team: Roster }>;
   trade: { incoming: Player; outgoing: Player; delta: number } | null;
   development: Array<{ handle: string; before: number; after: number; iglDelta: number }>;
+  circuit?: { event: CircuitEvent; season: number; points: number; history: CareerHistoryEntry[] };
   onTrade: (incoming: Player, outgoing: Player) => void;
   onUndo: () => void;
   onStart: () => void;
@@ -7796,12 +7951,14 @@ function TransferWindow({
         <div>
           <div className="section-title">
             <ArrowLeftRight size={18} />
-            <span>Transfer window</span>
+            <span>{circuit ? "Circuit HQ" : "Transfer window"}</span>
           </div>
-          <h1>After Major {eventNumber}</h1>
+          <h1>After {lastResult?.eventName ?? `Major ${eventNumber}`}</h1>
           {lastResult && (
             <p>
               Finished <b>{placementLabel(lastResult.tier, lastResult.record)}</b> · earned <b>{fmtMoney(lastResult.prize)}</b>
+              {lastResult.points != null && <> · <b>+{lastResult.points} ranking points</b></>}
+              {circuit && <> · <b>{lastResult.qualified ? "qualified" : `re-entering ${circuit.event.name}`}</b></>}
             </p>
           )}
         </div>
@@ -7810,6 +7967,28 @@ function TransferWindow({
           {fmtMoney(money)}
         </div>
       </section>
+
+      {circuit && <CircuitProgressStrip event={circuit.event} season={circuit.season} points={circuit.points} history={circuit.history} />}
+
+      {circuit && circuit.history.length > 0 && (
+        <section className="circuit-ledger">
+          <div className="section-title">
+            <TrendingUp size={17} />
+            <span>Recent circuit results</span>
+          </div>
+          <div className="circuit-ledger-rows">
+            {circuit.history.slice(-5).reverse().map((entry) => (
+              <div className="circuit-ledger-row" key={`${entry.event}-${entry.eventId ?? "major"}`}>
+                <span>S{entry.season ?? 1}</span>
+                <strong>{entry.eventName ?? `Major ${entry.event}`}</strong>
+                <b>{placementLabel(entry.tier, entry.record)}</b>
+                <em>+{entry.points ?? 0} pts</em>
+                <small>{fmtMoney(entry.prize)}</small>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
       {moves.length > 0 && (
         <section className="transfer-card development-card">
@@ -7867,7 +8046,7 @@ function TransferWindow({
               <ArrowLeftRight size={18} />
               <span>Market</span>
             </div>
-            <span className="vault-count">one trade per window</span>
+            <span className="vault-count">one trade per event</span>
           </div>
           {trade && (
             <div className="transfer-done">
@@ -7891,7 +8070,7 @@ function TransferWindow({
       <div className="transfer-foot">
         <button className="primary" onClick={onStart}>
           <ArrowRight size={17} />
-          Start Major {eventNumber + 1}
+          Start {circuit ? circuit.event.name : `Major ${eventNumber + 1}`}
         </button>
       </div>
     </main>
@@ -8193,7 +8372,7 @@ function PlayerDetailPage({
               <button type="button" className="inline-link" onClick={() => onOpenTeam(team)}>
                 {team.name}
               </button>{" "}
-              — match history, {total} {total === 1 ? "map" : "maps"} this major
+              — match history, {total} {total === 1 ? "map" : "maps"} this event
             </p>
           </div>
         </div>
@@ -8321,7 +8500,7 @@ function TeamDetailPage({
             <TeamLogo team={team} small /> {team.name}
           </h1>
           <p>
-            {wins}-{games.length - wins} at this major / {games.length} {games.length === 1 ? "series" : "series"} played
+            {wins}-{games.length - wins} at this event / {games.length} {games.length === 1 ? "series" : "series"} played
           </p>
         </div>
         <button className="secondary" onClick={onBack}>
@@ -9015,6 +9194,10 @@ function toTournamentTeam(roster: Roster): FieldTeam {
 
 function buildSwissField(rosterPool: Roster[]) {
   return shuffle(rosterPool).slice(0, SWISS_OPPONENT_COUNT).map(toTournamentTeam);
+}
+
+function buildCircuitField(rosterPool: Roster[], event: CircuitEvent) {
+  return pickCircuitRosters(rosterPool, event, SWISS_OPPONENT_COUNT).map(toTournamentTeam);
 }
 
 function buildSpectatorField(rosterPool: Roster[]) {

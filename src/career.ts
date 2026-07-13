@@ -123,26 +123,42 @@ export interface Development {
   iglDelta: number;
 }
 
-// How a player on YOUR roster develops after a Major, from this event's rating + your placement.
+// How a player on YOUR roster develops after an event, from their rating + your placement.
 // - IGLs frag less, so they're placement-driven: deep runs raise their IGL stat (and OVR); their OVR
 //   only drops if they genuinely flopped.
 // - Everyone else trends on rating-vs-expectation, capped at +/-2 and the potential ceiling.
-export function developPlayer(args: { player: Player; rating: number; placement: PlacementTier; potential: number }): Development {
-  const { player, rating, placement, potential } = args;
+export function developPlayer(args: {
+  player: Player;
+  rating: number;
+  placement: PlacementTier;
+  potential: number;
+  maxGain?: number;
+  maxDrop?: number;
+  maxIglGain?: number;
+}): Development {
+  const {
+    player,
+    rating,
+    placement,
+    potential,
+    maxGain = MAX_OVR_GAIN,
+    maxDrop = MAX_OVR_DROP,
+    maxIglGain = MAX_OVR_GAIN,
+  } = args;
   const goodRun = placement === "champion" || placement === "runner-up" || placement === "top4";
   let ovrDelta = 0;
   let iglDelta = 0;
 
   if (player.role === "IGL") {
-    iglDelta = placement === "champion" ? 2 : goodRun ? 1 : 0;
+    iglDelta = Math.min(maxIglGain, placement === "champion" ? 2 : goodRun ? 1 : 0);
     const flopped = rating < expectedRating(player.ovr) - 0.15;
     ovrDelta = iglDelta > 0 ? iglDelta : flopped ? -1 : 0;
   } else {
     ovrDelta = Math.round((rating - expectedRating(player.ovr)) * 13);
   }
 
-  // Clamp to the per-Major bounds, the potential ceiling on the way up, and 50 on the way down.
-  ovrDelta = Math.max(-MAX_OVR_DROP, Math.min(MAX_OVR_GAIN, ovrDelta));
+  // Clamp to the event bounds, the potential ceiling on the way up, and 50 on the way down.
+  ovrDelta = Math.max(-maxDrop, Math.min(maxGain, ovrDelta));
   if (ovrDelta > 0) ovrDelta = Math.min(ovrDelta, Math.max(0, potential - player.ovr));
   else ovrDelta = Math.max(ovrDelta, 50 - player.ovr);
 
