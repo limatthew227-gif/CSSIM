@@ -106,6 +106,7 @@ import {
   circuitEventIndex,
   circuitEvents,
   circuitFieldLabel,
+  circuitParticipantIds,
   circuitPrize,
   circuitQualificationLabel,
   circuitWorldRank,
@@ -1066,6 +1067,26 @@ function App() {
     document.documentElement.style.setProperty("--accent", settings.accent);
   }, [settings.accent]);
 
+  // Older saves may contain a team that was eliminated in an early Major stage and then returned
+  // as a later direct invite. Repair an untouched stage without rewriting any played results.
+  useEffect(() => {
+    if (mode !== "circuit" || phase !== "swiss" || matchResults.length || match || series) return;
+    const repairedField = repairUnplayedCircuitField(rosterPool, circuitEvent, swissField, normalizedCircuitArchive);
+    if (repairedField.every((team, index) => team.id === swissField[index]?.id)) return;
+
+    const repairedRecords = initialSwissRecords(repairedField);
+    setSwissField(repairedField);
+    setSwissRecords(repairedRecords);
+    setOpponent((current) =>
+      repairedField.find((team) => team.id === current.id) ??
+      (circuitObserver || runKind === "spectator"
+        ? repairedField[0] ?? current
+        : selectOpponentForRecord({ wins: 0, losses: 0 }, repairedField, repairedRecords, [])),
+    );
+    setPickems({});
+    setLastPickemDelta(0);
+  }, [circuitEvent, circuitObserver, match, matchResults.length, mode, normalizedCircuitArchive, phase, rosterPool, runKind, series, swissField]);
+
   // Kick off the Vault's IndexedDB load and flip dbReady once its full history is in memory.
   const [dbReady, setDbReady] = useState(false);
   useEffect(() => {
@@ -1112,7 +1133,7 @@ function App() {
     if (transient.includes(screen)) return;
     writeAutosave(buildRunSnapshot(), buildRunSummary());
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [screen, phase, record, matchResults, careerMoney, careerEvent, selected, tournamentOutcome, circuitEventId, circuitSeason, circuitPoints, circuitMajorResults, circuitObserver, circuitOffseasonTarget]);
+  }, [screen, phase, record, swissField, matchResults, careerMoney, careerEvent, selected, tournamentOutcome, circuitEventId, circuitSeason, circuitPoints, circuitMajorResults, circuitObserver, circuitOffseasonTarget]);
 
   useEffect(() => {
     if (screen !== "veto" || !veto.pendingOpponent) return;
@@ -1858,7 +1879,14 @@ function App() {
     const progress = recordCircuitStage("top8");
     const nextEvent = circuitEventById(progress.nextEventId);
     const qualifiers = circuitStageQualifiers(swissField, swissRecords, yourTeam, record);
-    const nextField = buildNextCircuitField(rosterPool, nextEvent, qualifiers, [yourTeam, ...swissField], true);
+    const nextField = buildNextCircuitField(
+      rosterPool,
+      nextEvent,
+      qualifiers,
+      [yourTeam, ...swissField],
+      true,
+      normalizedCircuitArchive,
+    );
     setCircuitMajorResults((results) => [...results, ...tagCircuitResults(matchResults, circuitEvent)]);
     setCircuitSeason(progress.season);
     setCircuitPoints(progress.points);
@@ -1891,7 +1919,14 @@ function App() {
 
     const nextEvent = nextCircuitEvent(circuitEvent);
     const qualifiers = circuitStageQualifiers(swissField, swissRecords);
-    const nextField = buildNextCircuitField(rosterPool, nextEvent, qualifiers, [yourTeam, ...swissField], false);
+    const nextField = buildNextCircuitField(
+      rosterPool,
+      nextEvent,
+      qualifiers,
+      [yourTeam, ...swissField],
+      false,
+      normalizedCircuitArchive,
+    );
     setCircuitMajorResults((results) => [...results, ...tagCircuitResults(matchResults, circuitEvent)]);
     startCircuitStage(nextEvent, nextField, true);
   }
@@ -1900,7 +1935,14 @@ function App() {
     if (!circuitObserver || circuitEvent.hasPlayoffs || !spectatorSwissResolved) return;
     const nextEvent = nextCircuitEvent(circuitEvent);
     const qualifiers = circuitStageQualifiers(swissField, swissRecords);
-    const nextField = buildNextCircuitField(rosterPool, nextEvent, qualifiers, swissField, false);
+    const nextField = buildNextCircuitField(
+      rosterPool,
+      nextEvent,
+      qualifiers,
+      swissField,
+      false,
+      normalizedCircuitArchive,
+    );
     setCircuitMajorResults((results) => [...results, ...tagCircuitResults(matchResults, circuitEvent)]);
     startCircuitStage(nextEvent, nextField, true);
   }
@@ -1927,6 +1969,7 @@ function App() {
       swissField,
       swissRecords,
       matchResults,
+      normalizedCircuitArchive,
       rosterPool,
       settings,
       difficulty,
@@ -10438,13 +10481,47 @@ function buildNextCircuitField(
   qualifiers: FieldTeam[],
   previousField: FieldTeam[],
   userParticipating: boolean,
+  priorResults: SwissResult[] = [],
 ) {
   const targetSize = userParticipating ? SWISS_OPPONENT_COUNT : SWISS_FIELD_SIZE;
   const carried = qualifiers.filter((team) => !userParticipating || team.id !== "user");
-  const excluded = new Set([...previousField.map((team) => team.id), ...carried.map((team) => team.id)]);
+  const excluded = circuitParticipantIds(previousField, carried, teamsFromResults(priorResults));
   const inviteCount = Math.max(0, targetSize - carried.length);
   const invites = pickCircuitRosters(rosterPool, event, inviteCount, Math.random, excluded).map(toTournamentTeam);
   return composeCircuitField(carried, invites, targetSize);
+}
+
+function repairUnplayedCircuitField(
+  rosterPool: Roster[],
+  event: CircuitEvent,
+  field: FieldTeam[],
+  archivedResults: SwissResult[],
+) {
+  const eventIndex = circuitEventIndex(event.id);
+  if (eventIndex === 0 || !archivedResults.length) return field;
+
+  const previousEvent = circuitEvents[eventIndex - 1];
+  const previousResults = archivedResults.filter(
+    (result) => result.eventId === previousEvent.id && result.stage === "swiss",
+  );
+  const previousTeams = teamsFromResults(previousResults);
+  const qualifierIds = new Set(
+    circuitStageQualifiers(previousTeams, recordsFromResults(previousTeams, previousResults)).map((team) => team.id),
+  );
+  const priorTeams = teamsFromResults(archivedResults);
+  const priorParticipantIds = circuitParticipantIds(priorTeams);
+  const invalidIds = new Set(
+    field
+      .filter((team) => priorParticipantIds.has(team.id) && !qualifierIds.has(team.id))
+      .map((team) => team.id),
+  );
+  if (!invalidIds.size) return field;
+
+  const retained = field.filter((team) => !invalidIds.has(team.id));
+  const excluded = circuitParticipantIds(priorTeams, field);
+  const replacements = pickCircuitRosters(rosterPool, event, invalidIds.size, Math.random, excluded).map(toTournamentTeam);
+  if (replacements.length !== invalidIds.size) return field;
+  return composeCircuitField(retained, replacements, field.length);
 }
 
 function simulateNeutralSwissStage(
@@ -10494,6 +10571,7 @@ function simulateCircuitRemainder(
   startingField: FieldTeam[],
   startingRecords: Record<string, SwissRecord>,
   startingResults: SwissResult[],
+  priorResults: SwissResult[],
   rosterPool: Roster[],
   settings: CustomSettings,
   difficulty: Difficulty,
@@ -10506,7 +10584,14 @@ function simulateCircuitRemainder(
   while (!event.hasPlayoffs) {
     const qualifiers = circuitStageQualifiers(field, records);
     const nextEvent = nextCircuitEvent(event);
-    const nextField = buildNextCircuitField(rosterPool, nextEvent, qualifiers, field, false);
+    const nextField = buildNextCircuitField(
+      rosterPool,
+      nextEvent,
+      qualifiers,
+      field,
+      false,
+      [...priorResults, ...results],
+    );
     const stage = simulateNeutralSwissStage(nextField, settings, difficulty);
     event = nextEvent;
     field = nextField;

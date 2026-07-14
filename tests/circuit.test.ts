@@ -5,6 +5,7 @@ import {
   advanceCircuit,
   circuitEventById,
   circuitFieldLabel,
+  circuitParticipantIds,
   circuitPointsAward,
   circuitPrize,
   circuitQualificationLabel,
@@ -33,14 +34,17 @@ test("MRQ only selects rank 27+ and unranked teams when the pool can fill it", (
   assert.equal(circuitQualificationLabel(event), "Top 8 to Stage 1");
 });
 
-test("direct invites never recycle teams eliminated in the preceding stage", () => {
-  const event = circuitEventById("stage-1");
-  const pool = Array.from({ length: 50 }, (_, index) => roster(`team-${index + 1}`, index + 1));
-  const priorField = new Set(["team-17", "team-18", "team-27", "team-28", "team-35"]);
-  const invites = pickCircuitRosters(pool, event, 8, () => 0.42, priorField);
+test("direct invites never recycle a team from any earlier Major stage", () => {
+  const event = circuitEventById("stage-2");
+  const pool = Array.from({ length: 60 }, (_, index) => roster(`team-${index + 1}`, index + 1));
+  const mrqField = [roster("team-29", 29), roster("team-30", 30), roster("team-35", 35)];
+  const stageOneField = [roster("team-17", 17), roster("team-18", 18), mrqField[0]];
+  const priorParticipants = circuitParticipantIds(mrqField, stageOneField);
+  const invites = pickCircuitRosters(pool, event, 8, () => 0.42, priorParticipants);
 
   assert.equal(invites.length, 8);
-  assert.ok(invites.every((team) => !priorField.has(team.id)));
+  assert.ok(invites.every((team) => !priorParticipants.has(team.id)));
+  assert.ok(!invites.some((team) => team.id === "team-30"), "an MRQ elimination cannot return at Stage 2");
 });
 
 test("the next stage preserves qualifiers before filling direct-invite slots", () => {

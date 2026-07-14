@@ -217,6 +217,14 @@ export function pickCircuitRosters(
   return [...eligible, ...fallback].slice(0, count);
 }
 
+export function circuitParticipantIds<T extends { id: string }>(...groups: Iterable<T>[]) {
+  const ids = new Set<string>();
+  groups.forEach((group) => {
+    for (const team of group) ids.add(team.id);
+  });
+  return ids;
+}
+
 export function composeCircuitField<T extends { id: string }>(qualifiers: T[], directInvites: T[], size: number) {
   const seen = new Set<string>();
   return [...qualifiers, ...directInvites].filter((team) => {
