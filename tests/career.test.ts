@@ -1,7 +1,20 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { playerValue, transferDelta, prizeForPlacement, placementTier, placementLabel, pickTransferCandidates, rollCareerMeta, expectedRating, developPlayer } from "../src/career";
+import {
+  POTENTIAL_MODEL_VERSION,
+  ageAfterMajor,
+  careerMetaForPlayer,
+  developPlayer,
+  expectedRating,
+  pickTransferCandidates,
+  placementLabel,
+  placementTier,
+  playerValue,
+  prizeForPlacement,
+  rollCareerMeta,
+  transferDelta,
+} from "../src/career";
 import type { Player, PlayerStats } from "../src/gameData";
 import type { Role } from "../src/gameData";
 
@@ -51,7 +64,7 @@ test("placementTier maps run end-state to a finish", () => {
 });
 
 test("rollCareerMeta: younger players get more headroom toward a higher potential", () => {
-  const young = rollCareerMeta(80, undefined, () => 0); // age 18 -> +6
+  const young = rollCareerMeta(80, undefined, () => 0); // age 18 -> +8
   const old = rollCareerMeta(80, undefined, () => 0.99); // age ~32 -> +0
   assert.ok(young.age < old.age);
   assert.ok(young.potential > old.potential);
@@ -59,8 +72,29 @@ test("rollCareerMeta: younger players get more headroom toward a higher potentia
   assert.ok(rollCareerMeta(95, undefined, () => 0).potential <= 96, "global cap respected");
   // A known (real) age is used verbatim rather than randomised.
   assert.equal(rollCareerMeta(82, 19).age, 19);
-  assert.equal(rollCareerMeta(82, 19).potential, 88); // 19 -> +6
+  assert.equal(rollCareerMeta(82, 19).potential, 89); // 19 -> +7
   assert.equal(rollCareerMeta(82, 31).potential, 82); // veteran -> no headroom
+  assert.equal(rollCareerMeta(80, 18, () => 0, 3).potential, 91, "a top 18-year-old prospect can grow from 80 to 91");
+});
+
+test("careerMetaForPlayer migrates legacy ceilings once without compounding them", () => {
+  const legacy = { ...mk("prospect", "Rifler", 82), age: 18, potential: 86 };
+  const migrated = careerMetaForPlayer(legacy, 3);
+  assert.equal(migrated.potential, 91);
+  assert.equal(migrated.potentialModelVersion, POTENTIAL_MODEL_VERSION);
+
+  const reloaded = careerMetaForPlayer({ ...legacy, ...migrated }, 3);
+  assert.deepEqual(reloaded, migrated, "loading a migrated save does not add the bonus again");
+});
+
+test("players age six months after a Major and source data stays unchanged", () => {
+  const source = { ...mk("young", "Rifler", 80), age: 18 };
+  const saveCopy = { ...source, ...careerMetaForPlayer(source, 3) };
+  const afterMajor = { ...saveCopy, age: ageAfterMajor(saveCopy.age) };
+
+  assert.equal(afterMajor.age, 18.5);
+  assert.equal(ageAfterMajor(afterMajor.age), 19);
+  assert.equal(source.age, 18, "career progression only changed the save's copy");
 });
 
 test("expectedRating rises with OVR", () => {

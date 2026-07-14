@@ -54,6 +54,8 @@ export interface Player {
   // and only synthesizes an age for players whose source profile does not expose one.
   age?: number;
   potential?: number;
+  // Save-local career metadata version. Source roster players omit this; drafted/signed copies persist it.
+  potentialModelVersion?: number;
 }
 
 export interface Roster extends SourceTeam {

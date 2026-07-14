@@ -96,10 +96,12 @@ import {
   placementTier,
   placementLabel,
   pickTransferCandidates,
-  rollCareerMeta,
+  careerMetaForPlayer,
+  ageAfterMajor,
   expectedRating,
   developPlayer,
 } from "./career";
+import { hltvProspectPotentialBonus } from "./hltvProspects2026";
 import {
   advanceCircuit,
   circuitEventById,
@@ -1821,7 +1823,7 @@ function App() {
     const ratings = majorPlayerRatings(results);
     const summary: Array<{ handle: string; before: number; after: number; iglDelta: number }> = [];
     const developed = selected.map((player) => {
-      const meta = player.potential != null && player.age != null ? { age: player.age, potential: player.potential } : rollCareerMeta(player.ovr, player.age);
+      const meta = careerMetaForPlayer(player, hltvProspectPotentialBonus(player.handle));
       const rating = ratings.get(player.id) ?? expectedRating(player.ovr);
       const dev = developPlayer({
         player,
@@ -1833,7 +1835,14 @@ function App() {
         maxIglGain: developmentCap,
       });
       summary.push({ handle: player.handle, before: player.ovr, after: dev.ovr, iglDelta: dev.iglDelta });
-      return { ...player, ovr: dev.ovr, stats: dev.stats, age: meta.age, potential: meta.potential };
+      return {
+        ...player,
+        ovr: dev.ovr,
+        stats: dev.stats,
+        age: ageAfterMajor(meta.age),
+        potential: meta.potential,
+        potentialModelVersion: meta.potentialModelVersion,
+      };
     });
     setSelected(developed);
     setProgressionSummary(summary);
@@ -2026,9 +2035,10 @@ function App() {
     if (transferTrade) return; // one trade per window
     const delta = transferDelta(incoming, outgoing);
     if (delta > careerMoney) return; // can't afford
-    setSelected((current) => current.map((player) => (player.id === outgoing.id ? incoming : player)));
+    const careerIncoming = withCareerMeta(incoming);
+    setSelected((current) => current.map((player) => (player.id === outgoing.id ? careerIncoming : player)));
     setCareerMoney((money) => money - delta);
-    setTransferTrade({ incoming, outgoing, delta });
+    setTransferTrade({ incoming: careerIncoming, outgoing, delta });
   }
 
   function undoTransfer() {
@@ -2234,7 +2244,7 @@ function App() {
     setMode(snapshot.mode ?? "classic");
     setRunKind(snapshot.runKind ?? "player");
     setDifficulty(difficulties.find((item) => item.id === snapshot.difficultyId) ?? difficulties[0]);
-    setSelected(snapshot.selected ?? []);
+    setSelected((snapshot.selected ?? []).map(withCareerMeta));
     setCoach(snapshot.coach);
     setCoachOptions([]);
     setCoachRevealKey(0);
@@ -2291,7 +2301,15 @@ function App() {
         : null,
     );
     setTransferCandidates(snapshot.transferCandidates ?? []);
-    setTransferTrade(snapshot.transferTrade ?? null);
+    setTransferTrade(
+      snapshot.transferTrade
+        ? {
+            ...snapshot.transferTrade,
+            incoming: withCareerMeta(snapshot.transferTrade.incoming),
+            outgoing: withCareerMeta(snapshot.transferTrade.outgoing),
+          }
+        : null,
+    );
     setProgressionSummary(snapshot.progressionSummary ?? []);
     setPlayerFinish(snapshot.playerFinish ?? null);
     setDetailPlayer(null);
@@ -11379,10 +11397,17 @@ function generatePlayerForm(players: Player[]) {
 }
 
 function draftedPlayerCopy(player: Player, pickIndex: number): Player {
+  const meta = careerMetaForPlayer(player, hltvProspectPotentialBonus(player.handle));
   return {
     ...player,
     id: `user-pick-${pickIndex + 1}-${player.id}`,
+    ...meta,
   };
+}
+
+function withCareerMeta(player: Player): Player {
+  const meta = careerMetaForPlayer(player, hltvProspectPotentialBonus(player.handle));
+  return { ...player, ...meta };
 }
 
 function applyCarriedPlayerForm(player: Player, formPercent: number): Player {

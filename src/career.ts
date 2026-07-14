@@ -8,6 +8,7 @@ export const STARTING_BANKROLL = 40000;
 export const OVR_CAP = 96; // nobody develops past this, whatever their potential
 export const MAX_OVR_GAIN = 2; // most OVR a player can add in one Major
 export const MAX_OVR_DROP = 2; // most OVR a player can shed in one Major
+export const POTENTIAL_MODEL_VERSION = 2;
 
 export type PlacementTier = "champion" | "runner-up" | "top4" | "top8" | "swiss";
 
@@ -94,18 +95,74 @@ export function pickTransferCandidates(roster: Player[], pool: Player[], count =
 export interface CareerMeta {
   age: number;
   potential: number; // the OVR ceiling this player can develop toward
+  potentialModelVersion: number;
 }
 
-// Potential headroom by age: younger players can develop toward a higher ceiling, veterans are at peak.
+// Potential headroom by age: an 18-year-old can add eight OVR before prospect evidence is considered.
 function potentialHeadroom(age: number): number {
+  if (age < 19) return 8;
+  if (age < 20) return 7;
+  if (age < 21) return 6;
+  if (age < 23) return 5;
+  if (age < 25) return 3;
+  if (age < 28) return 2;
+  if (age < 30) return 1;
+  return 0;
+}
+
+function legacyPotentialHeadroom(age: number): number {
   return age <= 20 ? 6 : age <= 23 ? 4 : age <= 26 ? 3 : age <= 29 ? 1 : 0;
 }
 
-// Career meta when a player joins your roster. Uses the player's real (Liquipedia-derived, era-adjusted)
-// age when known; otherwise synthesises one (e.g. custom-team players with no birth year on record).
-export function rollCareerMeta(ovr: number, knownAge?: number, rng: () => number = Math.random): CareerMeta {
+// Career meta when a player joins your roster. Known players use their real age and HLTV prospect
+// evidence; the only random value is a one-time age for custom players with no source birth date.
+export function rollCareerMeta(
+  ovr: number,
+  knownAge?: number,
+  rng: () => number = Math.random,
+  prospectBonus = 0,
+): CareerMeta {
   const age = knownAge ?? 18 + Math.floor(rng() * 15); // 18..32
-  return { age, potential: Math.min(OVR_CAP, ovr + potentialHeadroom(age)) };
+  return {
+    age,
+    potential: Math.min(OVR_CAP, ovr + potentialHeadroom(age) + prospectBonus),
+    potentialModelVersion: POTENTIAL_MODEL_VERSION,
+  };
+}
+
+// Assign or migrate metadata on a save's player copy. Legacy saves infer the player's pre-development
+// baseline from the old ceiling so loading a save cannot repeatedly manufacture extra potential.
+export function careerMetaForPlayer(
+  player: Pick<Player, "ovr" | "age" | "potential" | "potentialModelVersion">,
+  prospectBonus = 0,
+  rng: () => number = Math.random,
+): CareerMeta {
+  if (
+    player.age != null
+    && player.potential != null
+    && player.potentialModelVersion === POTENTIAL_MODEL_VERSION
+  ) {
+    return {
+      age: player.age,
+      potential: player.potential,
+      potentialModelVersion: POTENTIAL_MODEL_VERSION,
+    };
+  }
+
+  const age = player.age ?? 18 + Math.floor(rng() * 15);
+  const legacyBaseline = player.potential == null
+    ? player.ovr
+    : Math.min(player.ovr, Math.max(50, player.potential - legacyPotentialHeadroom(age)));
+  const migrated = rollCareerMeta(legacyBaseline, age, rng, prospectBonus);
+
+  return {
+    ...migrated,
+    potential: Math.min(OVR_CAP, Math.max(player.potential ?? 0, migrated.potential)),
+  };
+}
+
+export function ageAfterMajor(age: number): number {
+  return Math.round((age + 0.5) * 10) / 10;
 }
 
 // The HLTV-style rating a player of this OVR is "supposed" to put up. Beating it trends their OVR up,
