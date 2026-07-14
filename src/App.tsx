@@ -797,6 +797,7 @@ function App() {
   const [circuitSeason, setCircuitSeason] = useState(1);
   const [circuitPoints, setCircuitPoints] = useState(0);
   const [circuitMajorResults, setCircuitMajorResults] = useState<SwissResult[]>([]);
+  const [overviewEventId, setOverviewEventId] = useState<CircuitEventId | null>(null);
   const [circuitObserver, setCircuitObserver] = useState(false);
   const [circuitOffseasonTarget, setCircuitOffseasonTarget] = useState<CircuitOffseasonTarget | null>(null);
   const [transferCandidates, setTransferCandidates] = useState<Array<{ player: Player; team: Roster }>>([]);
@@ -926,6 +927,54 @@ function App() {
       : matchResults,
     [circuitEvent, matchResults, mode, normalizedCircuitArchive],
   );
+  const overviewCircuitEvent = mode === "circuit"
+    ? circuitEventById(overviewEventId ?? circuitEvent.id)
+    : undefined;
+  const overviewIsCurrentEvent = !overviewCircuitEvent || overviewCircuitEvent.id === circuitEvent.id;
+  const overviewResults = useMemo(
+    () => overviewCircuitEvent
+      ? majorRunResults.filter((result) => result.eventId === overviewCircuitEvent.id)
+      : matchResults,
+    [majorRunResults, matchResults, overviewCircuitEvent],
+  );
+  const overviewTeams = useMemo(() => {
+    if (overviewIsCurrentEvent) {
+      return Array.from(
+        new Map(
+          (neutralSwissRun ? swissField : [yourTeam, ...swissField]).map((team) => [team.id, team]),
+        ).values(),
+      );
+    }
+    return teamsFromResults(overviewResults);
+  }, [neutralSwissRun, overviewIsCurrentEvent, overviewResults, swissField, yourTeam]);
+  const overviewRecords = useMemo(
+    () => overviewIsCurrentEvent
+      ? neutralSwissRun
+        ? swissRecords
+        : { ...swissRecords, user: record }
+      : recordsFromResults(overviewTeams, overviewResults),
+    [neutralSwissRun, overviewIsCurrentEvent, overviewResults, overviewTeams, record, swissRecords],
+  );
+  const overviewAvailableEventIds = useMemo(() => {
+    const ids = new Set<CircuitEventId>([circuitEvent.id]);
+    majorRunResults.forEach((result) => {
+      if (result.eventId) ids.add(result.eventId);
+    });
+    return [...ids];
+  }, [circuitEvent.id, majorRunResults]);
+  const overviewPhase: TournamentPhase = overviewIsCurrentEvent
+    ? phase
+    : overviewCircuitEvent?.hasPlayoffs && overviewResults.some((result) => result.stage !== "swiss")
+      ? "playoffs"
+      : "swiss";
+  const overviewOutcome: TournamentOutcome = overviewIsCurrentEvent ? tournamentOutcome : "complete";
+  const overviewWinner = overviewIsCurrentEvent
+    ? tournamentOutcome === "champion"
+      ? yourTeam
+      : tournamentWinner
+    : winnerFromFinal(overviewResults);
+  const overviewPlayoffRound = overviewIsCurrentEvent ? playoffRound : latestPlayoffRound(overviewResults);
+  const overviewPlayerDatabase = useMemo(() => buildPlayerDatabase(overviewResults), [overviewResults]);
   const playerDatabase = useMemo(() => buildPlayerDatabase(matchResults), [matchResults]);
   const selectedResult = useMemo(
     () =>
@@ -938,6 +987,7 @@ function App() {
   const runDone =
     runKind === "player" &&
     (tournamentOutcome !== "running" || (phase === "swiss" && record.losses >= 3) || circuitStageCleared);
+  const overviewDrilldown = navStack[navStack.length - 1] === "overview";
   const canSimPlayoffPhase =
     phase === "playoffs" &&
     playoffPairs.length > 0 &&
@@ -981,6 +1031,11 @@ function App() {
   function pushScreen(next: Screen) {
     setNavStack((stack) => [...stack, screen]);
     setScreen(next);
+  }
+
+  function openEventOverview() {
+    setOverviewEventId(mode === "circuit" ? circuitEvent.id : null);
+    pushScreen("overview");
   }
 
   function goBackScreen() {
@@ -2251,7 +2306,7 @@ function App() {
             <Save size={18} />
             <span>{activeSaveId ? "Quick Save" : "Save Run"}</span>
           </button>
-          <button className="icon-button" disabled={!hasEventOverview || screen === "overview"} onClick={() => pushScreen("overview")} title="Major overview">
+          <button className="icon-button" disabled={!hasEventOverview || screen === "overview"} onClick={openEventOverview} title="Major overview">
             <LayoutDashboard size={18} />
             <span>Overview</span>
           </button>
@@ -2509,7 +2564,7 @@ function App() {
                 </span>
               </div>
               <div className="swiss-actions">
-                <button className="secondary" onClick={() => pushScreen("overview")}>
+                <button className="secondary" onClick={openEventOverview}>
                   <LayoutDashboard size={16} />
                   Overview
                 </button>
@@ -2646,7 +2701,7 @@ function App() {
                 </span>
               </div>
               <div className="swiss-actions">
-                <button className="secondary" onClick={() => pushScreen("overview")}>
+                <button className="secondary" onClick={openEventOverview}>
                   <LayoutDashboard size={16} />
                   Overview
                 </button>
@@ -2874,7 +2929,7 @@ function App() {
                 <span>{tournamentName} playoffs - {playoffRoundLabel(playoffRound)}</span>
               </div>
               <div className="swiss-actions">
-                <button className="secondary" onClick={() => pushScreen("overview")}>
+                <button className="secondary" onClick={openEventOverview}>
                   <LayoutDashboard size={16} />
                   Overview
                 </button>
@@ -3014,24 +3069,27 @@ function App() {
 
       {screen === "overview" && (
         <EventOverviewPage
-          name={tournamentName}
-          phase={phase}
-          outcome={tournamentOutcome}
-          winner={tournamentOutcome === "champion" ? yourTeam : tournamentWinner}
-          teams={Array.from(
-            new Map(
-              (neutralSwissRun ? swissField : [yourTeam, ...swissField]).map((team) => [team.id, team]),
-            ).values(),
-          )}
-          records={neutralSwissRun ? swissRecords : { ...swissRecords, user: record }}
-          results={matchResults}
-          currentRound={playoffRound}
-          playoffPairs={playoffPairs}
+          name={overviewCircuitEvent?.name ?? tournamentName}
+          phase={overviewPhase}
+          outcome={overviewOutcome}
+          winner={overviewWinner}
+          teams={overviewTeams}
+          records={overviewRecords}
+          results={overviewResults}
+          currentRound={overviewPlayoffRound}
+          playoffPairs={overviewIsCurrentEvent ? playoffPairs : []}
           settings={settings}
-          circuit={mode === "circuit" ? { event: circuitEvent, season: circuitSeason, points: circuitPoints, history: careerHistory } : undefined}
+          circuit={mode === "circuit" && overviewCircuitEvent ? {
+            event: overviewCircuitEvent,
+            currentEvent: circuitEvent,
+            availableEventIds: overviewAvailableEventIds,
+            season: circuitSeason,
+            points: circuitPoints,
+          } : undefined}
+          onSelectCircuitEvent={setOverviewEventId}
           onBack={goBackScreen}
-          onStats={() => setScreen("stats")}
-          onResults={() => setScreen("results")}
+          onStats={() => pushScreen("stats")}
+          onResults={() => pushScreen("results")}
           onOpenTeam={openTeamDetail}
           onOpenPlayer={openPlayerDetail}
           onOpenSeries={openSeriesResult}
@@ -3040,10 +3098,11 @@ function App() {
 
       {screen === "stats" && (
         <RunStatsPage
-          rows={playerDatabase}
+          rows={overviewDrilldown ? overviewPlayerDatabase : playerDatabase}
+          eventName={overviewDrilldown ? overviewCircuitEvent?.name ?? tournamentName : undefined}
           scope={statsScope}
           onScopeChange={setStatsScope}
-          onBack={() => setScreen(phase === "playoffs" ? "playoffs" : "swiss")}
+          onBack={overviewDrilldown ? goBackScreen : () => setScreen(phase === "playoffs" ? "playoffs" : "swiss")}
           onOpenPlayer={openPlayerDetail}
           onOpenTeam={openTeamDetail}
         />
@@ -3142,10 +3201,11 @@ function App() {
 
       {screen === "results" && (
         <RunResultsPage
-          results={matchResults}
+          results={overviewDrilldown ? overviewResults : matchResults}
+          eventName={overviewDrilldown ? overviewCircuitEvent?.name ?? tournamentName : undefined}
           selectedResultId={selectedResultId}
           onOpen={openSeriesResult}
-          onBack={() => setScreen(phase === "playoffs" ? "playoffs" : "swiss")}
+          onBack={overviewDrilldown ? goBackScreen : () => setScreen(phase === "playoffs" ? "playoffs" : "swiss")}
         />
       )}
 
@@ -6644,6 +6704,7 @@ function aggregateSeriesSideStats(team: FieldTeam, maps: SeriesMapResult[], team
 
 function RunStatsPage({
   rows,
+  eventName,
   scope,
   onScopeChange,
   onBack,
@@ -6651,6 +6712,7 @@ function RunStatsPage({
   onOpenTeam,
 }: {
   rows: PlayerDatabaseRow[];
+  eventName?: string;
   scope: StatsScope;
   onScopeChange: (scope: StatsScope) => void;
   onBack: () => void;
@@ -6665,9 +6727,9 @@ function RunStatsPage({
         <div>
           <div className="section-title">
             <Target size={18} />
-            <span>Run stats</span>
+            <span>{eventName ? "Event stats" : "Run stats"}</span>
           </div>
-          <h1>Player database</h1>
+          <h1>{eventName ?? "Player database"}</h1>
           <p>{rows.length ? `${rows.length} players tracked from completed series.` : "Complete a series and the run database will start filling in here."}</p>
         </div>
         <div className="fullscreen-actions">
@@ -8385,13 +8447,15 @@ function CircuitProgressStrip({
 
 interface EventOverviewCircuit {
   event: CircuitEvent;
+  currentEvent: CircuitEvent;
+  availableEventIds: CircuitEventId[];
   season: number;
   points: number;
-  history: CareerHistoryEntry[];
 }
 
 interface EventPlacementRow {
   team: FieldTeam;
+  record: SwissRecord;
   label: string;
   detail: string;
   prize?: number;
@@ -8411,6 +8475,7 @@ function EventOverviewPage({
   playoffPairs,
   settings,
   circuit,
+  onSelectCircuitEvent,
   onBack,
   onStats,
   onResults,
@@ -8429,6 +8494,7 @@ function EventOverviewPage({
   playoffPairs: SwissPair[];
   settings: CustomSettings;
   circuit?: EventOverviewCircuit;
+  onSelectCircuitEvent: (eventId: CircuitEventId) => void;
   onBack: () => void;
   onStats: () => void;
   onResults: () => void;
@@ -8437,10 +8503,14 @@ function EventOverviewPage({
   onOpenSeries: (id: string) => void;
 }) {
   const hasPlayoffs = circuit?.event.hasPlayoffs ?? true;
+  const reviewingPastStage = Boolean(circuit && circuit.event.id !== circuit.currentEvent.id);
+  const showCurrentCircuitRank = Boolean(circuit && !reviewingPastStage);
   const finalResult = [...results].reverse().find((result) => result.stage === "final");
   const championId = winner?.id ?? finalResult?.winnerId;
   const prizeForTier = (tier: PlacementTier) => circuit ? circuit.event.prizes[tier] : prizeForPlacement(tier);
-  const placements = buildEventPlacements(teams, records, results, hasPlayoffs, prizeForTier);
+  const advanceTarget = circuit && !hasPlayoffs ? nextCircuitEvent(circuit.event).shortName : undefined;
+  const placements = buildEventPlacements(teams, records, results, hasPlayoffs, prizeForTier, advanceTarget);
+  const placementGroups = groupEventPlacements(placements);
   const playerLeaders = useMemo(() => buildOverviewPlayerLeaders(results, championId), [championId, results]);
   const powerRows = useMemo(
     () =>
@@ -8449,10 +8519,10 @@ function EventOverviewPage({
           team,
           record: records[team.id] ?? { wins: 0, losses: 0 },
           power: teamStrength(team, settings),
-          worldRank: team.id === "user" && circuit ? circuitWorldRank(circuit.points) : team.rank,
+          worldRank: team.id === "user" && showCurrentCircuitRank && circuit ? circuitWorldRank(circuit.points) : team.rank,
         }))
         .sort((a, b) => b.power - a.power || (a.worldRank ?? 999) - (b.worldRank ?? 999)),
-    [circuit, records, settings, teams],
+    [circuit, records, settings, showCurrentCircuitRank, teams],
   );
   const mapUsage = useMemo(() => {
     const usage = new Map<MapId, number>(mapPool.map((map) => [map.id, 0]));
@@ -8479,7 +8549,7 @@ function EventOverviewPage({
       <section className="event-overview-hero">
         <div className="event-overview-titlebar">
           <div>
-            <span className="event-kicker">{circuit ? `Season ${circuit.season} / Major circuit` : "Tournament hub"}</span>
+            <span className="event-kicker">{circuit ? `Season ${circuit.season} / ${reviewingPastStage ? "Stage archive" : "Major circuit"}` : "Tournament hub"}</span>
             <h1>{name}</h1>
             <p>{circuit?.event.description ?? "Sixteen teams, one Swiss field, and a single-elimination championship bracket."}</p>
           </div>
@@ -8502,33 +8572,38 @@ function EventOverviewPage({
         </div>
       </section>
 
-      {circuit && <EventStageRoute circuit={circuit} />}
+      {circuit && <EventStageRoute circuit={circuit} onSelect={onSelectCircuitEvent} />}
 
       <div className="overview-feature-grid">
         <section className="overview-section placement-overview">
           <div className="overview-section-head">
             <div>
-              <span>Live event</span>
+              <span>{outcome === "complete" || outcome === "champion" ? "Final standings" : "Live event"}</span>
               <h2>Placement picture</h2>
             </div>
-            <small>Prizes lock when a team finishes</small>
+            <small>Teams are grouped by their final or current placement</small>
           </div>
-          <div className="overview-placement-grid">
-            {placements.map((entry) => (
-              <button
-                type="button"
-                className={`overview-placement-card ${entry.tone}`}
-                key={entry.team.id}
-                onClick={() => onOpenTeam(entry.team)}
-              >
-                <TeamLogo team={entry.team} small />
-                <span>
-                  <b>{entry.team.name}</b>
-                  <small>{entry.detail}</small>
-                </span>
-                <em>{entry.label}</em>
-                <strong>{entry.prize != null ? fmtMoney(entry.prize) : "-"}</strong>
-              </button>
+          <div className="overview-placement-board">
+            {placementGroups.map((group) => (
+              <div className={`overview-placement-group ${group.tone}`} key={group.label}>
+                <div className="overview-placement-rank">
+                  <strong>{group.label}</strong>
+                  <span>{group.detail}</span>
+                  {group.prize != null && <small>{fmtMoney(group.prize)} per team</small>}
+                </div>
+                <div className="overview-placement-teams">
+                  {group.entries.map((entry) => (
+                    <button type="button" key={entry.team.id} onClick={() => onOpenTeam(entry.team)}>
+                      <TeamLogo team={entry.team} />
+                      <span>
+                        <b>{entry.team.name}</b>
+                        <small>{entry.record.wins}-{entry.record.losses} record</small>
+                      </span>
+                      <em>{entry.detail}</em>
+                    </button>
+                  ))}
+                </div>
+              </div>
             ))}
           </div>
         </section>
@@ -8557,14 +8632,14 @@ function EventOverviewPage({
           {teams
             .slice()
             .sort((a, b) => {
-              const rankA = a.id === "user" && circuit ? circuitWorldRank(circuit.points) : a.rank ?? 999;
-              const rankB = b.id === "user" && circuit ? circuitWorldRank(circuit.points) : b.rank ?? 999;
+              const rankA = a.id === "user" && showCurrentCircuitRank && circuit ? circuitWorldRank(circuit.points) : a.rank ?? 999;
+              const rankB = b.id === "user" && showCurrentCircuitRank && circuit ? circuitWorldRank(circuit.points) : b.rank ?? 999;
               return rankA - rankB;
             })
             .map((team) => {
               const entry = placementByTeam.get(team.id);
               const teamRecord = records[team.id] ?? { wins: 0, losses: 0 };
-              const worldRank = team.id === "user" && circuit ? circuitWorldRank(circuit.points) : team.rank;
+              const worldRank = team.id === "user" && showCurrentCircuitRank && circuit ? circuitWorldRank(circuit.points) : team.rank;
               return (
                 <button type="button" className="event-team-card" key={team.id} onClick={() => onOpenTeam(team)}>
                   <span className="event-team-rank">{worldRank ? `#${worldRank}` : "Custom"}</span>
@@ -8650,26 +8725,34 @@ function EventOverviewPage({
   );
 }
 
-function EventStageRoute({ circuit }: { circuit: EventOverviewCircuit }) {
-  const activeIndex = circuitEventIndex(circuit.event.id);
-  const completed = new Set(
-    circuit.history.filter((entry) => entry.season === circuit.season && entry.eventId).map((entry) => entry.eventId),
-  );
+function EventStageRoute({ circuit, onSelect }: { circuit: EventOverviewCircuit; onSelect: (eventId: CircuitEventId) => void }) {
+  const currentIndex = circuitEventIndex(circuit.currentEvent.id);
+  const available = new Set(circuit.availableEventIds);
   return (
     <section className="event-stage-route" aria-label="Major stages">
       {circuitEvents.map((event, index) => {
-        const active = event.id === circuit.event.id;
-        const done = completed.has(event.id) || index < activeIndex;
+        const current = event.id === circuit.currentEvent.id;
+        const viewing = event.id === circuit.event.id;
+        const reviewable = available.has(event.id);
+        const done = reviewable && !current && index < currentIndex;
         return (
-          <div className={active ? "active" : done ? "done" : "upcoming"} key={event.id}>
+          <button
+            type="button"
+            className={`event-stage-step ${current ? "active" : done ? "done" : "upcoming"}${viewing ? " viewing" : ""}`}
+            key={event.id}
+            disabled={!reviewable}
+            aria-pressed={viewing}
+            onClick={() => onSelect(event.id)}
+            title={reviewable ? `View ${event.name}` : `${event.name} has not started`}
+          >
             <span>{index + 1}</span>
             <b>{event.shortName}</b>
-            <small>{active ? "Live" : done ? "Complete" : "Upcoming"}</small>
-          </div>
+            <small>{viewing ? "Viewing" : current ? "Live" : done ? "Review" : "Upcoming"}</small>
+          </button>
         );
       })}
       <div className="event-stage-rank">
-        <small>World rank</small>
+        <small>Current world rank</small>
         <b>#{circuitWorldRank(circuit.points)}</b>
         <span>{circuit.points} points</span>
       </div>
@@ -8748,6 +8831,7 @@ function buildEventPlacements(
   results: SwissResult[],
   hasPlayoffs: boolean,
   prizeForTier: (tier: PlacementTier) => number,
+  advanceTarget?: string,
 ): EventPlacementRow[] {
   const playoffLoser = (stage: PlayoffRound, teamId: string) =>
     results.some((result) => result.stage === stage && result.winnerId !== teamId && (result.left.id === teamId || result.right.id === teamId));
@@ -8757,34 +8841,60 @@ function buildEventPlacements(
     .map((team): EventPlacementRow => {
       const teamRecord = records[team.id] ?? { wins: 0, losses: 0 };
       if (final?.winnerId === team.id) {
-        return { team, label: "1st", detail: "Champion", prize: prizeForTier("champion"), order: 1, tone: "champion" };
+        return { team, record: teamRecord, label: "1st", detail: "Champion", prize: prizeForTier("champion"), order: 1, tone: "champion" };
       }
       if (playoffLoser("final", team.id)) {
-        return { team, label: "2nd", detail: "Runner-up", prize: prizeForTier("runner-up"), order: 2, tone: "podium" };
+        return { team, record: teamRecord, label: "2nd", detail: "Runner-up", prize: prizeForTier("runner-up"), order: 2, tone: "podium" };
       }
       if (playoffLoser("semifinal", team.id)) {
-        return { team, label: "3-4th", detail: "Semifinal", prize: prizeForTier("top4"), order: 3, tone: "podium" };
+        return { team, record: teamRecord, label: "3-4th", detail: "Semifinal", prize: prizeForTier("top4"), order: 3, tone: "podium" };
       }
       if (playoffLoser("quarterfinal", team.id)) {
-        return { team, label: "5-8th", detail: "Quarterfinal", prize: prizeForTier("top8"), order: 5, tone: "qualified" };
+        return { team, record: teamRecord, label: "5-8th", detail: "Quarterfinal", prize: prizeForTier("top8"), order: 5, tone: "qualified" };
       }
       if (teamRecord.losses >= 3) {
         const label = teamRecord.wins >= 2 ? "9-11th" : teamRecord.wins === 1 ? "12-14th" : "15-16th";
-        return { team, label: hasPlayoffs ? label : `${teamRecord.wins}-3`, detail: "Eliminated", prize: prizeForTier("swiss"), order: 20 - teamRecord.wins, tone: "eliminated" };
+        const order = teamRecord.wins >= 2 ? 9 : teamRecord.wins === 1 ? 12 : 15;
+        return { team, record: teamRecord, label, detail: "Eliminated", prize: prizeForTier("swiss"), order, tone: "eliminated" };
       }
       if (teamRecord.wins >= 3) {
+        const label = hasPlayoffs
+          ? "Playoffs"
+          : teamRecord.losses === 0
+            ? "1-2nd"
+            : teamRecord.losses === 1
+              ? "3-5th"
+              : "6-8th";
+        const order = hasPlayoffs ? 8 : teamRecord.losses === 0 ? 1 : teamRecord.losses === 1 ? 3 : 6;
         return {
           team,
-          label: hasPlayoffs ? "Top 8" : "Qualified",
-          detail: hasPlayoffs ? "Playoff berth" : "Advanced",
+          record: teamRecord,
+          label,
+          detail: hasPlayoffs ? "Playoff berth" : `Advanced to ${advanceTarget ?? "next stage"}`,
           prize: hasPlayoffs ? undefined : prizeForTier("top8"),
-          order: 8,
+          order,
           tone: "qualified",
         };
       }
-      return { team, label: `${teamRecord.wins}-${teamRecord.losses}`, detail: "In contention", order: 10, tone: "live" };
+      return { team, record: teamRecord, label: "Live", detail: "In contention", order: 8, tone: "live" };
     })
     .sort((a, b) => a.order - b.order || (a.team.rank ?? 999) - (b.team.rank ?? 999) || a.team.name.localeCompare(b.team.name));
+}
+
+function groupEventPlacements(placements: EventPlacementRow[]) {
+  const groups = new Map<string, { label: string; detail: string; prize?: number; tone: EventPlacementRow["tone"]; entries: EventPlacementRow[] }>();
+  placements.forEach((entry) => {
+    const current = groups.get(entry.label);
+    if (current) current.entries.push(entry);
+    else groups.set(entry.label, {
+      label: entry.label,
+      detail: entry.detail,
+      prize: entry.prize,
+      tone: entry.tone,
+      entries: [entry],
+    });
+  });
+  return [...groups.values()];
 }
 
 function overviewPrizePool(prizeForTier: (tier: PlacementTier) => number) {
@@ -9641,11 +9751,13 @@ function TeamStageMatches({ team, games, onOpenSeries }: { team: FieldTeam; game
 
 function RunResultsPage({
   results,
+  eventName,
   selectedResultId,
   onOpen,
   onBack,
 }: {
   results: SwissResult[];
+  eventName?: string;
   selectedResultId?: string;
   onOpen: (id: string) => void;
   onBack: () => void;
@@ -9656,9 +9768,9 @@ function RunResultsPage({
         <div>
           <div className="section-title">
             <Database size={18} />
-            <span>Previous results</span>
+            <span>{eventName ? "Event results" : "Previous results"}</span>
           </div>
-          <h1>Series archive</h1>
+          <h1>{eventName ?? "Series archive"}</h1>
           <p>{results.length ? `${results.length} completed series saved for this run.` : "Completed series will be stored here."}</p>
         </div>
         <button className="secondary" onClick={onBack}>
@@ -10249,6 +10361,40 @@ function tagCircuitResults(results: SwissResult[], event: CircuitEvent) {
       eventName: event.name,
     };
   });
+}
+
+function teamsFromResults(results: SwissResult[]) {
+  const teams = new Map<string, FieldTeam>();
+  results.forEach((result) => {
+    teams.set(result.left.id, result.left);
+    teams.set(result.right.id, result.right);
+  });
+  return [...teams.values()];
+}
+
+function recordsFromResults(teams: FieldTeam[], results: SwissResult[]) {
+  const records = Object.fromEntries(teams.map((team) => [team.id, { wins: 0, losses: 0 }])) as Record<string, SwissRecord>;
+  results.forEach((result) => {
+    if (result.stage !== "swiss") return;
+    records[result.left.id] ??= { wins: 0, losses: 0 };
+    records[result.right.id] ??= { wins: 0, losses: 0 };
+    const loserId = result.winnerId === result.left.id ? result.right.id : result.left.id;
+    records[result.winnerId].wins += 1;
+    records[loserId].losses += 1;
+  });
+  return records;
+}
+
+function winnerFromFinal(results: SwissResult[]) {
+  const final = [...results].reverse().find((result) => result.stage === "final");
+  if (!final) return undefined;
+  return final.winnerId === final.left.id ? final.left : final.right;
+}
+
+function latestPlayoffRound(results: SwissResult[]): PlayoffRound {
+  if (results.some((result) => result.stage === "final")) return "final";
+  if (results.some((result) => result.stage === "semifinal")) return "semifinal";
+  return "quarterfinal";
 }
 
 function normalizeCircuitResultArchive(results: SwissResult[], currentEvent: CircuitEvent) {
