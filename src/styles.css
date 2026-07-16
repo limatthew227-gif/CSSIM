@@ -10519,6 +10519,20 @@ input[type="range"] {
   gap: 7px;
 }
 
+.vault-player-major-empty {
+  display: flex;
+  min-height: 74px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: #7f8d9d;
+  font-size: 12px;
+}
+
+.vault-player-major-empty b {
+  color: #a7b2bf;
+}
+
 .vault-player-major-row {
   display: grid;
   grid-template-columns: 120px minmax(150px, 0.8fr) minmax(250px, 1.7fr) 66px auto;

@@ -545,42 +545,44 @@ export class MatchDatabase {
     if (!events.length) return 0;
     const db = this.read();
     let updated = 0;
+    const completedKeys = new Set<string>();
     events.forEach((event) => {
-      db.matches
-        .filter(
-          (match) =>
-            match.runId === runId &&
-            match.season === event.season &&
-            match.eventId === event.eventId &&
-            (match.left.id === teamId || match.right.id === teamId),
-        )
-        .forEach((match) => {
-          if (
-            match.eventName === event.eventName &&
-            match.placementTier === event.tier &&
-            match.eventWins === event.wins &&
-            match.eventLosses === event.losses
-          ) {
-            return;
-          }
-          match.eventName = event.eventName;
-          match.placementTier = event.tier;
-          match.eventWins = event.wins;
-          match.eventLosses = event.losses;
+      const taggedMatches = db.matches.filter(
+        (match) =>
+          match.runId === runId &&
+          match.season === event.season &&
+          match.eventId === event.eventId &&
+          (match.left.id === teamId || match.right.id === teamId),
+      );
+      const expectedSeries = event.wins + event.losses + playoffSeriesForTier(event.eventId, event.tier);
+      const taggedSeries = new Set(taggedMatches.map((match) => match.seriesId ?? inferLegacySeriesId(match))).size;
+      if (expectedSeries <= 0 || taggedSeries < expectedSeries) {
+        taggedMatches.forEach((match) => {
+          if (match.placementTier == null && match.eventWins == null && match.eventLosses == null) return;
+          delete match.placementTier;
+          delete match.eventWins;
+          delete match.eventLosses;
           updated += 1;
         });
+        return;
+      }
+      completedKeys.add(`${event.season}:${event.eventId}`);
+      taggedMatches.forEach((match) => {
+        if (
+          match.eventName === event.eventName &&
+          match.placementTier === event.tier &&
+          match.eventWins === event.wins &&
+          match.eventLosses === event.losses
+        ) {
+          return;
+        }
+        match.eventName = event.eventName;
+        match.placementTier = event.tier;
+        match.eventWins = event.wins;
+        match.eventLosses = event.losses;
+        updated += 1;
+      });
     });
-    const completedKeys = new Set(
-      db.matches
-        .filter(
-          (match) =>
-            match.runId === runId &&
-            match.season != null &&
-            match.eventId &&
-            (match.left.id === teamId || match.right.id === teamId),
-        )
-        .map((match) => `${match.season}:${match.eventId}`),
-    );
     const pendingEvents = events.filter((event) => !completedKeys.has(`${event.season}:${event.eventId}`));
 
     const legacyMatches = db.matches
@@ -607,7 +609,8 @@ export class MatchDatabase {
       const event = pendingEvents[eventIndex];
       const expectedSeries = event.wins + event.losses + playoffSeriesForTier(event.eventId, event.tier);
       if (expectedSeries <= 0) continue;
-      const start = Math.max(0, cursor - expectedSeries);
+      if (cursor < expectedSeries) break;
+      const start = cursor - expectedSeries;
       groups.slice(start, cursor).forEach((group, groupIndex) => {
         group.matches.forEach((match) => {
           match.runId = runId;
@@ -838,9 +841,9 @@ export class MatchDatabase {
     };
   }
 
-  // A roster player's complete record for one organization, including former players. Major results
-  // are derived from every team match in the same saved run/season, while the statistical line only
-  // includes maps where this player actually appeared for this team.
+  // A roster player's complete record for one organization, including former players. A Major finish
+  // is credited only when the event has enough series to prove that placement and the player appeared
+  // in every stored team map for that Major.
   teamPlayerProfile(teamId: string, versionKey: string): TeamPlayerProfile | undefined {
     const profile = this.teamProfile(teamId);
     const player = profile?.roster.find((row) => row.versionKey === versionKey);
@@ -864,6 +867,7 @@ export class MatchDatabase {
         const majorTeamMatches = teamMatches.filter((match) => majorKey(match) === key);
         return buildTeamPlayerMajorResult(teamId, key, appearances, majorTeamMatches);
       })
+      .filter((major): major is TeamPlayerMajorResult => Boolean(major))
       .sort((a, b) => b.recordedAt.localeCompare(a.recordedAt));
 
     const history: TeamPlayerMatchRow[] = playerMatches
@@ -1104,34 +1108,16 @@ function buildTeamPlayerMajorResult(
   key: string,
   appearances: Array<{ match: MatchRecord; line: PlayerLine }>,
   teamMatches: MatchRecord[],
-): TeamPlayerMajorResult {
-  const line = emptyLine();
-  appearances.forEach(({ line: appearance }) => addCounters(line, appearance));
-  recalculateHltvStyleRating(line);
-  const wins = appearances.filter(({ match }) => match.winnerId === teamId).length;
-  const losses = appearances.length - wins;
-  const recordedAt = appearances.reduce((latest, { match }) => (match.recordedAt > latest ? match.recordedAt : latest), "");
-  const season = appearances.find(({ match }) => match.season != null)?.match.season;
-
-  if (key === "legacy") {
-    return {
-      key,
-      label: "Legacy Vault",
-      placement: "Saved maps",
-      detail: "Event identity was not stored for these older results",
-      tone: "legacy",
-      maps: appearances.length,
-      wins,
-      losses,
-      recordedAt,
-      line,
-    };
-  }
+): TeamPlayerMajorResult | undefined {
+  if (key === "legacy" || !appearances.length || !teamMatches.length) return undefined;
+  const appearanceIds = new Set(appearances.map(({ match }) => match.id));
+  if (teamMatches.some((match) => !appearanceIds.has(match.id))) return undefined;
 
   const highestEventId = teamMatches
     .map((match) => match.eventId ?? "major")
     .sort((a, b) => (majorStageOrder[b] ?? -1) - (majorStageOrder[a] ?? -1))[0] ?? "major";
   const stageMatches = teamMatches.filter((match) => (match.eventId ?? "major") === highestEventId);
+  if (!stageMatches.length) return undefined;
   const series = new Map<string, MatchRecord>();
   stageMatches.forEach((match) => series.set(match.seriesId ?? match.id, match));
   const seriesRows = [...series.values()];
@@ -1149,29 +1135,55 @@ function buildTeamPlayerMajorResult(
         (match.left.id === teamId || match.right.id === teamId),
     );
   const final = seriesRows.find((match) => match.stage === "final");
+  const resolvedTier =
+    savedTier ??
+    (final
+      ? final.winnerId === teamId
+        ? "champion"
+        : "runner-up"
+      : lostIn("semifinal")
+        ? "top4"
+        : lostIn("quarterfinal")
+          ? "top8"
+          : swissLosses >= 3
+            ? "swiss"
+            : highestEventId !== "stage-3" && highestEventId !== "major" && swissWins >= 3
+              ? "top8"
+              : undefined);
+  if (!resolvedTier) return undefined;
+  const expectedSeries = eventWins + eventLosses + playoffSeriesForTier(highestEventId, resolvedTier);
+  if (expectedSeries <= 0 || seriesRows.length < expectedSeries) return undefined;
+
+  const line = emptyLine();
+  appearances.forEach(({ line: appearance }) => addCounters(line, appearance));
+  recalculateHltvStyleRating(line);
+  const wins = appearances.filter(({ match }) => match.winnerId === teamId).length;
+  const losses = appearances.length - wins;
+  const recordedAt = appearances.reduce((latest, { match }) => (match.recordedAt > latest ? match.recordedAt : latest), "");
+  const season = appearances.find(({ match }) => match.season != null)?.match.season;
   const stageLabel = majorStageLabel[highestEventId] ?? stageMatches[0]?.eventName ?? "Major";
   const label = stageMatches[0]?.eventName ?? (season != null ? `Major ${season}` : "Major");
 
   let placement = stageLabel;
   let detail = `${stageLabel} results`;
   let tone: TeamPlayerMajorResult["tone"] = "stage";
-  if ((highestEventId === "stage-3" || highestEventId === "major") && (savedTier === "champion" || final?.winnerId === teamId)) {
+  if ((highestEventId === "stage-3" || highestEventId === "major") && resolvedTier === "champion") {
     placement = "1st";
     detail = "Champion";
     tone = "champion";
-  } else if ((highestEventId === "stage-3" || highestEventId === "major") && (savedTier === "runner-up" || lostIn("final"))) {
+  } else if ((highestEventId === "stage-3" || highestEventId === "major") && resolvedTier === "runner-up") {
     placement = "2nd";
     detail = "Runner-up";
     tone = "podium";
-  } else if ((highestEventId === "stage-3" || highestEventId === "major") && (savedTier === "top4" || lostIn("semifinal"))) {
+  } else if ((highestEventId === "stage-3" || highestEventId === "major") && resolvedTier === "top4") {
     placement = "3-4th";
     detail = "Semifinal";
     tone = "podium";
-  } else if ((highestEventId === "stage-3" || highestEventId === "major") && (savedTier === "top8" || lostIn("quarterfinal"))) {
+  } else if ((highestEventId === "stage-3" || highestEventId === "major") && resolvedTier === "top8") {
     placement = "5-8th";
     detail = "Quarterfinal";
     tone = "playoffs";
-  } else if ((highestEventId === "stage-3" || highestEventId === "major") && (savedTier === "swiss" || eventLosses >= 3)) {
+  } else if ((highestEventId === "stage-3" || highestEventId === "major") && resolvedTier === "swiss") {
     placement = eventWins >= 2 ? "9-11th" : eventWins === 1 ? "12-14th" : "15-16th";
     detail = `Grouped · ${eventWins}-${eventLosses} in ${stageLabel}`;
     tone = "grouped";

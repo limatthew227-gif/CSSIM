@@ -399,26 +399,112 @@ test("MatchDatabase: enriches already-tagged maps with an authoritative saved pl
   const db = new MatchDatabase(memoryStorage());
   const you = teamWithStar("you", "you-star");
   const opponent = makeTeam("opp", 82);
-  const tagged = matchInput("tagged-map", "2026-07-01T00:00:00Z", you, opponent, 4);
-  tagged.runId = "existing-career";
-  tagged.season = 3;
-  tagged.eventId = "stage-3";
-  tagged.eventName = "Major Stage 3";
-  tagged.seriesId = "existing-series";
-  tagged.stage = "quarterfinal";
-  tagged.winnerId = opponent.id;
-  db.recordMatch(tagged);
+  const tagged = (id: string, stage: string, winnerId: string, seed: number) => {
+    const input = matchInput(id, `2026-07-0${seed}T00:00:00Z`, you, opponent, seed);
+    input.runId = "existing-career";
+    input.season = 3;
+    input.eventId = "stage-3";
+    input.eventName = "Major Stage 3";
+    input.seriesId = `existing-${stage}`;
+    input.stage = stage;
+    input.winnerId = winnerId;
+    return input;
+  };
+  db.recordMany([
+    tagged("tagged-qf", "quarterfinal", you.id, 1),
+    tagged("tagged-sf", "semifinal", you.id, 2),
+    tagged("tagged-final", "final", you.id, 3),
+  ]);
 
   assert.equal(
     db.backfillTeamCareerEvents("you", "existing-career", [
-      { eventId: "stage-3", eventName: "Major Stage 3", season: 3, tier: "champion", wins: 3, losses: 1 },
+      { eventId: "stage-3", eventName: "Major Stage 3", season: 3, tier: "champion", wins: 0, losses: 0 },
     ]),
-    1,
+    3,
   );
-  const version = db.getMatch("tagged-map")!.players.find((ref) => ref.id === "you-star")!.versionKey;
+  const version = db.getMatch("tagged-final")!.players.find((ref) => ref.id === "you-star")!.versionKey;
   const major = db.teamPlayerProfile("you", version)!.majors[0];
   assert.equal(major.placement, "1st");
   assert.equal(major.detail, "Champion");
+});
+
+test("MatchDatabase: rejects a one-map champion attribution and keeps the map in player results", () => {
+  const db = new MatchDatabase(memoryStorage());
+  const you = teamWithStar("you", "you-star");
+  const opponent = makeTeam("opp", 82);
+  const tagged = matchInput("bad-champion", "2026-07-13T00:00:00Z", you, opponent, 1);
+  tagged.runId = "bad-career";
+  tagged.season = 1;
+  tagged.eventId = "stage-3";
+  tagged.eventName = "Major Stage 3";
+  tagged.seriesId = "bad-final";
+  tagged.stage = "final";
+  tagged.winnerId = you.id;
+  tagged.placementTier = "champion";
+  tagged.eventWins = 0;
+  tagged.eventLosses = 0;
+  db.recordMatch(tagged);
+
+  const version = db.getMatch("bad-champion")!.players.find((ref) => ref.id === "you-star")!.versionKey;
+  const before = db.teamPlayerProfile("you", version)!;
+  assert.equal(before.history.length, 1);
+  assert.deepEqual(before.majors, []);
+
+  assert.equal(
+    db.backfillTeamCareerEvents("you", "bad-career", [
+      { eventId: "stage-3", eventName: "Major Stage 3", season: 1, tier: "champion", wins: 0, losses: 0 },
+    ]),
+    1,
+  );
+  assert.equal(db.getMatch("bad-champion")?.placementTier, undefined);
+  assert.deepEqual(db.teamPlayerProfile("you", version)!.majors, []);
+});
+
+test("MatchDatabase: a former player does not inherit a title won after leaving the roster", () => {
+  const db = new MatchDatabase(memoryStorage());
+  const you = teamWithStar("you", "you-star");
+  const opponent = makeTeam("opp", 82);
+  const replacement = makePlayer("replacement", "Rifler", 84, "replacement");
+  const laterRoster: FieldTeam = { ...you, players: [replacement, ...you.players.slice(1)] };
+  const eventMap = (id: string, stage: string, team: FieldTeam, seed: number) => {
+    const input = matchInput(id, `2026-07-0${seed}T00:00:00Z`, team, opponent, seed);
+    input.runId = "roster-career";
+    input.season = 1;
+    input.eventId = "stage-3";
+    input.eventName = "Major Stage 3";
+    input.seriesId = `roster-${stage}`;
+    input.stage = stage;
+    input.winnerId = team.id;
+    input.placementTier = "champion";
+    input.eventWins = 0;
+    input.eventLosses = 0;
+    return input;
+  };
+  db.recordMany([
+    eventMap("roster-qf", "quarterfinal", you, 1),
+    eventMap("roster-sf", "semifinal", laterRoster, 2),
+    eventMap("roster-final", "final", laterRoster, 3),
+  ]);
+
+  const version = db.getMatch("roster-qf")!.players.find((ref) => ref.id === "you-star")!.versionKey;
+  const profile = db.teamPlayerProfile("you", version)!;
+  assert.equal(profile.history.length, 1);
+  assert.deepEqual(profile.majors, []);
+});
+
+test("MatchDatabase: does not consume a lone legacy map for a multi-series placement", () => {
+  const db = new MatchDatabase(memoryStorage());
+  const you = teamWithStar("you", "you-star");
+  const opponent = makeTeam("opp", 82);
+  db.recordMatch(matchInput("lone-legacy", "2026-07-13T00:00:00Z", you, opponent, 1));
+
+  assert.equal(
+    db.backfillTeamCareerEvents("you", "legacy-career", [
+      { eventId: "stage-3", eventName: "Major Stage 3", season: 1, tier: "champion", wins: 0, losses: 0 },
+    ]),
+    0,
+  );
+  assert.equal(db.getMatch("lone-legacy")?.runId, undefined);
 });
 
 test("MatchDatabase: infers separate past Majors from legacy Swiss and playoff round resets", () => {

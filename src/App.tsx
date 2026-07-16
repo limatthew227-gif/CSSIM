@@ -7134,43 +7134,50 @@ function VaultTeamPlayerPage({
             <span className="vault-card-note">{profile.majors.length} {profile.majors.length === 1 ? "Major" : "Majors"}</span>
           </div>
           <div className="vault-player-major-list">
-            {profile.majors.map((major) => {
-              const savedAt = new Date(major.recordedAt);
-              const date = Number.isNaN(savedAt.getTime())
-                ? "Saved event"
-                : savedAt.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
-              return (
-                <article className={`vault-player-major-row ${major.tone}`} key={major.key}>
-                  <div className="vault-player-major-badge">
-                    <Trophy size={14} />
-                    <strong>{major.placement}</strong>
-                  </div>
-                  <div className="vault-player-major-team">
-                    <TeamLogo team={team} small />
-                    <b>{team.name}</b>
-                  </div>
-                  <div className="vault-player-major-event">
-                    <b>{major.label}</b>
-                    <small>{major.detail} · {major.maps} maps · {major.wins}-{major.losses} · {date}</small>
-                  </div>
-                  <div className="vault-player-major-rating">
-                    <b className={ratingTone(major.line.rating)}>{major.line.rating.toFixed(2)}</b>
-                    <small>Rating</small>
-                  </div>
-                  <button
-                    type="button"
-                    className="secondary compact"
-                    onClick={() => {
-                      setMajorFilter(major.key);
-                      setTab("results");
-                    }}
-                  >
-                    <Database size={14} />
-                    Stats
-                  </button>
-                </article>
-              );
-            })}
+            {profile.majors.length ? (
+              profile.majors.map((major) => {
+                const savedAt = new Date(major.recordedAt);
+                const date = Number.isNaN(savedAt.getTime())
+                  ? "Saved event"
+                  : savedAt.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+                return (
+                  <article className={`vault-player-major-row ${major.tone}`} key={major.key}>
+                    <div className="vault-player-major-badge">
+                      <Trophy size={14} />
+                      <strong>{major.placement}</strong>
+                    </div>
+                    <div className="vault-player-major-team">
+                      <TeamLogo team={team} small />
+                      <b>{team.name}</b>
+                    </div>
+                    <div className="vault-player-major-event">
+                      <b>{major.label}</b>
+                      <small>{major.detail} · {major.maps} maps · {major.wins}-{major.losses} · {date}</small>
+                    </div>
+                    <div className="vault-player-major-rating">
+                      <b className={ratingTone(major.line.rating)}>{major.line.rating.toFixed(2)}</b>
+                      <small>Rating</small>
+                    </div>
+                    <button
+                      type="button"
+                      className="secondary compact"
+                      onClick={() => {
+                        setMajorFilter(major.key);
+                        setTab("results");
+                      }}
+                    >
+                      <Database size={14} />
+                      Stats
+                    </button>
+                  </article>
+                );
+              })
+            ) : (
+              <div className="vault-player-major-empty">
+                <Trophy size={18} />
+                <b>No complete Major placements recorded</b>
+              </div>
+            )}
           </div>
         </section>
       )}
