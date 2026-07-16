@@ -94,6 +94,28 @@ test("MatchDatabase: player rating extremes include opponent context and prefer 
   assert.equal(extremes.worst.line.rating, 0.61);
 });
 
+test("MatchDatabase: player opponent records aggregate every map and retain record context", () => {
+  const db = new MatchDatabase(memoryStorage());
+  const team = teamWithStar("you", "you-star");
+  const oppA = makeTeam("oppA", 80);
+  const oppB = makeTeam("oppB", 80);
+  const firstA = matchInput("a1", "2026-06-01T00:00:00Z", team, oppA, 1, { map: "inferno" });
+  const secondA = matchInput("a2", "2026-06-02T00:00:00Z", team, oppA, 2, { map: "nuke" });
+  const onlyB = matchInput("b1", "2026-06-03T00:00:00Z", team, oppB, 3, { map: "mirage" });
+  db.recordMany([firstA, secondA, onlyB]);
+
+  const version = db.getMatch("a1")!.players.find((ref) => ref.id === "you-star")!.versionKey;
+  const records = db.playerOpponentRecords(version);
+  assert.deepEqual(records.map((record) => record.opponent.id), ["oppA", "oppB"], "most-faced opponent sorts first");
+  assert.equal(records[0].maps, 2);
+  assert.equal(records[0].wins + records[0].losses, 2);
+  assert.equal(records[0].line.kills, firstA.stats["you-star"].kills + secondA.stats["you-star"].kills);
+  assert.equal(records[0].line.rounds, firstA.stats["you-star"].rounds + secondA.stats["you-star"].rounds);
+  assert.ok(Number.isFinite(records[0].line.rating));
+  assert.equal(records[1].maps, 1);
+  assert.equal(records[1].wins + records[1].losses, 1);
+});
+
 test("MatchDatabase: keeps different eras of the same player separate (FalleN 2018 vs 2026)", () => {
   const db = new MatchDatabase(memoryStorage());
   const classic = teamWithStarYear("navi-2018", "navi-2018-star", "2018");

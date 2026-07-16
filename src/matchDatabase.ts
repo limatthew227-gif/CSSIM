@@ -220,6 +220,14 @@ export interface PlayerRatingExtremes {
   worst: PlayerRatingAppearance;
 }
 
+export interface PlayerOpponentRecord {
+  opponent: StoredTeamRef;
+  maps: number;
+  wins: number;
+  losses: number;
+  line: PlayerLine;
+}
+
 export interface TeamRecordRow {
   team: StoredTeamRef;
   matches: number;
@@ -622,6 +630,42 @@ export class MatchDatabase {
     }
 
     return best && worst ? { best, worst } : undefined;
+  }
+
+  // One player's persistent record against every opponent. This follows the same version boundary as
+  // playerCareer, so roster moves fold together while distinct historical eras remain separate.
+  playerOpponentRecords(versionKey: string): PlayerOpponentRecord[] {
+    const rows = new Map<string, PlayerOpponentRecord>();
+
+    for (const match of this.read().matches) {
+      for (const ref of match.players.filter((player) => player.versionKey === versionKey)) {
+        const matchLine = match.box[ref.id];
+        if (!matchLine) continue;
+        const isLeft = ref.side === "left";
+        const team = isLeft ? match.left : match.right;
+        const opponent = isLeft ? match.right : match.left;
+        const row = rows.get(opponent.id) ?? {
+          opponent,
+          maps: 0,
+          wins: 0,
+          losses: 0,
+          line: emptyLine(),
+        };
+        row.opponent = opponent;
+        row.maps += 1;
+        if (match.winnerId === team.id) row.wins += 1;
+        else row.losses += 1;
+        addCounters(row.line, matchLine);
+        rows.set(opponent.id, row);
+      }
+    }
+
+    return [...rows.values()]
+      .map((row) => {
+        recalculateHltvStyleRating(row.line);
+        return row;
+      })
+      .sort((a, b) => b.maps - a.maps || b.line.rating - a.line.rating || a.opponent.name.localeCompare(b.opponent.name));
   }
 
   // All distinct player VERSIONS, most-played first — the persistent player registry. Each era of a

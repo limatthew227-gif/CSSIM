@@ -156,6 +156,7 @@ import {
   teamRef,
   type StorageAdapter,
   type PlayerCareerRecord,
+  type PlayerOpponentRecord,
   type PlayerRatingAppearance,
   type PlayerRatingExtremes,
   type MatchRecord,
@@ -8434,6 +8435,125 @@ function VaultRatingRecord({ kind, appearance }: { kind: "best" | "worst"; appea
   );
 }
 
+const RIVAL_SAMPLE_MAPS = 3;
+
+function PlayerRivalCard({
+  kind,
+  record,
+}: {
+  kind: "favorite" | "nemesis" | "frequent";
+  record: PlayerOpponentRecord;
+}) {
+  const label = kind === "favorite" ? "Favorite opponent" : kind === "nemesis" ? "Nemesis" : "Most faced";
+  const winPct = record.maps ? (record.wins / record.maps) * 100 : 0;
+  const kdDiff = record.line.kills - record.line.deaths;
+  return (
+    <article className={`player-rival-card ${kind}`}>
+      <div className="player-rival-label">
+        {kind === "favorite" ? <TrendingUp size={16} /> : kind === "nemesis" ? <TrendingDown size={16} /> : <Swords size={16} />}
+        <span>{label}</span>
+      </div>
+      <div className="player-rival-team">
+        <TeamLogo team={record.opponent} />
+        <div>
+          <strong>{record.opponent.name}</strong>
+          <span>{record.opponent.tag}</span>
+        </div>
+      </div>
+      <div className="player-rival-rating">
+        <strong className={ratingTone(record.line.rating)}>{record.line.rating.toFixed(2)}</strong>
+        <span>Rating</span>
+      </div>
+      <div className="player-rival-metrics">
+        <span><b>{record.maps}</b><small>Maps</small></span>
+        <span><b>{record.wins}-{record.losses}</b><small>Record</small></span>
+        <span><b>{winPct.toFixed(0)}%</b><small>Win rate</small></span>
+        <span><b className={kdDiff >= 0 ? "good" : "bad"}>{kdDiff >= 0 ? "+" : ""}{kdDiff}</b><small>K-D</small></span>
+      </div>
+    </article>
+  );
+}
+
+function PlayerRivalsPanel({ matchups }: { matchups: PlayerOpponentRecord[] }) {
+  if (!matchups.length) return <div className="empty-fullscreen">No Vault matchups recorded for this player yet.</div>;
+
+  const qualified = matchups
+    .filter((record) => record.maps >= RIVAL_SAMPLE_MAPS)
+    .sort((a, b) => b.line.rating - a.line.rating || b.maps - a.maps);
+  const favorite = qualified.length >= 2 ? qualified[0] : undefined;
+  const nemesis = qualified.length >= 2 ? qualified[qualified.length - 1] : undefined;
+  const mostFaced = matchups[0];
+
+  return (
+    <section className="player-rivals-panel">
+      <div className="player-rivals-head">
+        <div className="section-title">
+          <Swords size={18} />
+          <span>Vault matchups</span>
+        </div>
+        <span>{matchups.length} {matchups.length === 1 ? "opponent" : "opponents"}</span>
+      </div>
+
+      {favorite && nemesis ? (
+        <div className="player-rival-spotlights">
+          <PlayerRivalCard kind="favorite" record={favorite} />
+          <PlayerRivalCard kind="nemesis" record={nemesis} />
+          <PlayerRivalCard kind="frequent" record={mostFaced} />
+        </div>
+      ) : (
+        <div className="player-rival-sample">
+          <Swords size={18} />
+          <div>
+            <strong>Rival labels need a larger sample</strong>
+            <span>Two opponents must reach {RIVAL_SAMPLE_MAPS} recorded maps. Most faced: {mostFaced.opponent.name} ({mostFaced.maps}).</span>
+          </div>
+        </div>
+      )}
+
+      <div className="player-matchup-list">
+        <div className="player-matchup-list-head">
+          <strong>All matchups</strong>
+          <span>{RIVAL_SAMPLE_MAPS}+ maps qualifies for rival labels</span>
+        </div>
+        <div className="player-matchup-table-wrap">
+          <table className="player-matchup-table">
+            <thead>
+              <tr>
+                <th>Opponent</th>
+                <th>Maps</th>
+                <th>Rating</th>
+                <th>K-D</th>
+                <th>Record</th>
+                <th>Win rate</th>
+              </tr>
+            </thead>
+            <tbody>
+              {matchups.map((record) => {
+                const kdDiff = record.line.kills - record.line.deaths;
+                return (
+                  <tr key={record.opponent.id}>
+                    <td>
+                      <div className="player-matchup-team">
+                        <TeamLogo team={record.opponent} small />
+                        <div><b>{record.opponent.name}</b><span>{record.opponent.tag}</span></div>
+                      </div>
+                    </td>
+                    <td>{record.maps}</td>
+                    <td><b className={ratingTone(record.line.rating)}>{record.line.rating.toFixed(2)}</b></td>
+                    <td className={kdDiff >= 0 ? "good" : "bad"}>{record.line.kills}-{record.line.deaths}</td>
+                    <td>{record.wins}-{record.losses}</td>
+                    <td>{((record.wins / record.maps) * 100).toFixed(0)}%</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 // A player's whole-run "career": event-log advanced stats summed across every team they appeared on.
 function PlayerCareerPanel({
   player,
@@ -9486,6 +9606,9 @@ function PlayerDetailPage({
   onOpenTeam: (team: FieldTeam) => void;
   onCompare?: (player: Player) => void;
 }) {
+  const [activeTab, setActiveTab] = useState<"overview" | "history" | "rivals">("overview");
+  useEffect(() => setActiveTab("overview"), [player.id]);
+
   // one row per MAP the player featured in (HLTV-style match history), in chronological order
   const maps = results
     .filter((r) => r.left.id === team.id || r.right.id === team.id)
@@ -9535,6 +9658,7 @@ function PlayerDetailPage({
     return {
       career: db.playerCareer(versionKey),
       extremes: db.playerRatingExtremes(versionKey),
+      matchups: db.playerOpponentRecords(versionKey),
     };
   }, [player]);
 
@@ -9575,62 +9699,83 @@ function PlayerDetailPage({
         </div>
       </section>
 
-      {total > 0 && (
-        <section className="player-summary-cards">
-          <div>
-            <strong className={ratingTone(avgRating)}>{avgRating.toFixed(2)}</strong>
-            <span>Rating</span>
-          </div>
-          <div>
-            <strong>{mapsWonPct.toFixed(1)}%</strong>
-            <span>Maps won</span>
-          </div>
-          <div>
-            <strong>{onePlusPct.toFixed(1)}%</strong>
-            <span>Maps with 1+ rating</span>
-          </div>
-          <div>
-            <strong>{bestStreak}</strong>
-            <span>Best 1+ rating streak</span>
-          </div>
-        </section>
+      <nav className="player-detail-tabs" role="tablist" aria-label={`${player.handle} statistics`}>
+        <button type="button" role="tab" aria-selected={activeTab === "overview"} className={activeTab === "overview" ? "active" : ""} onClick={() => setActiveTab("overview")}>
+          <Gauge size={16} /> Overview
+        </button>
+        <button type="button" role="tab" aria-selected={activeTab === "history"} className={activeTab === "history" ? "active" : ""} onClick={() => setActiveTab("history")}>
+          <Database size={16} /> Stage history <span>{stageGroups.length}</span>
+        </button>
+        <button type="button" role="tab" aria-selected={activeTab === "rivals"} className={activeTab === "rivals" ? "active" : ""} onClick={() => setActiveTab("rivals")}>
+          <Swords size={16} /> Rivals <span>{vault.matchups.length}</span>
+        </button>
+      </nav>
+
+      {activeTab === "overview" && (
+        <div className="player-tab-panel" role="tabpanel">
+          {total > 0 && (
+            <section className="player-summary-cards">
+              <div>
+                <strong className={ratingTone(avgRating)}>{avgRating.toFixed(2)}</strong>
+                <span>Rating</span>
+              </div>
+              <div>
+                <strong>{mapsWonPct.toFixed(1)}%</strong>
+                <span>Maps won</span>
+              </div>
+              <div>
+                <strong>{onePlusPct.toFixed(1)}%</strong>
+                <span>Maps with 1+ rating</span>
+              </div>
+              <div>
+                <strong>{bestStreak}</strong>
+                <span>Best 1+ rating streak</span>
+              </div>
+            </section>
+          )}
+
+          {maps.length >= 2 && (
+            <section className="form-panel">
+              <div className="section-title">
+                <TrendingUp size={18} />
+                <span>Form — rating per map</span>
+              </div>
+              <FormChart
+                ratings={maps.map((m) => m.line.rating)}
+                segments={stageGroups.map((group) => ({ label: group.shortName, count: group.maps.length }))}
+              />
+            </section>
+          )}
+
+          <PlayerCareerPanel player={player} career={career} activeTeam={team} onOpenTeam={onOpenTeam} />
+          <PlayerVaultLine vault={vault.career} extremes={vault.extremes} />
+        </div>
       )}
 
-      {maps.length >= 2 && (
-        <section className="form-panel">
-          <div className="section-title">
-            <TrendingUp size={18} />
-            <span>Form — rating per map</span>
-          </div>
-          <FormChart
-            ratings={maps.map((m) => m.line.rating)}
-            segments={stageGroups.map((group) => ({ label: group.shortName, count: group.maps.length }))}
-          />
-        </section>
+      {activeTab === "history" && (
+        <div className="player-tab-panel" role="tabpanel">
+          {maps.length ? (
+            <section className="player-history-block">
+              <div className="player-history-head">
+                <div className="section-title">
+                  <Database size={18} />
+                  <span>Stage history</span>
+                </div>
+                <span>{stageGroups.length} {stageGroups.length === 1 ? "stage" : "stages"} / {total} {total === 1 ? "map" : "maps"}</span>
+              </div>
+              <div className="player-stage-history">
+                {displayStageGroups.map((group) => (
+                  <PlayerStageSection key={group.key} group={group} onOpenSeries={onOpenSeries} />
+                ))}
+              </div>
+            </section>
+          ) : (
+            <div className="empty-fullscreen">No completed maps for {player.handle} yet.</div>
+          )}
+        </div>
       )}
 
-      <PlayerCareerPanel player={player} career={career} activeTeam={team} onOpenTeam={onOpenTeam} />
-
-      <PlayerVaultLine vault={vault.career} extremes={vault.extremes} />
-
-      {maps.length ? (
-        <section className="player-history-block">
-          <div className="player-history-head">
-            <div className="section-title">
-              <Database size={18} />
-              <span>Stage history</span>
-            </div>
-            <span>{stageGroups.length} {stageGroups.length === 1 ? "stage" : "stages"} / {total} {total === 1 ? "map" : "maps"}</span>
-          </div>
-          <div className="player-stage-history">
-            {displayStageGroups.map((group) => (
-              <PlayerStageSection key={group.key} group={group} onOpenSeries={onOpenSeries} />
-            ))}
-          </div>
-        </section>
-      ) : (
-        <div className="empty-fullscreen">No completed maps for {player.handle} yet.</div>
-      )}
+      {activeTab === "rivals" && <div className="player-tab-panel" role="tabpanel"><PlayerRivalsPanel matchups={vault.matchups} /></div>}
     </main>
   );
 }
