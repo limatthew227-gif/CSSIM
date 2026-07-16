@@ -3303,7 +3303,8 @@ button.outcome-team:hover {
 }
 
 .player-map-grid {
-  grid-template-columns: 78px minmax(0, 1.3fr) minmax(0, 1.3fr) 56px 88px 60px 76px;
+  grid-template-columns: minmax(130px, 0.9fr) minmax(180px, 1.35fr) 64px 70px 88px 60px 76px;
+  min-width: 790px;
 }
 
 .player-map-grid.series-start {
@@ -3311,21 +3312,183 @@ button.outcome-team:hover {
 }
 
 .pm-date {
+  display: grid;
+  gap: 2px;
   color: var(--muted);
   font-weight: 800;
   font-variant-numeric: tabular-nums;
 }
 
-.pm-mapscore {
-  color: var(--muted);
-  font-style: normal;
-  font-weight: 800;
+.pm-date b {
+  color: var(--text);
+  font-size: 13px;
+}
+
+.pm-date small {
+  overflow: hidden;
+  color: #738194;
+  font-size: 9px;
+  font-weight: 900;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
 }
 
 .pm-map {
   color: var(--muted);
   font-weight: 800;
   text-transform: lowercase;
+}
+
+.pm-result {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.pm-result em {
+  color: #596575;
+  font-style: normal;
+}
+
+.pm-result.won b:first-child,
+.pm-result.lost b:last-child {
+  color: var(--text);
+}
+
+.player-history-block,
+.player-stage-history {
+  display: grid;
+  gap: 14px;
+}
+
+.player-history-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 38px;
+}
+
+.player-history-head > span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.player-stage-section {
+  overflow: hidden;
+  border: 1px solid #2d3845;
+  border-radius: 8px;
+  background: #151a21;
+}
+
+.player-stage-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  min-height: 76px;
+  padding: 11px 14px 11px 16px;
+  border-left: 3px solid var(--accent);
+  border-bottom: 1px solid #2d3845;
+  background: #1c232c;
+}
+
+.player-stage-title {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.player-stage-title > span {
+  color: var(--gold);
+  font-size: 10px;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.player-stage-title strong {
+  overflow: hidden;
+  color: var(--text);
+  font-size: 18px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.player-stage-title small {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.player-stage-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(72px, 1fr));
+  gap: 7px;
+}
+
+.player-stage-metrics > span {
+  display: grid;
+  gap: 1px;
+  min-width: 76px;
+  padding: 7px 10px;
+  border: 1px solid #374454;
+  border-radius: 5px;
+  background: #141a21;
+}
+
+.player-stage-metrics small {
+  color: #758295;
+  font-size: 9px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.player-stage-metrics b {
+  color: var(--text);
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+}
+
+.player-stage-metrics b.good {
+  color: var(--green);
+}
+
+.player-stage-metrics b.bad {
+  color: #d76d6d;
+}
+
+.player-stage-table {
+  overflow-x: auto;
+}
+
+.player-stage-table .full-table-head {
+  min-height: 36px;
+  border-bottom-width: 1px;
+  background: #11171e;
+  font-size: 10px;
+}
+
+.player-stage-table .full-table-row {
+  min-height: 52px;
+}
+
+@media (max-width: 760px) {
+  .player-summary-cards {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .player-stage-head {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .player-stage-metrics > span {
+    min-width: 0;
+  }
 }
 
 /* Per-match table on the player-detail page (legacy per-series view, kept for reference) */
@@ -10042,6 +10205,12 @@ input[type="range"] {
   stroke-dasharray: 1 1;
 }
 
+.fc-stage-line {
+  stroke: #526071;
+  stroke-width: 0.35;
+  stroke-dasharray: 1 1;
+}
+
 .fc-line {
   fill: none;
   stroke: var(--accent);
@@ -10061,6 +10230,23 @@ input[type="range"] {
 
 .fc-dot.bad {
   fill: #ff8d8d;
+}
+
+.fc-stage-axis {
+  display: flex;
+  gap: 2px;
+}
+
+.fc-stage-axis span {
+  flex-basis: 0;
+  min-width: 0;
+  padding: 3px 5px;
+  border-top: 2px solid #374657;
+  color: #8795a7;
+  font-size: 9px;
+  font-weight: 900;
+  text-align: center;
+  text-transform: uppercase;
 }
 
 /* Pre-match scouting report ------------------------------------------------ */

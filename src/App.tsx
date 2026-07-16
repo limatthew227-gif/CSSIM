@@ -7509,8 +7509,8 @@ function WinProbGraph({
   );
 }
 
-// A player's rating per map over the run — a quick read of form, with a 1.00 baseline.
-function FormChart({ ratings }: { ratings: number[] }) {
+// A player's rating per map over the run, with event-stage boundaries when the circuit has several.
+function FormChart({ ratings, segments = [] }: { ratings: number[]; segments?: Array<{ label: string; count: number }> }) {
   if (ratings.length < 2) return null;
   const lo = Math.min(0.8, ...ratings) - 0.05;
   const hi = Math.max(1.2, ...ratings) + 0.05;
@@ -7518,16 +7518,31 @@ function FormChart({ ratings }: { ratings: number[] }) {
   const yAt = (r: number) => 2 + (1 - (r - lo) / (hi - lo)) * 28; // higher rating -> top
   const points = ratings.map((r, i) => `${xAt(i).toFixed(2)},${yAt(r).toFixed(2)}`).join(" ");
   const baseY = yAt(1).toFixed(2);
+  let completedMaps = 0;
+  const stageBoundaries = segments.slice(0, -1).map((segment) => {
+    completedMaps += segment.count;
+    return (xAt(completedMaps - 1) + xAt(completedMaps)) / 2;
+  });
 
   return (
     <div className="form-chart">
       <svg viewBox="0 0 100 32" role="img" aria-label="Rating per map over the run">
         <line x1="0" y1={baseY} x2="100" y2={baseY} className="fc-baseline" />
+        {stageBoundaries.map((x, index) => (
+          <line key={index} x1={x} y1="2" x2={x} y2="30" className="fc-stage-line" />
+        ))}
         <polyline points={points} className="fc-line" vectorEffect="non-scaling-stroke" />
         {ratings.map((r, i) => (
           <circle key={i} cx={xAt(i)} cy={yAt(r)} r={0.9} className={`fc-dot ${r >= 1 ? "good" : "bad"}`} />
         ))}
       </svg>
+      {segments.length > 1 && (
+        <div className="fc-stage-axis">
+          {segments.map((segment) => (
+            <span key={segment.label} style={{ flexGrow: segment.count }}>{segment.label}</span>
+          ))}
+        </div>
+      )}
       <div className="winprob-axis">
         <span>Map 1</span>
         <span className="wp-mid">1.00 baseline</span>
@@ -9458,7 +9473,8 @@ function PlayerDetailPage({
   maps.forEach((m) => {
     if (m.line.rating >= 1) { streak += 1; bestStreak = Math.max(bestStreak, streak); } else streak = 0;
   });
-  const display = [...maps].reverse(); // most recent first
+  const stageGroups = buildPlayerStageGroups(maps);
+  const displayStageGroups = [...stageGroups].reverse();
   const photo = playerPhoto(player.handle);
   const career = useMemo(() => buildPlayerCareer(results, playerVersionKey(player)), [results, player]);
   const vault = useMemo(() => getMatchDb().playerCareer(playerVersionKey(player)), [player]);
@@ -9482,7 +9498,7 @@ function PlayerDetailPage({
               <button type="button" className="inline-link" onClick={() => onOpenTeam(team)}>
                 {team.name}
               </button>{" "}
-              — match history, {total} {total === 1 ? "map" : "maps"} this event
+              — {total} {total === 1 ? "map" : "maps"} across {stageGroups.length} {stageGroups.length === 1 ? "stage" : "stages"}
             </p>
           </div>
         </div>
@@ -9527,7 +9543,10 @@ function PlayerDetailPage({
             <TrendingUp size={18} />
             <span>Form — rating per map</span>
           </div>
-          <FormChart ratings={maps.map((m) => m.line.rating)} />
+          <FormChart
+            ratings={maps.map((m) => m.line.rating)}
+            segments={stageGroups.map((group) => ({ label: group.shortName, count: group.maps.length }))}
+          />
         </section>
       )}
 
@@ -9535,49 +9554,142 @@ function PlayerDetailPage({
 
       <PlayerVaultLine vault={vault} />
 
-      <section className="full-table-card">
+      {maps.length ? (
+        <section className="player-history-block">
+          <div className="player-history-head">
+            <div className="section-title">
+              <Database size={18} />
+              <span>Stage history</span>
+            </div>
+            <span>{stageGroups.length} {stageGroups.length === 1 ? "stage" : "stages"} / {total} {total === 1 ? "map" : "maps"}</span>
+          </div>
+          <div className="player-stage-history">
+            {displayStageGroups.map((group) => (
+              <PlayerStageSection key={group.key} group={group} onOpenSeries={onOpenSeries} />
+            ))}
+          </div>
+        </section>
+      ) : (
+        <div className="empty-fullscreen">No completed maps for {player.handle} yet.</div>
+      )}
+    </main>
+  );
+}
+
+type PlayerMapHistoryRow = {
+  result: SwissResult;
+  map: MapId;
+  line: MatchState["yourStats"][string];
+  opponent: FieldTeam;
+  teamScore: number;
+  oppScore: number;
+  won: boolean;
+};
+
+interface PlayerStageGroup {
+  key: string;
+  name: string;
+  shortName: string;
+  maps: PlayerMapHistoryRow[];
+  series: number;
+  mapsWon: number;
+  line: MatchState["yourStats"][string];
+}
+
+function buildPlayerStageGroups(maps: PlayerMapHistoryRow[]): PlayerStageGroup[] {
+  const grouped = new Map<string, PlayerMapHistoryRow[]>();
+  maps.forEach((map) => {
+    const key = map.result.eventId ?? "event";
+    grouped.set(key, [...(grouped.get(key) ?? []), map]);
+  });
+
+  return [...grouped.entries()]
+    .map(([key, stageMaps]) => {
+      const event = key === "event" ? undefined : circuitEventById(key);
+      const line = emptyLine();
+      stageMaps.forEach((map) => addPlayerLine(line, map.line));
+      return {
+        key,
+        name: stageMaps[0]?.result.eventName ?? event?.name ?? "Major",
+        shortName: event?.shortName ?? "Major",
+        maps: stageMaps,
+        series: new Set(stageMaps.map((map) => map.result.id)).size,
+        mapsWon: stageMaps.filter((map) => map.won).length,
+        line,
+      };
+    })
+    .sort((a, b) => {
+      if (a.key === "event") return 1;
+      if (b.key === "event") return -1;
+      return circuitEventIndex(a.key) - circuitEventIndex(b.key);
+    });
+}
+
+function PlayerStageSection({ group, onOpenSeries }: { group: PlayerStageGroup; onOpenSeries: (id: string) => void }) {
+  const displayMaps = [...group.maps].reverse();
+  const kdDiff = group.line.kills - group.line.deaths;
+  return (
+    <section className="player-stage-section">
+      <div className="player-stage-head">
+        <div className="player-stage-title">
+          <span>{group.shortName}</span>
+          <strong>{group.name}</strong>
+          <small>{group.series} series / {group.maps.length} {group.maps.length === 1 ? "map" : "maps"}</small>
+        </div>
+        <div className="player-stage-metrics">
+          <span>
+            <small>Rating</small>
+            <b className={ratingTone(group.line.rating)}>{group.line.rating.toFixed(2)}</b>
+          </span>
+          <span>
+            <small>K-D</small>
+            <b className={kdDiff >= 0 ? "good" : "bad"}>{signedInteger(kdDiff)}</b>
+          </span>
+          <span>
+            <small>Maps</small>
+            <b>{group.mapsWon}-{group.maps.length - group.mapsWon}</b>
+          </span>
+        </div>
+      </div>
+      <div className="player-stage-table">
         <div className="full-table-head player-map-grid">
-          <span>Date</span>
-          <span>Player team</span>
+          <span>Match</span>
           <span>Opponent</span>
           <span>Map</span>
+          <span>Score</span>
           <span>K - D</span>
           <span>+/-</span>
           <span>Rating</span>
         </div>
-        {display.length ? (
-          display.map((m, index) => {
-            const newSeries = index === 0 || display[index - 1].result.id !== m.result.id;
-            return (
-              <button
-                type="button"
-                className={`full-table-row player-map-grid clickable${newSeries ? " series-start" : ""}`}
-                key={`${m.result.id}-${m.map}-${index}`}
-                onClick={() => onOpenSeries(m.result.id)}
-              >
-                <span className="pm-date">{seriesDateLabel(m.result.round)}</span>
-                <span className="run-team-cell">
-                  <TeamLogo team={team} small />
-                  <b>{team.name}</b>
-                  <em className="pm-mapscore">({m.teamScore})</em>
-                </span>
-                <span className="run-team-cell">
-                  <TeamLogo team={m.opponent} small />
-                  <b>{m.opponent.name}</b>
-                  <em className="pm-mapscore">({m.oppScore})</em>
-                </span>
-                <span className="pm-map">{mapAbbr(m.map)}</span>
-                <span>{m.line.kills} - {m.line.deaths}</span>
-                <span className={m.line.kills >= m.line.deaths ? "stat-positive" : "stat-negative"}>{signedInteger(m.line.kills - m.line.deaths)}</span>
-                <span className={`rating-number ${ratingTone(m.line.rating)}`}>{m.line.rating.toFixed(2)}</span>
-              </button>
-            );
-          })
-        ) : (
-          <div className="empty-fullscreen">No completed maps for {player.handle} yet.</div>
-        )}
-      </section>
-    </main>
+        {displayMaps.map((map, index) => {
+          const newSeries = index === 0 || displayMaps[index - 1].result.id !== map.result.id;
+          return (
+            <button
+              type="button"
+              className={`full-table-row player-map-grid clickable${newSeries ? " series-start" : ""}`}
+              key={`${map.result.id}-${map.map}-${index}`}
+              onClick={() => onOpenSeries(map.result.id)}
+            >
+              <span className="pm-date">
+                <b>{seriesDateLabel(map.result.round)}</b>
+                <small>{map.result.label}</small>
+              </span>
+              <span className="run-team-cell">
+                <TeamLogo team={map.opponent} small />
+                <b>{map.opponent.name}</b>
+              </span>
+              <span className="pm-map">{mapAbbr(map.map)}</span>
+              <span className={`pm-result ${map.won ? "won" : "lost"}`}>
+                <b>{map.teamScore}</b><em>-</em><b>{map.oppScore}</b>
+              </span>
+              <span>{map.line.kills} - {map.line.deaths}</span>
+              <span className={map.line.kills >= map.line.deaths ? "stat-positive" : "stat-negative"}>{signedInteger(map.line.kills - map.line.deaths)}</span>
+              <span className={`rating-number ${ratingTone(map.line.rating)}`}>{map.line.rating.toFixed(2)}</span>
+            </button>
+          );
+        })}
+      </div>
+    </section>
   );
 }
 
