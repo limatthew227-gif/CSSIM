@@ -503,7 +503,6 @@ test("MatchDatabase: splits several completed Majors that share one migrated run
     seriesId: string,
     stage: string,
     winnerId: string,
-    tier: RecordMatchInput["placementTier"],
   ) => {
     const input = matchInput(id, recordedAt, you, opponent, Number(recordedAt.slice(8, 10)));
     input.runId = "merged-career";
@@ -513,19 +512,16 @@ test("MatchDatabase: splits several completed Majors that share one migrated run
     input.seriesId = seriesId;
     input.stage = stage;
     input.winnerId = winnerId;
-    input.placementTier = tier;
-    input.eventWins = 3;
-    input.eventLosses = 1;
     return input;
   };
   db.recordMany([
-    tagged("old-final", "2026-07-01T00:00:00Z", "stage-1", "old-final-series", "final", opponent.id, "runner-up"),
-    tagged("mid-qf", "2026-07-02T00:00:00Z", "stage-1", "mid-qf-series", "quarterfinal", you.id, "champion"),
-    tagged("mid-sf", "2026-07-03T00:00:00Z", "stage-2", "mid-sf-series", "semifinal", you.id, "champion"),
-    tagged("mid-final", "2026-07-04T00:00:00Z", "stage-2", "mid-final-series", "final", you.id, "champion"),
-    tagged("new-qf", "2026-07-05T00:00:00Z", "stage-3", "new-qf-series", "quarterfinal", you.id, "champion"),
-    tagged("new-sf", "2026-07-06T00:00:00Z", "stage-3", "new-sf-series", "semifinal", you.id, "champion"),
-    tagged("new-final", "2026-07-07T00:00:00Z", "stage-3", "new-final-series", "final", you.id, "champion"),
+    tagged("old-final", "2026-07-01T00:00:00Z", "stage-1", "old-final-series", "final", opponent.id),
+    tagged("mid-qf", "2026-07-02T00:00:00Z", "stage-1", "mid-qf-series", "quarterfinal", you.id),
+    tagged("mid-sf", "2026-07-03T00:00:00Z", "stage-2", "mid-sf-series", "semifinal", you.id),
+    tagged("mid-final", "2026-07-04T00:00:00Z", "stage-2", "mid-final-series", "final", you.id),
+    tagged("new-qf", "2026-07-05T00:00:00Z", "stage-3", "new-qf-series", "quarterfinal", you.id),
+    tagged("new-sf", "2026-07-06T00:00:00Z", "stage-3", "new-sf-series", "semifinal", you.id),
+    tagged("new-final", "2026-07-07T00:00:00Z", "stage-3", "new-final-series", "final", you.id),
   ]);
 
   const version = db.getMatch("old-final")!.players.find((ref) => ref.id === "you-star")!.versionKey;
@@ -539,6 +535,120 @@ test("MatchDatabase: splits several completed Majors that share one migrated run
     [3, 3],
     "each Stats filter opens only the reconstructed Major",
   );
+});
+
+test("MatchDatabase: keeps all authoritative Major seasons visible when migrated stage labels are noisy", () => {
+  const db = new MatchDatabase(memoryStorage());
+  const you = teamWithStar("you", "you-star");
+  const opponent = makeTeam("opp", 82);
+  const placements: Array<{
+    season: number;
+    tier: NonNullable<RecordMatchInput["placementTier"]>;
+    wins: number;
+    losses: number;
+  }> = [
+    { season: 1, tier: "champion", wins: 3, losses: 0 },
+    { season: 2, tier: "champion", wins: 3, losses: 0 },
+    { season: 3, tier: "champion", wins: 3, losses: 0 },
+    { season: 4, tier: "swiss", wins: 2, losses: 3 },
+    { season: 5, tier: "top4", wins: 3, losses: 1 },
+    { season: 6, tier: "runner-up", wins: 3, losses: 0 },
+  ];
+  let day = 0;
+  placements.forEach(({ season, tier, wins, losses }) => {
+    const seriesCount = wins + losses + (tier === "champion" || tier === "runner-up" ? 3 : tier === "top4" ? 2 : 0);
+    for (let series = 0; series < seriesCount; series += 1) {
+      const recordedAt = new Date(Date.UTC(2026, 6, 1) + day * 86_400_000).toISOString();
+      const input = matchInput(
+        `season-${season}-series-${series}`,
+        recordedAt,
+        you,
+        opponent,
+        day,
+      );
+      day += 1;
+      input.runId = "legacy-autosave:2026-07-16T07:29:19.553Z";
+      input.season = season;
+      input.eventId = "stage-3";
+      input.eventName = "Major Stage 3";
+      input.seriesId = `${input.runId}:${season}:stage-3:${series}:1-0-user`;
+      input.stage = series % 2 === 0 ? "swiss" : "final";
+      input.winnerId = series < wins ? you.id : opponent.id;
+      input.placementTier = tier;
+      input.eventWins = wins;
+      input.eventLosses = losses;
+      db.recordMatch(input);
+    }
+  });
+
+  const version = db.getMatch("season-1-series-0")!.players.find((ref) => ref.id === "you-star")!.versionKey;
+  const majors = db.teamPlayerProfile("you", version)!.majors;
+
+  assert.equal(majors.length, 6);
+  assert.deepEqual(majors.map((major) => major.placement), ["2nd", "3-4th", "9-11th", "1st", "1st", "1st"]);
+});
+
+test("MatchDatabase: legacy date prefixes do not split consecutive Swiss rounds", () => {
+  const db = new MatchDatabase(memoryStorage());
+  const you = teamWithStar("you", "you-star");
+  const opponent = makeTeam("opp", 82);
+  [1, 2, 3].forEach((round) => {
+    const input = matchInput(`legacy-round-${round}`, `2026-07-0${round}T00:00:00Z`, you, opponent, round);
+    input.runId = "legacy-autosave:2026-07-16T07:29:19.553Z";
+    input.season = 1;
+    input.eventId = "stage-3";
+    input.eventName = "Major Stage 3";
+    input.seriesId = `${input.runId}:1:stage-3:${round}:${round}-0-0-user`;
+    input.stage = "swiss";
+    input.winnerId = opponent.id;
+    db.recordMatch(input);
+  });
+
+  const version = db.getMatch("legacy-round-1")!.players.find((ref) => ref.id === "you-star")!.versionKey;
+  const majors = db.teamPlayerProfile("you", version)!.majors;
+  assert.equal(majors.length, 1);
+  assert.equal(majors[0].placement, "15-16th");
+  assert.equal(majors[0].maps, 3);
+});
+
+test("MatchDatabase: playoff placement uses the full series result instead of map one", () => {
+  const db = new MatchDatabase(memoryStorage());
+  const you = teamWithStar("you", "you-star");
+  const opponent = makeTeam("opp", 82);
+  const series = (
+    id: string,
+    stage: string,
+    winners: string[],
+    startDay: number,
+  ) =>
+    winners.map((winnerId, mapIndex) => {
+      const input = matchInput(
+        `${id}-${mapIndex}`,
+        `2026-07-${String(startDay + mapIndex).padStart(2, "0")}T00:00:00Z`,
+        you,
+        opponent,
+        startDay + mapIndex,
+      );
+      input.runId = "series-career";
+      input.season = 1;
+      input.eventId = "stage-3";
+      input.eventName = "Major Stage 3";
+      input.seriesId = id;
+      input.stage = stage;
+      input.winnerId = winnerId;
+      return input;
+    });
+  db.recordMany([
+    ...series("qf", "quarterfinal", [opponent.id, you.id, you.id], 1),
+    ...series("sf", "semifinal", [you.id, you.id], 4),
+    ...series("final", "final", [opponent.id, you.id, you.id, you.id], 6),
+  ]);
+
+  const version = db.getMatch("qf-0")!.players.find((ref) => ref.id === "you-star")!.versionKey;
+  const majors = db.teamPlayerProfile("you", version)!.majors;
+  assert.equal(majors.length, 1);
+  assert.equal(majors[0].placement, "1st");
+  assert.equal(majors[0].maps, 9);
 });
 
 test("MatchDatabase: keeps a real multi-stage circuit campaign in one Major", () => {
