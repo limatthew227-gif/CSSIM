@@ -276,6 +276,60 @@ test("MatchDatabase: a replaced player is flagged former (not current)", () => {
   assert.equal(profile.roster.filter((row) => row.current).length, 5, "the present lineup is five");
 });
 
+test("MatchDatabase: team player profile keeps former-player results and derives Major placements", () => {
+  const db = new MatchDatabase(memoryStorage());
+  const you = teamWithStar("you", "you-star");
+  const opponent = makeTeam("opp", 82);
+  const withMeta = (
+    input: RecordMatchInput,
+    runId: string,
+    season: number,
+    eventId: string,
+    seriesId: string,
+    stage: string,
+    winnerId: string,
+  ) => {
+    input.runId = runId;
+    input.season = season;
+    input.eventId = eventId;
+    input.eventName = eventId === "stage-2" ? "Major Stage 2" : "Major Stage 3";
+    input.seriesId = seriesId;
+    input.stage = stage;
+    input.winnerId = winnerId;
+    return input;
+  };
+
+  const stageTwoExit = [1, 2, 3].map((seed) =>
+    withMeta(
+      matchInput(`s2-${seed}`, `2026-06-0${seed}T00:00:00Z`, you, opponent, seed),
+      "career-a",
+      1,
+      "stage-2",
+      `stage2-series-${seed}`,
+      "swiss",
+      opponent.id,
+    ),
+  );
+  const championRun = [
+    withMeta(matchInput("qf", "2026-07-01T00:00:00Z", you, opponent, 4), "career-a", 2, "stage-3", "qf-series", "quarterfinal", you.id),
+    withMeta(matchInput("sf", "2026-07-02T00:00:00Z", you, opponent, 5), "career-a", 2, "stage-3", "sf-series", "semifinal", you.id),
+    withMeta(matchInput("final", "2026-07-03T00:00:00Z", you, opponent, 6), "career-a", 2, "stage-3", "final-series", "final", you.id),
+  ];
+  db.recordMany([...stageTwoExit, ...championRun]);
+
+  const version = db.getMatch("s2-1")!.players.find((ref) => ref.id === "you-star")!.versionKey;
+  const swapped: FieldTeam = { ...you, players: [makePlayer("replacement", "Rifler", 84, "replacement"), ...you.players.slice(1)] };
+  db.recordMatch(withMeta(matchInput("later", "2026-08-01T00:00:00Z", swapped, opponent, 7), "career-a", 3, "stage-2", "later-series", "swiss", swapped.id));
+
+  const profile = db.teamPlayerProfile("you", version)!;
+  assert.equal(profile.player.current, false, "the drill-down remains available after the player leaves");
+  assert.equal(profile.history.length, 6, "only maps where the player represented this team are included");
+  assert.deepEqual(profile.majors.map((major) => major.placement), ["1st", "Stage 2"]);
+  assert.equal(profile.majors[0].detail, "Champion");
+  assert.match(profile.majors[1].detail, /Eliminated/);
+  assert.equal(profile.majors[0].maps, 3);
+});
+
 test("MatchDatabase: recordMany commits a batch in one pass, dedupes within it, and keeps logs", () => {
   const db = new MatchDatabase(memoryStorage());
   const you = makeTeam("you", 84);

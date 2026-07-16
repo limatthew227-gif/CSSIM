@@ -161,6 +161,7 @@ import {
   type PlayerRatingExtremes,
   type MatchRecord,
   type TeamRecordRow,
+  type TeamPlayerProfile,
   type RecordMatchInput,
 } from "./matchDatabase";
 import "./styles.css";
@@ -410,6 +411,7 @@ interface RunSnapshot {
   teamName: string;
   mode: Mode;
   runKind: RunKind;
+  vaultRunId?: string;
   difficultyId: Difficulty["id"];
   selected: Player[];
   coach?: Coach;
@@ -553,19 +555,38 @@ function getMatchDb(): MatchDatabase {
   return matchDbInstance;
 }
 
-// Persist any completed series maps not already in the DB. Idempotent: keyed by series+map id.
-function recordResultsToDb(results: SwissResult[]) {
+interface VaultEventContext {
+  runId: string;
+  eventId: string;
+  eventName: string;
+  season: number;
+}
+
+function createVaultRunId() {
+  return `career-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 9)}`;
+}
+
+// Persist any completed series maps not already in the DB. Existing records from a resumed save are
+// revisited when needed so older current-event maps can gain the newer event/season metadata.
+function recordResultsToDb(results: SwissResult[], context: VaultEventContext) {
   const db = getMatchDb();
-  const existing = new Set(db.listMatches().map((match) => match.id)); // one read for dedupe
+  const existing = new Map(db.listMatches().map((match) => [match.id, match])); // one read for dedupe
   const inputs: RecordMatchInput[] = [];
   results.forEach((series) => {
     series.maps.forEach((map, index) => {
-      const id = `${series.id}-${map.map}-${index}`;
-      if (existing.has(id)) return; // every box score is recorded; the log (if any) goes to the log store
-      existing.add(id);
+      const legacyId = `${series.id}-${map.map}-${index}`;
+      const legacyStored = existing.get(legacyId);
+      const id = legacyStored && !legacyStored.runId ? legacyId : `${context.runId}:${legacyId}`;
+      const stored = existing.get(id);
+      if (stored?.runId && stored.eventId && stored.seriesId) return;
       inputs.push({
         id,
+        seriesId: `${context.runId}:${series.id}`,
         recordedAt: new Date().toISOString(),
+        runId: context.runId,
+        eventId: series.eventId ?? context.eventId,
+        eventName: series.eventName ?? context.eventName,
+        season: context.season,
         stage: series.stage,
         map: map.map,
         left: { team: teamRef(series.left), players: series.left.players },
@@ -762,6 +783,7 @@ function App() {
   const [teamName, setTeamName] = useState("My Five");
   const [mode, setMode] = useState<Mode>("classic");
   const [runKind, setRunKind] = useState<RunKind>("player");
+  const [vaultRunId, setVaultRunId] = useState(createVaultRunId);
   const [difficulty, setDifficulty] = useState<Difficulty>(difficulties[0]);
   const [runSlots, setRunSlots] = useState<SavedRun[]>(() => loadRunSlots<RunSnapshot>());
   const [activeSaveId, setActiveSaveId] = useState<string>();
@@ -1107,8 +1129,14 @@ function App() {
   // Accrue every completed map into the persistent match database (survives reloads and spans runs).
   // Gated on dbReady so we never write onto a half-loaded cache (which would clobber the loaded history).
   useEffect(() => {
-    if (dbReady && matchResults.length) recordResultsToDb(matchResults);
-  }, [matchResults, dbReady]);
+    if (!dbReady || !matchResults.length) return;
+    recordResultsToDb(matchResults, {
+      runId: vaultRunId,
+      eventId: mode === "circuit" ? circuitEvent.id : "major",
+      eventName: mode === "circuit" ? circuitEvent.name : `Major ${careerEvent}`,
+      season: mode === "circuit" ? circuitSeason : careerEvent,
+    });
+  }, [careerEvent, circuitEvent.id, circuitEvent.name, circuitSeason, dbReady, matchResults, mode, vaultRunId]);
 
   useEffect(() => {
     saveCustomRosters(customRosters);
@@ -1248,6 +1276,7 @@ function App() {
     }
     setActiveSaveId(undefined);
     setSaveMessage("");
+    setVaultRunId(createVaultRunId());
     setRunKind("player");
     setSelected([]);
     setCoach(undefined);
@@ -1303,6 +1332,7 @@ function App() {
     const nextSwissRecords = initialSwissRecords(nextSwissField);
     setActiveSaveId(undefined);
     setSaveMessage("");
+    setVaultRunId(createVaultRunId());
     setRunKind("spectator");
     setSelected([]);
     setCoach(undefined);
@@ -2156,6 +2186,7 @@ function App() {
       teamName,
       mode,
       runKind,
+      vaultRunId,
       difficultyId: difficulty.id,
       selected,
       coach,
@@ -2247,6 +2278,7 @@ function App() {
     setTeamName(snapshot.teamName ?? "My Five");
     setMode(snapshot.mode ?? "classic");
     setRunKind(snapshot.runKind ?? "player");
+    setVaultRunId(snapshot.vaultRunId ?? createVaultRunId());
     setDifficulty(difficulties.find((item) => item.id === snapshot.difficultyId) ?? difficulties[0]);
     setSelected((snapshot.selected ?? []).map(withCareerMeta));
     setCoach(snapshot.coach);
@@ -6908,6 +6940,159 @@ const SIDE_FILTERS: Array<{ key: StatsSideFilter; label: string }> = [
   { key: "T", label: "T" },
 ];
 
+function VaultTeamPlayerPage({
+  profile,
+  replayIds,
+  onBack,
+  onOpenReplay,
+}: {
+  profile: TeamPlayerProfile;
+  replayIds: Set<string>;
+  onBack: () => void;
+  onOpenReplay: (matchId: string) => void;
+}) {
+  const { player, team } = profile;
+  const wins = profile.history.filter((row) => row.won).length;
+  const losses = profile.history.length - wins;
+  const kdDiff = player.line.kills - player.line.deaths;
+  const photo = playerPhoto(player.handle);
+  const eventLabel = (row: TeamPlayerProfile["history"][number]) =>
+    circuitEvents.find((event) => event.id === row.eventId)?.shortName ?? row.eventName ?? "Saved match";
+
+  return (
+    <main className="layout fullscreen-page vault-page vault-team-page vault-team-player-page" style={{ "--crest": team.accent } as React.CSSProperties}>
+      <section className="fullscreen-head">
+        <div className="vault-team-player-headline">
+          {photo ? <img className="vault-team-player-photo" src={photo} alt={player.handle} loading="lazy" /> : <TeamLogo team={team} />}
+          <div>
+            <div className="section-title">
+              <Users size={18} />
+              <span>{player.current ? "Current roster" : "Former player"}</span>
+            </div>
+            <h1><Flag country={player.country} /> {player.handle}</h1>
+            <p>{player.realName} · {player.role} · results with {team.name}</p>
+          </div>
+        </div>
+        <button className="secondary" onClick={onBack}>
+          <ArrowLeft size={16} />
+          Back to team
+        </button>
+      </section>
+
+      <section className="vault-hero vault-team-player-summary">
+        <div className="vault-hero-tile">
+          <strong>{player.maps}</strong>
+          <span>Maps for team</span>
+        </div>
+        <div className="vault-hero-tile">
+          <strong className={ratingTone(player.line.rating)}>{player.line.rating.toFixed(2)}</strong>
+          <span>Rating</span>
+        </div>
+        <div className="vault-hero-tile">
+          <strong className={kdDiff >= 0 ? "good" : "bad"}>{kdDiff >= 0 ? "+" : ""}{kdDiff}</strong>
+          <span>K-D difference</span>
+        </div>
+        <div className="vault-hero-tile">
+          <strong>{wins}-{losses}</strong>
+          <span>Map record</span>
+        </div>
+      </section>
+
+      <section className="vault-card">
+        <div className="vault-card-head">
+          <div className="section-title">
+            <Trophy size={18} />
+            <span>Major placements with {team.tag}</span>
+          </div>
+          <span className="vault-card-note">{profile.majors.length} {profile.majors.length === 1 ? "Major" : "Majors"}</span>
+        </div>
+        <div className="vault-player-major-list">
+          {profile.majors.map((major) => {
+            const savedAt = new Date(major.recordedAt);
+            const date = Number.isNaN(savedAt.getTime())
+              ? "Saved event"
+              : savedAt.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+            return (
+              <article className={`vault-player-major-row ${major.tone}`} key={major.key}>
+                <div className="vault-player-major-place">
+                  <span>{major.label}</span>
+                  <strong>{major.placement}</strong>
+                  <small>{major.detail}</small>
+                </div>
+                <div className="vault-player-major-stats">
+                  <span><b>{major.maps}</b><small>Maps</small></span>
+                  <span><b>{major.wins}-{major.losses}</b><small>Map record</small></span>
+                  <span><b className={ratingTone(major.line.rating)}>{major.line.rating.toFixed(2)}</b><small>Rating</small></span>
+                  <span><b>{major.line.kills}-{major.line.deaths}</b><small>K-D</small></span>
+                </div>
+                <time>{date}</time>
+              </article>
+            );
+          })}
+        </div>
+      </section>
+
+      <section className="vault-card">
+        <div className="vault-card-head">
+          <div className="section-title">
+            <Database size={18} />
+            <span>Results for {team.tag}</span>
+          </div>
+          <span className="vault-card-note">{profile.history.length} recorded maps</span>
+        </div>
+        <div className="vault-player-result-wrap">
+          <table className="vault-player-result-table">
+            <thead>
+              <tr>
+                <th>Event</th>
+                <th>Opponent</th>
+                <th>Map</th>
+                <th>Result</th>
+                <th>K-D</th>
+                <th>ADR</th>
+                <th>Rating</th>
+                <th aria-label="Replay" />
+              </tr>
+            </thead>
+            <tbody>
+              {profile.history.map((row) => {
+                const canReplay = replayIds.has(row.matchId);
+                return (
+                  <tr key={row.matchId}>
+                    <td><b>{eventLabel(row)}</b><span>{row.stage ?? "match"}</span></td>
+                    <td>
+                      <div className="vault-player-result-opponent">
+                        <TeamLogo team={row.opponent} small />
+                        <b>{row.opponent.name}</b>
+                      </div>
+                    </td>
+                    <td>{mapName(row.map)}</td>
+                    <td><b className={row.won ? "good" : "bad"}>{row.won ? "W" : "L"} {row.teamScore}-{row.oppScore}</b></td>
+                    <td>{row.line.kills}-{row.line.deaths}</td>
+                    <td>{row.line.adr.toFixed(0)}</td>
+                    <td><b className={ratingTone(row.line.rating)}>{row.line.rating.toFixed(2)}</b></td>
+                    <td>
+                      <button
+                        type="button"
+                        className="icon-button compact"
+                        disabled={!canReplay}
+                        onClick={() => canReplay && onOpenReplay(row.matchId)}
+                        title={canReplay ? "Watch round replay" : "Replay not saved for this map"}
+                      >
+                        <Play size={13} />
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+  );
+}
+
 // A team's all-time profile from the Vault: record + streak, per-map W-L, roster ranked by per-team
 // rating (with an MVP), head-to-head vs each opponent, and a replayable match history.
 function VaultTeamPage({
@@ -6926,10 +7111,16 @@ function VaultTeamPage({
   const replayIds = useMemo(() => db.eventLogIds(), [db]);
   const [vsFilter, setVsFilter] = useState<string | null>(null);
   const [rosterTab, setRosterTab] = useState<"current" | "former">("current");
+  const [selectedPlayerKey, setSelectedPlayerKey] = useState<string | null>(null);
+  const selectedPlayer = useMemo(
+    () => (teamId && selectedPlayerKey ? db.teamPlayerProfile(teamId, selectedPlayerKey) : undefined),
+    [db, selectedPlayerKey, teamId],
+  );
 
   useEffect(() => {
     setVsFilter(null); // reset the head-to-head filter when navigating to a different team
     setRosterTab("current");
+    setSelectedPlayerKey(null);
   }, [teamId]);
 
   if (!profile) {
@@ -6949,6 +7140,17 @@ function VaultTeamPage({
           </button>
         </section>
       </main>
+    );
+  }
+
+  if (selectedPlayer) {
+    return (
+      <VaultTeamPlayerPage
+        profile={selectedPlayer}
+        replayIds={replayIds}
+        onBack={() => setSelectedPlayerKey(null)}
+        onOpenReplay={onOpenReplay}
+      />
     );
   }
 
@@ -7067,12 +7269,15 @@ function VaultTeamPage({
             </thead>
             <tbody>
               {shownRoster.map((row) => (
-                <tr key={row.versionKey}>
+                <tr className="vault-roster-clickable" key={row.versionKey}>
                   <td className="vault-team-cell">
-                    <Flag country={row.country} />
-                    <b>{row.handle}</b>
-                    <span>{row.role}</span>
-                    {row.versionKey === mvpKey && <em className="team-mvp-badge">MVP</em>}
+                    <button type="button" className="vault-roster-player-link" onClick={() => setSelectedPlayerKey(row.versionKey)}>
+                      <Flag country={row.country} />
+                      <b>{row.handle}</b>
+                      <span>{row.role}</span>
+                      {row.versionKey === mvpKey && <em className="team-mvp-badge">MVP</em>}
+                      <ArrowRight size={13} />
+                    </button>
                   </td>
                   <td>{row.maps}</td>
                   <td>

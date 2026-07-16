@@ -145,8 +145,12 @@ export interface StoredPlayerRef {
 
 export interface MatchRecord {
   id: string;
+  seriesId?: string;
   recordedAt: string; // ISO
   runId?: string;
+  eventId?: string;
+  eventName?: string;
+  season?: number;
   stage?: string;
   map: MapId;
   left: StoredTeamRef;
@@ -162,8 +166,12 @@ export interface MatchRecord {
 
 export interface RecordMatchInput {
   id: string;
+  seriesId?: string;
   recordedAt: string;
   runId?: string;
+  eventId?: string;
+  eventName?: string;
+  season?: number;
   stage?: string;
   map: MapId;
   left: { team: StoredTeamRef; players: Player[] };
@@ -282,6 +290,35 @@ export interface TeamProfile {
   history: TeamMatchRow[]; // newest first
 }
 
+export interface TeamPlayerMatchRow extends TeamMatchRow {
+  eventId?: string;
+  eventName?: string;
+  season?: number;
+  line: PlayerLine;
+}
+
+export interface TeamPlayerMajorResult {
+  key: string;
+  label: string;
+  placement: string;
+  detail: string;
+  tone: "champion" | "podium" | "playoffs" | "grouped" | "stage" | "legacy";
+  season?: number;
+  stage?: string;
+  maps: number;
+  wins: number;
+  losses: number;
+  recordedAt: string;
+  line: PlayerLine;
+}
+
+export interface TeamPlayerProfile {
+  team: StoredTeamRef;
+  player: TeamRosterRow;
+  majors: TeamPlayerMajorResult[];
+  history: TeamPlayerMatchRow[];
+}
+
 const DB_KEY = "cssim-match-db-v1";
 const LOG_KEY = "cssim-match-logs-v1";
 const SCHEMA_VERSION = 2; // v2 adds sideBox + a separate log store; v1 records still parse (fields optional)
@@ -397,8 +434,12 @@ export class MatchDatabase {
     }
     return {
       id: input.id,
+      seriesId: input.seriesId,
       recordedAt: input.recordedAt,
       runId: input.runId,
+      eventId: input.eventId,
+      eventName: input.eventName,
+      season: input.season,
       stage: input.stage,
       map: input.map,
       left: input.left.team,
@@ -590,6 +631,57 @@ export class MatchDatabase {
     };
   }
 
+  // A roster player's complete record for one organization, including former players. Major results
+  // are derived from every team match in the same saved run/season, while the statistical line only
+  // includes maps where this player actually appeared for this team.
+  teamPlayerProfile(teamId: string, versionKey: string): TeamPlayerProfile | undefined {
+    const profile = this.teamProfile(teamId);
+    const player = profile?.roster.find((row) => row.versionKey === versionKey);
+    if (!profile || !player) return undefined;
+
+    const matches = this.read().matches;
+    const teamMatches = matches.filter((match) => match.left.id === teamId || match.right.id === teamId);
+    const playerMatches = teamMatches.flatMap((match) => {
+      const ref = match.players.find((entry) => entry.teamId === teamId && entry.versionKey === versionKey);
+      const line = ref ? match.box[ref.id] : undefined;
+      return ref && line ? [{ match, line }] : [];
+    });
+    if (!playerMatches.length) return undefined;
+
+    const majorKey = (match: MatchRecord) =>
+      match.runId && match.season != null ? `${match.runId}:major:${match.season}` : "legacy";
+    const playerMajorKeys = new Set(playerMatches.map(({ match }) => majorKey(match)));
+    const majors = [...playerMajorKeys]
+      .map((key) => {
+        const appearances = playerMatches.filter(({ match }) => majorKey(match) === key);
+        const majorTeamMatches = teamMatches.filter((match) => majorKey(match) === key);
+        return buildTeamPlayerMajorResult(teamId, key, appearances, majorTeamMatches);
+      })
+      .sort((a, b) => b.recordedAt.localeCompare(a.recordedAt));
+
+    const history: TeamPlayerMatchRow[] = playerMatches
+      .map(({ match, line }) => {
+        const isLeft = match.left.id === teamId;
+        return {
+          matchId: match.id,
+          recordedAt: match.recordedAt,
+          map: match.map,
+          stage: match.stage,
+          eventId: match.eventId,
+          eventName: match.eventName,
+          season: match.season,
+          opponent: isLeft ? match.right : match.left,
+          teamScore: isLeft ? match.leftScore : match.rightScore,
+          oppScore: isLeft ? match.rightScore : match.leftScore,
+          won: match.winnerId === teamId,
+          line,
+        };
+      })
+      .sort((a, b) => b.recordedAt.localeCompare(a.recordedAt));
+
+    return { team: profile.team, player, majors, history };
+  }
+
   // Career across every stored match, keyed by player VERSION — so a player folds together across
   // teams and runs of the SAME era (a drafted copy + their real-team appearances), while different
   // eras stay separate (FalleN 2018 is a distinct record from FalleN 2026). Optional {side, map} filters.
@@ -720,6 +812,116 @@ export class MatchDatabase {
       line,
     };
   }
+}
+
+const majorStageOrder: Record<string, number> = { mrq: 0, "stage-1": 1, "stage-2": 2, "stage-3": 3, major: 3 };
+const majorStageLabel: Record<string, string> = {
+  mrq: "MRQ",
+  "stage-1": "Stage 1",
+  "stage-2": "Stage 2",
+  "stage-3": "Stage 3",
+  major: "Major",
+};
+
+function buildTeamPlayerMajorResult(
+  teamId: string,
+  key: string,
+  appearances: Array<{ match: MatchRecord; line: PlayerLine }>,
+  teamMatches: MatchRecord[],
+): TeamPlayerMajorResult {
+  const line = emptyLine();
+  appearances.forEach(({ line: appearance }) => addCounters(line, appearance));
+  recalculateHltvStyleRating(line);
+  const wins = appearances.filter(({ match }) => match.winnerId === teamId).length;
+  const losses = appearances.length - wins;
+  const recordedAt = appearances.reduce((latest, { match }) => (match.recordedAt > latest ? match.recordedAt : latest), "");
+  const season = appearances.find(({ match }) => match.season != null)?.match.season;
+
+  if (key === "legacy") {
+    return {
+      key,
+      label: "Legacy Vault",
+      placement: "Saved maps",
+      detail: "Event identity was not stored for these older results",
+      tone: "legacy",
+      maps: appearances.length,
+      wins,
+      losses,
+      recordedAt,
+      line,
+    };
+  }
+
+  const highestEventId = teamMatches
+    .map((match) => match.eventId ?? "major")
+    .sort((a, b) => (majorStageOrder[b] ?? -1) - (majorStageOrder[a] ?? -1))[0] ?? "major";
+  const stageMatches = teamMatches.filter((match) => (match.eventId ?? "major") === highestEventId);
+  const series = new Map<string, MatchRecord>();
+  stageMatches.forEach((match) => series.set(match.seriesId ?? match.id, match));
+  const seriesRows = [...series.values()];
+  const swiss = seriesRows.filter((match) => match.stage === "swiss");
+  const swissWins = swiss.filter((match) => match.winnerId === teamId).length;
+  const swissLosses = swiss.length - swissWins;
+  const lostIn = (stage: string) =>
+    seriesRows.some(
+      (match) =>
+        match.stage === stage &&
+        match.winnerId !== teamId &&
+        (match.left.id === teamId || match.right.id === teamId),
+    );
+  const final = seriesRows.find((match) => match.stage === "final");
+  const stageLabel = majorStageLabel[highestEventId] ?? stageMatches[0]?.eventName ?? "Major";
+  const label = season != null ? `Major ${season}` : stageMatches[0]?.eventName ?? "Major";
+
+  let placement = stageLabel;
+  let detail = `${stageLabel} results`;
+  let tone: TeamPlayerMajorResult["tone"] = "stage";
+  if ((highestEventId === "stage-3" || highestEventId === "major") && final?.winnerId === teamId) {
+    placement = "1st";
+    detail = "Champion";
+    tone = "champion";
+  } else if ((highestEventId === "stage-3" || highestEventId === "major") && lostIn("final")) {
+    placement = "2nd";
+    detail = "Runner-up";
+    tone = "podium";
+  } else if ((highestEventId === "stage-3" || highestEventId === "major") && lostIn("semifinal")) {
+    placement = "3-4th";
+    detail = "Semifinal";
+    tone = "podium";
+  } else if ((highestEventId === "stage-3" || highestEventId === "major") && lostIn("quarterfinal")) {
+    placement = "5-8th";
+    detail = "Quarterfinal";
+    tone = "playoffs";
+  } else if ((highestEventId === "stage-3" || highestEventId === "major") && swissLosses >= 3) {
+    placement = swissWins >= 2 ? "9-11th" : swissWins === 1 ? "12-14th" : "15-16th";
+    detail = `Grouped · ${swissWins}-${swissLosses} in ${stageLabel}`;
+    tone = "grouped";
+  } else if (swissLosses >= 3) {
+    placement = stageLabel;
+    detail = `Eliminated · ${swissWins}-${swissLosses}`;
+  } else if (swissWins >= 3) {
+    placement = "Advanced";
+    detail = `${stageLabel} · ${swissWins}-${swissLosses}`;
+    tone = "playoffs";
+  } else {
+    placement = stageLabel;
+    detail = `${swissWins}-${swissLosses} in progress`;
+  }
+
+  return {
+    key,
+    label,
+    placement,
+    detail,
+    tone,
+    season,
+    stage: stageLabel,
+    maps: appearances.length,
+    wins,
+    losses,
+    recordedAt,
+    line,
+  };
 }
 
 export function teamRef(team: { id: string; name: string; tag: string; accent: string; year: string; logo?: string }): StoredTeamRef {
