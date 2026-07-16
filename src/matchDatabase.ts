@@ -533,6 +533,59 @@ export class MatchDatabase {
     return this.read().matches.length;
   }
 
+  // A completed event used to be recorded again when the circuit advanced its season before clearing
+  // matchResults. The copy has different scoped ids but an identical full payload. Remove only exact
+  // copies within the same run/event, retaining the earlier event whose timestamps preserve map order.
+  removeExactDuplicateRunEvents(): number {
+    const db = this.read();
+    const scopes = new Map<string, MatchRecord[]>();
+    db.matches.forEach((match) => {
+      if (!match.runId || match.season == null || !match.eventId) return;
+      const scopeKey = `${match.runId}\u0000${match.season}\u0000${match.eventId}`;
+      const scope = scopes.get(scopeKey) ?? [];
+      scope.push(match);
+      scopes.set(scopeKey, scope);
+    });
+
+    const orderedScopes = [...scopes.values()].sort((a, b) => {
+      const aFirst = a.reduce((first, match) => (match.recordedAt < first ? match.recordedAt : first), a[0]?.recordedAt ?? "");
+      const bFirst = b.reduce((first, match) => (match.recordedAt < first ? match.recordedAt : first), b[0]?.recordedAt ?? "");
+      return aFirst.localeCompare(bFirst);
+    });
+    const seen = new Set<string>();
+    const duplicateIds = new Set<string>();
+    orderedScopes.forEach((matches) => {
+      const first = matches[0];
+      if (!first?.runId || !first.eventId) return;
+      const fingerprint = `${first.runId}\u0000${first.eventId}\u0000${eventPayloadFingerprint(matches)}`;
+      if (seen.has(fingerprint)) matches.forEach((match) => duplicateIds.add(match.id));
+      else seen.add(fingerprint);
+    });
+    if (!duplicateIds.size) return 0;
+
+    try {
+      this.write({
+        schemaVersion: SCHEMA_VERSION,
+        matches: db.matches.filter((match) => !duplicateIds.has(match.id)),
+      });
+    } catch {
+      return 0;
+    }
+
+    try {
+      const logs = this.readLogs();
+      if (logs.logs.some((entry) => duplicateIds.has(entry.id))) {
+        this.writeLogs({
+          schemaVersion: SCHEMA_VERSION,
+          logs: logs.logs.filter((entry) => !duplicateIds.has(entry.id)),
+        });
+      }
+    } catch {
+      // The match registry is authoritative; a stale replay entry is harmless if log cleanup fails.
+    }
+    return duplicateIds.size;
+  }
+
   // Older saves recorded box scores before Vault records carried run/event/season metadata. Rebuild
   // those completed event boundaries from the save's career ledger, assigning whole series from the
   // newest completed event backwards. Current in-progress match ids can be excluded by the caller.
@@ -1149,6 +1202,52 @@ function inferLegacySeriesId(match: MatchRecord): string {
   if (suffixIndex < 0) return match.id;
   const mapIndex = match.id.slice(suffixIndex + suffix.length);
   return /^\d+$/.test(mapIndex) ? match.id.slice(0, suffixIndex) : match.id;
+}
+
+function logicalMatchId(match: MatchRecord): string {
+  if (!match.runId || !match.id.startsWith(`${match.runId}:`)) return match.id;
+  const runScoped = match.id.slice(match.runId.length + 1);
+  const eventScoped = match.season != null && match.eventId ? `${match.season}:${match.eventId}:` : "";
+  return eventScoped && runScoped.startsWith(eventScoped) ? runScoped.slice(eventScoped.length) : runScoped;
+}
+
+function eventPayloadFingerprint(matches: MatchRecord[]): string {
+  return matches
+    .map((match) => {
+      const box = Object.entries(match.box)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([id, line]) => [
+          id,
+          line.kills,
+          line.deaths,
+          line.assists,
+          line.damage,
+          line.rounds,
+          line.kastRounds,
+          line.firstKills,
+          line.firstDeaths,
+          line.multiKills,
+          line.clutchWins,
+          line.rating,
+        ]);
+      return JSON.stringify([
+        logicalMatchId(match),
+        match.eventName ?? "",
+        match.placementTier ?? "",
+        match.eventWins ?? "",
+        match.eventLosses ?? "",
+        match.stage ?? "",
+        match.map,
+        match.left.id,
+        match.right.id,
+        match.leftScore,
+        match.rightScore,
+        match.winnerId,
+        box,
+      ]);
+    })
+    .sort()
+    .join("\u0001");
 }
 
 function legacySeriesRound(group: LegacySeriesGroup): number | undefined {

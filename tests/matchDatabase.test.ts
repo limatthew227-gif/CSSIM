@@ -651,6 +651,52 @@ test("MatchDatabase: playoff placement uses the full series result instead of ma
   assert.equal(majors[0].maps, 9);
 });
 
+test("MatchDatabase: removes an exact event copy created by a season-advance recording race", () => {
+  const db = new MatchDatabase(memoryStorage());
+  const you = teamWithStar("you", "you-star");
+  const opponent = makeTeam("opp", 82);
+  const runId = "duplicate-career";
+  const event = (season: number, dayOffset: number, changedFinal = false) =>
+    ["quarterfinal", "semifinal", "final"].map((stage, index) => {
+      const logicalId = `${index + 6}-${stage}-you-opp-inferno-0`;
+      const input = matchInput(
+        `${runId}:${season}:stage-3:${logicalId}`,
+        new Date(Date.UTC(2026, 6, 1 + dayOffset + index)).toISOString(),
+        you,
+        opponent,
+        index + 1,
+      );
+      input.runId = runId;
+      input.season = season;
+      input.eventId = "stage-3";
+      input.eventName = "Major Stage 3";
+      input.seriesId = `${runId}:${season}:stage-3:${index + 6}-${stage}-you-opp`;
+      input.stage = stage;
+      input.winnerId = you.id;
+      input.placementTier = "champion";
+      input.eventWins = 0;
+      input.eventLosses = 0;
+      if (changedFinal && stage === "final") input.leftScore += 1;
+      return input;
+    });
+  db.recordMany([
+    ...event(1, 0),
+    ...event(2, 10),
+    ...event(3, 20, true),
+  ]);
+
+  assert.equal(db.count(), 9);
+  assert.equal(db.removeExactDuplicateRunEvents(), 3);
+  assert.equal(db.count(), 6);
+  assert.equal(db.removeExactDuplicateRunEvents(), 0, "the repair is idempotent");
+
+  const version = db.getMatch(`${runId}:1:stage-3:6-quarterfinal-you-opp-inferno-0`)!.players
+    .find((ref) => ref.id === "you-star")!.versionKey;
+  const profile = db.teamPlayerProfile("you", version)!;
+  assert.deepEqual(profile.majors.map((major) => major.season), [3, 1]);
+  assert.equal(profile.history.length, 6);
+});
+
 test("MatchDatabase: keeps a real multi-stage circuit campaign in one Major", () => {
   const db = new MatchDatabase(memoryStorage());
   const you = teamWithStar("you", "you-star");

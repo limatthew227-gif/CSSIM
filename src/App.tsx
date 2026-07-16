@@ -1141,6 +1141,12 @@ function App() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!dbReady) return;
+    const removed = getMatchDb().removeExactDuplicateRunEvents();
+    if (removed) setVaultRevision((revision) => revision + 1);
+  }, [dbReady]);
+
   // One-time compatibility pass for saves whose older Vault maps predate event metadata. Career
   // history supplies the completed event boundaries; active-stage ids stay out of the backfill and
   // are upgraded by the normal recording effect below.
@@ -1223,8 +1229,10 @@ function App() {
 
   // Accrue every completed map into the persistent match database (survives reloads and spans runs).
   // Gated on dbReady so we never write onto a half-loaded cache (which would clobber the loaded history).
+  const recordedMatchResultsRef = useRef<typeof matchResults | null>(null);
   useEffect(() => {
-    if (!dbReady || !matchResults.length) return;
+    if (!dbReady || !matchResults.length || recordedMatchResultsRef.current === matchResults) return;
+    recordedMatchResultsRef.current = matchResults;
     recordResultsToDb(matchResults, {
       runId: vaultRunId,
       eventId: mode === "circuit" ? circuitEvent.id : "major",
