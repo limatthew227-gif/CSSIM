@@ -330,6 +330,95 @@ test("MatchDatabase: team player profile keeps former-player results and derives
   assert.equal(profile.majors[0].maps, 3);
 });
 
+test("MatchDatabase: backfills past Major placements from a legacy save without consuming the active stage", () => {
+  const db = new MatchDatabase(memoryStorage());
+  const you = teamWithStar("you", "you-star");
+  const opponent = makeTeam("opp", 82);
+  const legacy = (
+    id: string,
+    recordedAt: string,
+    seed: number,
+    stage: string,
+    winnerId: string,
+  ) => {
+    const input = matchInput(id, recordedAt, you, opponent, seed);
+    input.stage = stage;
+    input.winnerId = winnerId;
+    return input;
+  };
+  db.recordMany([
+    legacy("stage2-a-inferno-0", "2026-06-01T00:00:00Z", 1, "swiss", opponent.id),
+    legacy("stage2-b-inferno-0", "2026-06-02T00:00:00Z", 2, "swiss", opponent.id),
+    legacy("stage2-c-inferno-0", "2026-06-03T00:00:00Z", 3, "swiss", opponent.id),
+    legacy("major-qf-inferno-0", "2026-07-01T00:00:00Z", 4, "quarterfinal", you.id),
+    legacy("major-sf-inferno-0", "2026-07-02T00:00:00Z", 5, "semifinal", you.id),
+    legacy("major-final-inferno-0", "2026-07-03T00:00:00Z", 6, "final", you.id),
+    legacy("active-stage-inferno-0", "2026-08-01T00:00:00Z", 7, "swiss", you.id),
+  ]);
+
+  const updated = db.backfillTeamCareerEvents(
+    "you",
+    "migrated-career",
+    [
+      { eventId: "stage-2", eventName: "Major Stage 2", season: 1, tier: "swiss", wins: 0, losses: 3 },
+      { eventId: "stage-3", eventName: "Major Stage 3", season: 2, tier: "champion", wins: 0, losses: 0 },
+    ],
+    new Set(["active-stage-inferno-0"]),
+  );
+
+  assert.equal(updated, 6);
+  assert.equal(db.getMatch("stage2-a-inferno-0")?.eventId, "stage-2");
+  assert.equal(db.getMatch("major-final-inferno-0")?.eventId, "stage-3");
+  assert.equal(db.getMatch("major-final-inferno-0")?.placementTier, "champion");
+  assert.equal(db.getMatch("active-stage-inferno-0")?.runId, undefined);
+
+  const version = db.getMatch("stage2-a-inferno-0")!.players.find((ref) => ref.id === "you-star")!.versionKey;
+  const placements = db
+    .teamPlayerProfile("you", version)!
+    .majors.filter((major) => major.tone !== "legacy")
+    .map((major) => major.placement);
+  assert.deepEqual(placements, ["1st", "Stage 2"]);
+  assert.equal(
+    db.backfillTeamCareerEvents(
+      "you",
+      "migrated-career",
+      [
+        { eventId: "stage-2", eventName: "Major Stage 2", season: 1, tier: "swiss", wins: 0, losses: 3 },
+        { eventId: "stage-3", eventName: "Major Stage 3", season: 2, tier: "champion", wins: 0, losses: 0 },
+      ],
+      new Set(["active-stage-inferno-0"]),
+    ),
+    0,
+    "already-tagged career events are not assigned a second time",
+  );
+});
+
+test("MatchDatabase: enriches already-tagged maps with an authoritative saved placement", () => {
+  const db = new MatchDatabase(memoryStorage());
+  const you = teamWithStar("you", "you-star");
+  const opponent = makeTeam("opp", 82);
+  const tagged = matchInput("tagged-map", "2026-07-01T00:00:00Z", you, opponent, 4);
+  tagged.runId = "existing-career";
+  tagged.season = 3;
+  tagged.eventId = "stage-3";
+  tagged.eventName = "Major Stage 3";
+  tagged.seriesId = "existing-series";
+  tagged.stage = "quarterfinal";
+  tagged.winnerId = opponent.id;
+  db.recordMatch(tagged);
+
+  assert.equal(
+    db.backfillTeamCareerEvents("you", "existing-career", [
+      { eventId: "stage-3", eventName: "Major Stage 3", season: 3, tier: "champion", wins: 3, losses: 1 },
+    ]),
+    1,
+  );
+  const version = db.getMatch("tagged-map")!.players.find((ref) => ref.id === "you-star")!.versionKey;
+  const major = db.teamPlayerProfile("you", version)!.majors[0];
+  assert.equal(major.placement, "1st");
+  assert.equal(major.detail, "Champion");
+});
+
 test("MatchDatabase: recordMany commits a batch in one pass, dedupes within it, and keeps logs", () => {
   const db = new MatchDatabase(memoryStorage());
   const you = makeTeam("you", 84);

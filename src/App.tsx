@@ -575,17 +575,31 @@ function recordResultsToDb(results: SwissResult[], context: VaultEventContext) {
   results.forEach((series) => {
     series.maps.forEach((map, index) => {
       const legacyId = `${series.id}-${map.map}-${index}`;
+      const eventId = series.eventId ?? context.eventId;
+      const eventName = series.eventName ?? context.eventName;
       const legacyStored = existing.get(legacyId);
-      const id = legacyStored && !legacyStored.runId ? legacyId : `${context.runId}:${legacyId}`;
+      const previousScopedId = `${context.runId}:${legacyId}`;
+      const previousScopedStored = existing.get(previousScopedId);
+      const scopedId = `${context.runId}:${context.season}:${eventId}:${legacyId}`;
+      const belongsToEvent = (stored: MatchRecord | undefined) =>
+        stored?.runId === context.runId &&
+        stored.season === context.season &&
+        stored.eventId === eventId;
+      const id =
+        legacyStored && (!legacyStored.runId || belongsToEvent(legacyStored))
+          ? legacyId
+          : belongsToEvent(previousScopedStored)
+            ? previousScopedId
+            : scopedId;
       const stored = existing.get(id);
       if (stored?.runId && stored.eventId && stored.seriesId) return;
       inputs.push({
         id,
-        seriesId: `${context.runId}:${series.id}`,
+        seriesId: `${context.runId}:${context.season}:${eventId}:${series.id}`,
         recordedAt: new Date().toISOString(),
         runId: context.runId,
-        eventId: series.eventId ?? context.eventId,
-        eventName: series.eventName ?? context.eventName,
+        eventId,
+        eventName,
         season: context.season,
         stage: series.stage,
         map: map.map,
@@ -1117,6 +1131,7 @@ function App() {
 
   // Kick off the Vault's IndexedDB load and flip dbReady once its full history is in memory.
   const [dbReady, setDbReady] = useState(false);
+  const [vaultRevision, setVaultRevision] = useState(0);
   useEffect(() => {
     getMatchDb(); // start the async load
     let live = true;
@@ -1125,6 +1140,33 @@ function App() {
       live = false;
     };
   }, []);
+
+  // One-time compatibility pass for saves whose older Vault maps predate event metadata. Career
+  // history supplies the completed event boundaries; active-stage ids stay out of the backfill and
+  // are upgraded by the normal recording effect below.
+  useEffect(() => {
+    if (!dbReady || runKind !== "player" || !careerHistory.length) return;
+    const activeMatchIds = new Set<string>();
+    if (screen !== "transfer") {
+      matchResults.forEach((result) => {
+        result.maps.forEach((map, index) => activeMatchIds.add(`${result.id}-${map.map}-${index}`));
+      });
+    }
+    const updated = getMatchDb().backfillTeamCareerEvents(
+      yourTeam.id,
+      vaultRunId,
+      careerHistory.map((entry) => ({
+        eventId: entry.eventId ?? "major",
+        eventName: entry.eventName ?? `Major ${entry.event}`,
+        season: entry.season ?? entry.event,
+        tier: entry.tier,
+        wins: entry.record.wins,
+        losses: entry.record.losses,
+      })),
+      activeMatchIds,
+    );
+    if (updated) setVaultRevision((revision) => revision + 1);
+  }, [careerHistory, dbReady, matchResults, runKind, screen, vaultRunId, yourTeam.id]);
 
   // Accrue every completed map into the persistent match database (survives reloads and spans runs).
   // Gated on dbReady so we never write onto a half-loaded cache (which would clobber the loaded history).
@@ -3284,6 +3326,7 @@ function App() {
       {screen === "vault-team" && (
         <VaultTeamPage
           teamId={vaultTeamId}
+          revision={vaultRevision}
           onBack={goBackScreen}
           onOpenReplay={(id) => {
             setVaultReplayId(id);
@@ -7097,24 +7140,26 @@ function VaultTeamPlayerPage({
 // rating (with an MVP), head-to-head vs each opponent, and a replayable match history.
 function VaultTeamPage({
   teamId,
+  revision,
   onBack,
   onOpenReplay,
   onOpenTeam,
 }: {
   teamId: string | null;
+  revision: number;
   onBack: () => void;
   onOpenReplay: (matchId: string) => void;
   onOpenTeam: (teamId: string) => void;
 }) {
   const db = useMemo(() => getMatchDb(), []);
-  const profile = useMemo(() => (teamId ? db.teamProfile(teamId) : undefined), [db, teamId]);
-  const replayIds = useMemo(() => db.eventLogIds(), [db]);
+  const profile = useMemo(() => (teamId ? db.teamProfile(teamId) : undefined), [db, revision, teamId]);
+  const replayIds = useMemo(() => db.eventLogIds(), [db, revision]);
   const [vsFilter, setVsFilter] = useState<string | null>(null);
   const [rosterTab, setRosterTab] = useState<"current" | "former">("current");
   const [selectedPlayerKey, setSelectedPlayerKey] = useState<string | null>(null);
   const selectedPlayer = useMemo(
     () => (teamId && selectedPlayerKey ? db.teamPlayerProfile(teamId, selectedPlayerKey) : undefined),
-    [db, selectedPlayerKey, teamId],
+    [db, revision, selectedPlayerKey, teamId],
   );
 
   useEffect(() => {
