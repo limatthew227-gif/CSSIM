@@ -1168,6 +1168,59 @@ function App() {
     if (updated) setVaultRevision((revision) => revision + 1);
   }, [careerHistory, dbReady, matchResults, runKind, screen, vaultRunId, yourTeam.id]);
 
+  // Saved careers can contribute their placement ledger even when they are not the active run. This
+  // is what lets the Vault repair an older career opened from the setup screen. If no save still owns
+  // the remaining legacy maps, infer separate Majors from their round/stage resets.
+  useEffect(() => {
+    if (!dbReady) return;
+    const candidates = [
+      ...runSlots.map((slot) => ({
+        id: slot.snapshot.vaultRunId ?? `legacy-save:${slot.id}`,
+        updatedAt: slot.updatedAt,
+        snapshot: slot.snapshot,
+      })),
+      ...(autosave
+        ? [{
+            id: autosave.snapshot.vaultRunId ?? `legacy-autosave:${autosave.updatedAt}`,
+            updatedAt: autosave.updatedAt,
+            snapshot: autosave.snapshot,
+          }]
+        : []),
+    ]
+      .filter(({ snapshot }) => snapshot.runKind !== "spectator" && (snapshot.careerHistory?.length ?? 0) > 0)
+      .sort(
+        (a, b) =>
+          (b.snapshot.careerHistory?.length ?? 0) - (a.snapshot.careerHistory?.length ?? 0) ||
+          b.updatedAt.localeCompare(a.updatedAt),
+      );
+    const db = getMatchDb();
+    const savedActiveMatchIds = new Set<string>();
+    candidates.forEach(({ snapshot }) => {
+      if (snapshot.screen === "transfer") return;
+      (snapshot.matchResults ?? []).forEach((result) => {
+        result.maps.forEach((map, index) => savedActiveMatchIds.add(`${result.id}-${map.map}-${index}`));
+      });
+    });
+    let updated = 0;
+    candidates.forEach(({ id, snapshot }) => {
+      updated += db.backfillTeamCareerEvents(
+        "user",
+        id,
+        (snapshot.careerHistory ?? []).map((entry) => ({
+          eventId: entry.eventId ?? "major",
+          eventName: entry.eventName ?? `Major ${entry.event}`,
+          season: entry.season ?? entry.event,
+          tier: entry.tier,
+          wins: entry.record.wins,
+          losses: entry.record.losses,
+        })),
+        savedActiveMatchIds,
+      );
+    });
+    updated += db.inferLegacyTeamCareerEvents("user", "legacy-inferred", savedActiveMatchIds);
+    if (updated) setVaultRevision((revision) => revision + 1);
+  }, [autosave, dbReady, runSlots]);
+
   // Accrue every completed map into the persistent match database (survives reloads and spans runs).
   // Gated on dbReady so we never write onto a half-loaded cache (which would clobber the loaded history).
   useEffect(() => {
@@ -6995,12 +7048,21 @@ function VaultTeamPlayerPage({
   onOpenReplay: (matchId: string) => void;
 }) {
   const { player, team } = profile;
+  const [tab, setTab] = useState<"majors" | "results">("majors");
+  const [majorFilter, setMajorFilter] = useState<string | null>(null);
   const wins = profile.history.filter((row) => row.won).length;
   const losses = profile.history.length - wins;
   const kdDiff = player.line.kills - player.line.deaths;
   const photo = playerPhoto(player.handle);
+  const selectedMajor = profile.majors.find((major) => major.key === majorFilter);
+  const shownHistory = majorFilter ? profile.history.filter((row) => row.majorKey === majorFilter) : profile.history;
   const eventLabel = (row: TeamPlayerProfile["history"][number]) =>
     circuitEvents.find((event) => event.id === row.eventId)?.shortName ?? row.eventName ?? "Saved match";
+
+  useEffect(() => {
+    setTab("majors");
+    setMajorFilter(null);
+  }, [player.versionKey, team.id]);
 
   return (
     <main className="layout fullscreen-page vault-page vault-team-page vault-team-player-page" style={{ "--crest": team.accent } as React.CSSProperties}>
@@ -7041,97 +7103,144 @@ function VaultTeamPlayerPage({
         </div>
       </section>
 
-      <section className="vault-card">
-        <div className="vault-card-head">
-          <div className="section-title">
-            <Trophy size={18} />
-            <span>Major placements with {team.tag}</span>
-          </div>
-          <span className="vault-card-note">{profile.majors.length} {profile.majors.length === 1 ? "Major" : "Majors"}</span>
-        </div>
-        <div className="vault-player-major-list">
-          {profile.majors.map((major) => {
-            const savedAt = new Date(major.recordedAt);
-            const date = Number.isNaN(savedAt.getTime())
-              ? "Saved event"
-              : savedAt.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
-            return (
-              <article className={`vault-player-major-row ${major.tone}`} key={major.key}>
-                <div className="vault-player-major-place">
-                  <span>{major.label}</span>
-                  <strong>{major.placement}</strong>
-                  <small>{major.detail}</small>
-                </div>
-                <div className="vault-player-major-stats">
-                  <span><b>{major.maps}</b><small>Maps</small></span>
-                  <span><b>{major.wins}-{major.losses}</b><small>Map record</small></span>
-                  <span><b className={ratingTone(major.line.rating)}>{major.line.rating.toFixed(2)}</b><small>Rating</small></span>
-                  <span><b>{major.line.kills}-{major.line.deaths}</b><small>K-D</small></span>
-                </div>
-                <time>{date}</time>
-              </article>
-            );
-          })}
-        </div>
-      </section>
+      <div className="segmented compact vault-team-player-tabs" role="tablist" aria-label="Player team history">
+        <button
+          className={tab === "majors" ? "selected" : ""}
+          onClick={() => setTab("majors")}
+          role="tab"
+          aria-selected={tab === "majors"}
+        >
+          <Trophy size={15} />
+          Majors
+        </button>
+        <button
+          className={tab === "results" ? "selected" : ""}
+          onClick={() => setTab("results")}
+          role="tab"
+          aria-selected={tab === "results"}
+        >
+          <Database size={15} />
+          Results
+        </button>
+      </div>
 
-      <section className="vault-card">
-        <div className="vault-card-head">
-          <div className="section-title">
-            <Database size={18} />
-            <span>Results for {team.tag}</span>
+      {tab === "majors" && (
+        <section className="vault-card">
+          <div className="vault-card-head">
+            <div className="section-title">
+              <Trophy size={18} />
+              <span>Major placements with {team.tag}</span>
+            </div>
+            <span className="vault-card-note">{profile.majors.length} {profile.majors.length === 1 ? "Major" : "Majors"}</span>
           </div>
-          <span className="vault-card-note">{profile.history.length} recorded maps</span>
-        </div>
-        <div className="vault-player-result-wrap">
-          <table className="vault-player-result-table">
-            <thead>
-              <tr>
-                <th>Event</th>
-                <th>Opponent</th>
-                <th>Map</th>
-                <th>Result</th>
-                <th>K-D</th>
-                <th>ADR</th>
-                <th>Rating</th>
-                <th aria-label="Replay" />
-              </tr>
-            </thead>
-            <tbody>
-              {profile.history.map((row) => {
-                const canReplay = replayIds.has(row.matchId);
-                return (
-                  <tr key={row.matchId}>
-                    <td><b>{eventLabel(row)}</b><span>{row.stage ?? "match"}</span></td>
-                    <td>
-                      <div className="vault-player-result-opponent">
-                        <TeamLogo team={row.opponent} small />
-                        <b>{row.opponent.name}</b>
-                      </div>
-                    </td>
-                    <td>{mapName(row.map)}</td>
-                    <td><b className={row.won ? "good" : "bad"}>{row.won ? "W" : "L"} {row.teamScore}-{row.oppScore}</b></td>
-                    <td>{row.line.kills}-{row.line.deaths}</td>
-                    <td>{row.line.adr.toFixed(0)}</td>
-                    <td><b className={ratingTone(row.line.rating)}>{row.line.rating.toFixed(2)}</b></td>
-                    <td>
-                      <button
-                        type="button"
-                        className="icon-button compact"
-                        disabled={!canReplay}
-                        onClick={() => canReplay && onOpenReplay(row.matchId)}
-                        title={canReplay ? "Watch round replay" : "Replay not saved for this map"}
-                      >
-                        <Play size={13} />
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </section>
+          <div className="vault-player-major-list">
+            {profile.majors.map((major) => {
+              const savedAt = new Date(major.recordedAt);
+              const date = Number.isNaN(savedAt.getTime())
+                ? "Saved event"
+                : savedAt.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+              return (
+                <article className={`vault-player-major-row ${major.tone}`} key={major.key}>
+                  <div className="vault-player-major-badge">
+                    <Trophy size={14} />
+                    <strong>{major.placement}</strong>
+                  </div>
+                  <div className="vault-player-major-team">
+                    <TeamLogo team={team} small />
+                    <b>{team.name}</b>
+                  </div>
+                  <div className="vault-player-major-event">
+                    <b>{major.label}</b>
+                    <small>{major.detail} · {major.maps} maps · {major.wins}-{major.losses} · {date}</small>
+                  </div>
+                  <div className="vault-player-major-rating">
+                    <b className={ratingTone(major.line.rating)}>{major.line.rating.toFixed(2)}</b>
+                    <small>Rating</small>
+                  </div>
+                  <button
+                    type="button"
+                    className="secondary compact"
+                    onClick={() => {
+                      setMajorFilter(major.key);
+                      setTab("results");
+                    }}
+                  >
+                    <Database size={14} />
+                    Stats
+                  </button>
+                </article>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
+      {tab === "results" && (
+        <section className="vault-card">
+          <div className="vault-card-head">
+            <div className="section-title">
+              <Database size={18} />
+              <span>{selectedMajor ? `${selectedMajor.label} results` : `Results for ${team.tag}`}</span>
+            </div>
+            <div className="vault-player-result-actions">
+              <span className="vault-card-note">{shownHistory.length} recorded maps</span>
+              {majorFilter && (
+                <button type="button" className="secondary compact" onClick={() => setMajorFilter(null)}>
+                  All results
+                </button>
+              )}
+            </div>
+          </div>
+          <div className="vault-player-result-wrap">
+            <table className="vault-player-result-table">
+              <thead>
+                <tr>
+                  <th>Event</th>
+                  <th>Opponent</th>
+                  <th>Map</th>
+                  <th>Result</th>
+                  <th>K-D</th>
+                  <th>ADR</th>
+                  <th>Rating</th>
+                  <th aria-label="Replay" />
+                </tr>
+              </thead>
+              <tbody>
+                {shownHistory.map((row) => {
+                  const canReplay = replayIds.has(row.matchId);
+                  return (
+                    <tr key={row.matchId}>
+                      <td><b>{eventLabel(row)}</b><span>{row.stage ?? "match"}</span></td>
+                      <td>
+                        <div className="vault-player-result-opponent">
+                          <TeamLogo team={row.opponent} small />
+                          <b>{row.opponent.name}</b>
+                        </div>
+                      </td>
+                      <td>{mapName(row.map)}</td>
+                      <td><b className={row.won ? "good" : "bad"}>{row.won ? "W" : "L"} {row.teamScore}-{row.oppScore}</b></td>
+                      <td>{row.line.kills}-{row.line.deaths}</td>
+                      <td>{row.line.adr.toFixed(0)}</td>
+                      <td><b className={ratingTone(row.line.rating)}>{row.line.rating.toFixed(2)}</b></td>
+                      <td>
+                        <button
+                          type="button"
+                          className="icon-button compact"
+                          disabled={!canReplay}
+                          onClick={() => canReplay && onOpenReplay(row.matchId)}
+                          title={canReplay ? "Watch round replay" : "Replay not saved for this map"}
+                        >
+                          <Play size={13} />
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
     </main>
   );
 }

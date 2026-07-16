@@ -325,9 +325,11 @@ test("MatchDatabase: team player profile keeps former-player results and derives
   assert.equal(profile.player.current, false, "the drill-down remains available after the player leaves");
   assert.equal(profile.history.length, 6, "only maps where the player represented this team are included");
   assert.deepEqual(profile.majors.map((major) => major.placement), ["1st", "Stage 2"]);
+  assert.deepEqual(profile.majors.map((major) => major.label), ["Major Stage 3", "Major Stage 2"]);
   assert.equal(profile.majors[0].detail, "Champion");
   assert.match(profile.majors[1].detail, /Eliminated/);
   assert.equal(profile.majors[0].maps, 3);
+  assert.equal(profile.history[0].majorKey, "career-a:major:2");
 });
 
 test("MatchDatabase: backfills past Major placements from a legacy save without consuming the active stage", () => {
@@ -417,6 +419,45 @@ test("MatchDatabase: enriches already-tagged maps with an authoritative saved pl
   const major = db.teamPlayerProfile("you", version)!.majors[0];
   assert.equal(major.placement, "1st");
   assert.equal(major.detail, "Champion");
+});
+
+test("MatchDatabase: infers separate past Majors from legacy Swiss and playoff round resets", () => {
+  const db = new MatchDatabase(memoryStorage());
+  const you = teamWithStar("you", "you-star");
+  const opponent = makeTeam("opp", 82);
+  const legacy = (
+    id: string,
+    recordedAt: string,
+    seed: number,
+    stage: string,
+    winnerId: string,
+  ) => {
+    const input = matchInput(`${id}-inferno-0`, recordedAt, you, opponent, seed);
+    input.stage = stage;
+    input.winnerId = winnerId;
+    return input;
+  };
+  db.recordMany([
+    legacy("1-major1-r1", "2026-01-01T00:00:00Z", 1, "swiss", you.id),
+    legacy("2-major1-r2", "2026-01-02T00:00:00Z", 2, "swiss", you.id),
+    legacy("3-major1-r3", "2026-01-03T00:00:00Z", 3, "swiss", you.id),
+    legacy("6-major1-qf", "2026-01-04T00:00:00Z", 4, "quarterfinal", you.id),
+    legacy("7-major1-sf", "2026-01-05T00:00:00Z", 5, "semifinal", you.id),
+    legacy("8-major1-final", "2026-01-06T00:00:00Z", 6, "final", opponent.id),
+    legacy("1-major2-stage1-a", "2026-02-01T00:00:00Z", 7, "swiss", you.id),
+    legacy("2-major2-stage1-b", "2026-02-02T00:00:00Z", 8, "swiss", you.id),
+    legacy("3-major2-stage1-c", "2026-02-03T00:00:00Z", 9, "swiss", you.id),
+    legacy("1-major2-stage2-a", "2026-02-04T00:00:00Z", 10, "swiss", opponent.id),
+    legacy("2-major2-stage2-b", "2026-02-05T00:00:00Z", 11, "swiss", opponent.id),
+    legacy("3-major2-stage2-c", "2026-02-06T00:00:00Z", 12, "swiss", opponent.id),
+  ]);
+
+  assert.equal(db.inferLegacyTeamCareerEvents("you"), 12);
+  const version = db.getMatch("1-major1-r1-inferno-0")!.players.find((ref) => ref.id === "you-star")!.versionKey;
+  const majors = db.teamPlayerProfile("you", version)!.majors;
+  assert.deepEqual(majors.map((major) => major.placement), ["Stage 2", "2nd"]);
+  assert.deepEqual(majors.map((major) => major.label), ["Major 2", "Major 1"]);
+  assert.equal(db.getMatch("1-major2-stage2-a-inferno-0")?.eventId, "stage-2");
 });
 
 test("MatchDatabase: recordMany commits a batch in one pass, dedupes within it, and keeps logs", () => {

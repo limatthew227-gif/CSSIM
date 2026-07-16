@@ -308,6 +308,7 @@ export interface TeamProfile {
 }
 
 export interface TeamPlayerMatchRow extends TeamMatchRow {
+  majorKey: string;
   eventId?: string;
   eventName?: string;
   season?: number;
@@ -632,6 +633,92 @@ export class MatchDatabase {
     }
   }
 
+  // Last-resort repair for Vault records that outlived their save slot. Series ids encode the Swiss
+  // round/playoff round, so a reset back to round one marks a new stage. Consecutive 3-win Swiss
+  // stages are folded into the same Major before the final placement is assigned.
+  inferLegacyTeamCareerEvents(
+    teamId: string,
+    runId: string = "legacy-inferred",
+    excludeMatchIds: ReadonlySet<string> = new Set<string>(),
+  ): number {
+    const db = this.read();
+    const legacyMatches = db.matches
+      .map((match, index) => ({ match, index }))
+      .filter(
+        ({ match }) =>
+          !match.runId &&
+          match.season == null &&
+          !excludeMatchIds.has(match.id) &&
+          (match.left.id === teamId || match.right.id === teamId),
+      )
+      .sort((a, b) => a.match.recordedAt.localeCompare(b.match.recordedAt) || a.index - b.index);
+    if (!legacyMatches.length) return 0;
+
+    const seriesGroups: LegacySeriesGroup[] = [];
+    legacyMatches.forEach(({ match }) => {
+      const key = match.seriesId ?? inferLegacySeriesId(match);
+      const current = seriesGroups[seriesGroups.length - 1];
+      if (current?.key === key) current.matches.push(match);
+      else seriesGroups.push({ key, matches: [match] });
+    });
+
+    const stageSegments: LegacySeriesGroup[][] = [];
+    seriesGroups.forEach((group) => {
+      const current = stageSegments[stageSegments.length - 1];
+      if (!current || startsNewLegacyStage(current[current.length - 1], group)) stageSegments.push([group]);
+      else current.push(group);
+    });
+
+    const majors: LegacySeriesGroup[][] = [];
+    let currentMajor: LegacySeriesGroup[] = [];
+    stageSegments.forEach((segment) => {
+      currentMajor.push(...segment);
+      if (!legacySegmentAdvanced(teamId, segment)) {
+        majors.push(currentMajor);
+        currentMajor = [];
+      }
+    });
+    if (currentMajor.length) majors.push(currentMajor);
+
+    let updated = 0;
+    majors.forEach((groups, majorIndex) => {
+      const season = majorIndex + 1;
+      const segments = stageSegmentsForMajor(groups);
+      const finalSegment = segments[segments.length - 1] ?? groups;
+      const finalRows = finalSegment.map((group) => group.matches[0]);
+      const tier = inferLegacyPlacementTier(teamId, finalRows);
+      const swissRows = finalRows.filter((match) => match.stage === "swiss");
+      const eventWins = swissRows.filter((match) => match.winnerId === teamId).length;
+      const eventLosses = swissRows.length - eventWins;
+      const hasPlayoffs = groups.some((group) => group.matches[0]?.stage !== "swiss");
+      const segmentCount = segments.length;
+      const eventId = hasPlayoffs || segmentCount === 1 ? "major" : `stage-${Math.min(segmentCount, 3)}`;
+      const eventName = `Major ${season}`;
+
+      groups.forEach((group, seriesIndex) => {
+        group.matches.forEach((match) => {
+          match.runId = runId;
+          match.eventId = eventId;
+          match.eventName = eventName;
+          match.season = season;
+          match.placementTier = tier;
+          match.eventWins = eventWins;
+          match.eventLosses = eventLosses;
+          match.seriesId = `${runId}:${season}:${eventId}:${seriesIndex}:${group.key}`;
+          updated += 1;
+        });
+      });
+    });
+    if (!updated) return 0;
+
+    try {
+      this.write({ schemaVersion: SCHEMA_VERSION, matches: db.matches });
+      return updated;
+    } catch {
+      return 0;
+    }
+  }
+
   clear() {
     this.storage.removeItem(this.key);
     this.storage.removeItem(this.logKey);
@@ -784,6 +871,7 @@ export class MatchDatabase {
         const isLeft = match.left.id === teamId;
         return {
           matchId: match.id,
+          majorKey: majorKey(match),
           recordedAt: match.recordedAt,
           map: match.map,
           stage: match.stage,
@@ -943,12 +1031,64 @@ const majorStageLabel: Record<string, string> = {
   major: "Major",
 };
 
+interface LegacySeriesGroup {
+  key: string;
+  matches: MatchRecord[];
+}
+
 function inferLegacySeriesId(match: MatchRecord): string {
   const suffix = `-${match.map}-`;
   const suffixIndex = match.id.lastIndexOf(suffix);
   if (suffixIndex < 0) return match.id;
   const mapIndex = match.id.slice(suffixIndex + suffix.length);
   return /^\d+$/.test(mapIndex) ? match.id.slice(0, suffixIndex) : match.id;
+}
+
+function legacySeriesRound(group: LegacySeriesGroup): number | undefined {
+  const match = group.key.match(/(?:^|:)(\d+)-/);
+  return match ? Number(match[1]) : undefined;
+}
+
+function startsNewLegacyStage(previous: LegacySeriesGroup, current: LegacySeriesGroup): boolean {
+  const previousRound = legacySeriesRound(previous);
+  const currentRound = legacySeriesRound(current);
+  if (previousRound != null && currentRound != null) return currentRound <= previousRound;
+  const previousStage = majorStageOrderForSeries(previous.matches[0]?.stage);
+  const currentStage = majorStageOrderForSeries(current.matches[0]?.stage);
+  return currentStage < previousStage || (currentStage === previousStage && currentStage > 0);
+}
+
+function majorStageOrderForSeries(stage?: string): number {
+  if (stage === "quarterfinal") return 6;
+  if (stage === "semifinal") return 7;
+  if (stage === "final") return 8;
+  return 1;
+}
+
+function legacySegmentAdvanced(teamId: string, segment: LegacySeriesGroup[]): boolean {
+  const rows = segment.map((group) => group.matches[0]);
+  if (rows.some((match) => match.stage !== "swiss")) return false;
+  const wins = rows.filter((match) => match.winnerId === teamId).length;
+  const losses = rows.length - wins;
+  return wins >= 3 && losses < 3;
+}
+
+function stageSegmentsForMajor(groups: LegacySeriesGroup[]): LegacySeriesGroup[][] {
+  const segments: LegacySeriesGroup[][] = [];
+  groups.forEach((group) => {
+    const current = segments[segments.length - 1];
+    if (!current || startsNewLegacyStage(current[current.length - 1], group)) segments.push([group]);
+    else current.push(group);
+  });
+  return segments;
+}
+
+function inferLegacyPlacementTier(teamId: string, rows: MatchRecord[]): TeamEventPlacementTier {
+  const final = rows.find((match) => match.stage === "final");
+  if (final) return final.winnerId === teamId ? "champion" : "runner-up";
+  if (rows.some((match) => match.stage === "semifinal" && match.winnerId !== teamId)) return "top4";
+  if (rows.some((match) => match.stage === "quarterfinal" && match.winnerId !== teamId)) return "top8";
+  return "swiss";
 }
 
 function playoffSeriesForTier(eventId: string, tier: TeamCareerEventInput["tier"]): number {
@@ -1010,7 +1150,7 @@ function buildTeamPlayerMajorResult(
     );
   const final = seriesRows.find((match) => match.stage === "final");
   const stageLabel = majorStageLabel[highestEventId] ?? stageMatches[0]?.eventName ?? "Major";
-  const label = season != null ? `Major ${season}` : stageMatches[0]?.eventName ?? "Major";
+  const label = stageMatches[0]?.eventName ?? (season != null ? `Major ${season}` : "Major");
 
   let placement = stageLabel;
   let detail = `${stageLabel} results`;
