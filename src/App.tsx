@@ -30,6 +30,7 @@ import {
   Sparkles,
   Swords,
   Target,
+  TrendingDown,
   TrendingUp,
   Trophy,
   Trash2,
@@ -155,6 +156,8 @@ import {
   teamRef,
   type StorageAdapter,
   type PlayerCareerRecord,
+  type PlayerRatingAppearance,
+  type PlayerRatingExtremes,
   type MatchRecord,
   type TeamRecordRow,
   type RecordMatchInput,
@@ -8344,41 +8347,90 @@ function LabOvrBreakdown({ player, breakdown }: { player: Player; breakdown: Ovr
 }
 
 // All-time line from the persistent local match database — spans every saved match across all runs.
-function PlayerVaultLine({ vault }: { vault: PlayerCareerRecord | undefined }) {
+function PlayerVaultLine({ vault, extremes }: { vault: PlayerCareerRecord | undefined; extremes: PlayerRatingExtremes | undefined }) {
   if (!vault || vault.matches === 0) return null;
   const line = vault.line;
   return (
-    <section className="vault-line">
-      <div className="vault-label">
-        <Database size={15} />
-        <span>All-time</span>
-        <em>local match database</em>
+    <>
+      <section className="vault-line">
+        <div className="vault-label">
+          <Database size={15} />
+          <span>All-time</span>
+          <em>local match database</em>
+        </div>
+        <div className="vault-tiles">
+          <div className="vault-tile">
+            <strong>{vault.matches}</strong>
+            <span>Maps</span>
+          </div>
+          <div className="vault-tile">
+            <strong className={ratingTone(line.rating)}>{line.rating.toFixed(2)}</strong>
+            <span>Rating</span>
+          </div>
+          <div className="vault-tile">
+            <strong>
+              {line.kills}–{line.deaths}
+            </strong>
+            <span>K–D</span>
+          </div>
+          <div className="vault-tile">
+            <strong>{line.adr.toFixed(0)}</strong>
+            <span>ADR</span>
+          </div>
+          <div className="vault-tile">
+            <strong>{vault.teamIds.length}</strong>
+            <span>{vault.teamIds.length === 1 ? "Team" : "Teams"}</span>
+          </div>
+        </div>
+      </section>
+      {extremes && vault.matches >= 2 && (
+        <section className="vault-records">
+          <div className="vault-records-head">
+            <div className="section-title">
+              <Award size={17} />
+              <span>Historic map ratings</span>
+            </div>
+            <span>{vault.matches} recorded {vault.matches === 1 ? "map" : "maps"}</span>
+          </div>
+          <div className="vault-record-grid">
+            <VaultRatingRecord kind="best" appearance={extremes.best} />
+            <VaultRatingRecord kind="worst" appearance={extremes.worst} />
+          </div>
+        </section>
+      )}
+    </>
+  );
+}
+
+function VaultRatingRecord({ kind, appearance }: { kind: "best" | "worst"; appearance: PlayerRatingAppearance }) {
+  const isBest = kind === "best";
+  const savedAt = new Date(appearance.recordedAt);
+  const dateLabel = Number.isNaN(savedAt.getTime())
+    ? "Saved match"
+    : savedAt.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+  const stageLabel = appearance.stage
+    ? appearance.stage.split("-").map((word) => word.charAt(0).toUpperCase() + word.slice(1)).join(" ")
+    : "Match";
+  return (
+    <article className={`vault-record ${kind}`}>
+      <div className="vault-record-label">
+        {isBest ? <TrendingUp size={16} /> : <TrendingDown size={16} />}
+        <span>{isBest ? "Historic best" : "Historic worst"}</span>
       </div>
-      <div className="vault-tiles">
-        <div className="vault-tile">
-          <strong>{vault.matches}</strong>
-          <span>Maps</span>
-        </div>
-        <div className="vault-tile">
-          <strong className={ratingTone(line.rating)}>{line.rating.toFixed(2)}</strong>
-          <span>Rating</span>
-        </div>
-        <div className="vault-tile">
-          <strong>
-            {line.kills}–{line.deaths}
-          </strong>
-          <span>K–D</span>
-        </div>
-        <div className="vault-tile">
-          <strong>{line.adr.toFixed(0)}</strong>
-          <span>ADR</span>
-        </div>
-        <div className="vault-tile">
-          <strong>{vault.teamIds.length}</strong>
-          <span>{vault.teamIds.length === 1 ? "Team" : "Teams"}</span>
-        </div>
+      <strong className="vault-record-rating">{appearance.line.rating.toFixed(2)}</strong>
+      <div className="vault-record-opponent">
+        <span>vs</span>
+        <TeamLogo team={appearance.opponent} small />
+        <b>{appearance.opponent.name}</b>
       </div>
-    </section>
+      <div className="vault-record-meta">
+        <span>{mapName(appearance.map)}</span>
+        <b className={appearance.won ? "good" : "bad"}>{appearance.teamScore}-{appearance.oppScore}</b>
+        <span>{stageLabel}</span>
+        <span>{appearance.team.tag}</span>
+        <span>{dateLabel}</span>
+      </div>
+    </article>
   );
 }
 
@@ -9477,7 +9529,14 @@ function PlayerDetailPage({
   const displayStageGroups = [...stageGroups].reverse();
   const photo = playerPhoto(player.handle);
   const career = useMemo(() => buildPlayerCareer(results, playerVersionKey(player)), [results, player]);
-  const vault = useMemo(() => getMatchDb().playerCareer(playerVersionKey(player)), [player]);
+  const vault = useMemo(() => {
+    const db = getMatchDb();
+    const versionKey = playerVersionKey(player);
+    return {
+      career: db.playerCareer(versionKey),
+      extremes: db.playerRatingExtremes(versionKey),
+    };
+  }, [player]);
 
   return (
     <main className="layout fullscreen-page">
@@ -9552,7 +9611,7 @@ function PlayerDetailPage({
 
       <PlayerCareerPanel player={player} career={career} activeTeam={team} onOpenTeam={onOpenTeam} />
 
-      <PlayerVaultLine vault={vault} />
+      <PlayerVaultLine vault={vault.career} extremes={vault.extremes} />
 
       {maps.length ? (
         <section className="player-history-block">

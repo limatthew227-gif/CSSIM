@@ -64,6 +64,36 @@ test("MatchDatabase: playerCareer folds a canonical player across teams and runs
   assert.equal(career.line.rating, expected.rating);
 });
 
+test("MatchDatabase: player rating extremes include opponent context and prefer the latest tie", () => {
+  const db = new MatchDatabase(memoryStorage());
+  const team = teamWithStar("you", "you-star");
+  const oppA = makeTeam("oppA", 80);
+  const oppB = makeTeam("oppB", 80);
+  const oppC = makeTeam("oppC", 80);
+  const highOld = matchInput("high-old", "2026-06-01T00:00:00Z", team, oppA, 1, { map: "inferno" });
+  const low = matchInput("low", "2026-06-02T00:00:00Z", team, oppB, 2, { map: "nuke" });
+  const highNew = matchInput("high-new", "2026-06-03T00:00:00Z", team, oppC, 3, { map: "mirage" });
+  highOld.stage = "swiss";
+  low.stage = "quarterfinal";
+  highNew.stage = "semifinal";
+  highOld.stats["you-star"].rating = 1.72;
+  low.stats["you-star"].rating = 0.61;
+  highNew.stats["you-star"].rating = 1.72;
+  db.recordMany([highOld, low, highNew]);
+
+  const version = db.getMatch("high-old")!.players.find((ref) => ref.id === "you-star")!.versionKey;
+  const extremes = db.playerRatingExtremes(version)!;
+  assert.equal(extremes.best.matchId, "high-new", "the latest occurrence wins an equal-rating tie");
+  assert.equal(extremes.best.opponent.id, "oppC");
+  assert.equal(extremes.best.map, "mirage");
+  assert.equal(extremes.best.stage, "semifinal");
+  assert.equal(extremes.best.line.rating, 1.72);
+  assert.equal(extremes.worst.matchId, "low");
+  assert.equal(extremes.worst.opponent.id, "oppB");
+  assert.equal(extremes.worst.map, "nuke");
+  assert.equal(extremes.worst.line.rating, 0.61);
+});
+
 test("MatchDatabase: keeps different eras of the same player separate (FalleN 2018 vs 2026)", () => {
   const db = new MatchDatabase(memoryStorage());
   const classic = teamWithStarYear("navi-2018", "navi-2018-star", "2018");

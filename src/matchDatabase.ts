@@ -202,6 +202,24 @@ export interface PlayerCareerRecord {
   line: PlayerLine; // aggregated across every stored appearance of THIS version
 }
 
+export interface PlayerRatingAppearance {
+  matchId: string;
+  recordedAt: string;
+  stage?: string;
+  map: MapId;
+  team: StoredTeamRef;
+  opponent: StoredTeamRef;
+  teamScore: number;
+  oppScore: number;
+  won: boolean;
+  line: PlayerLine;
+}
+
+export interface PlayerRatingExtremes {
+  best: PlayerRatingAppearance;
+  worst: PlayerRatingAppearance;
+}
+
 export interface TeamRecordRow {
   team: StoredTeamRef;
   matches: number;
@@ -569,6 +587,41 @@ export class MatchDatabase {
   // eras stay separate (FalleN 2018 is a distinct record from FalleN 2026). Optional {side, map} filters.
   playerCareer(versionKey: string, opts: CareerQuery = {}): PlayerCareerRecord | undefined {
     return this.aggregate(versionKey, this.read().matches, opts);
+  }
+
+  // Highest and lowest single-map ratings for one player version across the persistent Vault. Equal
+  // ratings resolve to the most recently recorded map so the record card shows the latest occurrence.
+  playerRatingExtremes(versionKey: string): PlayerRatingExtremes | undefined {
+    let best: PlayerRatingAppearance | undefined;
+    let worst: PlayerRatingAppearance | undefined;
+
+    for (const match of this.read().matches) {
+      for (const ref of match.players.filter((player) => player.versionKey === versionKey)) {
+        const line = match.box[ref.id];
+        if (!line) continue;
+        const isLeft = ref.side === "left";
+        const team = isLeft ? match.left : match.right;
+        const opponent = isLeft ? match.right : match.left;
+        const appearance: PlayerRatingAppearance = {
+          matchId: match.id,
+          recordedAt: match.recordedAt,
+          stage: match.stage,
+          map: match.map,
+          team,
+          opponent,
+          teamScore: isLeft ? match.leftScore : match.rightScore,
+          oppScore: isLeft ? match.rightScore : match.leftScore,
+          won: match.winnerId === team.id,
+          line,
+        };
+        const isNewerBest = best && appearance.recordedAt >= best.recordedAt;
+        const isNewerWorst = worst && appearance.recordedAt >= worst.recordedAt;
+        if (!best || line.rating > best.line.rating || (line.rating === best.line.rating && isNewerBest)) best = appearance;
+        if (!worst || line.rating < worst.line.rating || (line.rating === worst.line.rating && isNewerWorst)) worst = appearance;
+      }
+    }
+
+    return best && worst ? { best, worst } : undefined;
   }
 
   // All distinct player VERSIONS, most-played first — the persistent player registry. Each era of a
