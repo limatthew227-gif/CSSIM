@@ -4775,8 +4775,19 @@ function App() {
             </div>
           </section>
           <section className="score-hero live-scoreboard">
+            <img
+              className="live-scoreboard-map-art"
+              src={mapArtImages[match.map]}
+              alt=""
+              aria-hidden="true"
+            />
             <TeamPlate team={yourTeam} />
             <div className="score">
+              <div className="live-map-identity">
+                <Crosshair size={12} />
+                <em>Map {(series?.currentMapIndex ?? 0) + 1}</em>
+                <strong>{mapName(match.map)}</strong>
+              </div>
               <b className={match.side === "CT" ? "ct-team" : "t-team"}>{match.you}</b>
               <span>:</span>
               <b className={match.side === "CT" ? "t-team" : "ct-team"}>{match.opponent}</b>

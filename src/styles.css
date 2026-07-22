@@ -5832,15 +5832,44 @@ button.team-stats-row {
 }
 
 .score-hero.live-scoreboard {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
   grid-template-columns: minmax(0, 1fr) 130px minmax(0, 1fr);
   gap: 10px;
-  min-height: 76px;
+  min-height: 96px;
   padding: 8px 10px;
   margin-bottom: 8px;
-  background:
-    linear-gradient(90deg, rgba(101, 167, 255, 0.09), transparent 45%, rgba(236, 106, 106, 0.1)),
-    #181c22;
+  background: #181c22;
   box-shadow: 0 10px 24px rgba(0, 0, 0, 0.2);
+}
+
+.score-hero.live-scoreboard::before {
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  content: "";
+  background:
+    linear-gradient(
+      90deg,
+      rgba(16, 20, 25, 0.98) 0%,
+      rgba(16, 20, 25, 0.76) 30%,
+      rgba(16, 20, 25, 0.34) 50%,
+      rgba(16, 20, 25, 0.76) 70%,
+      rgba(16, 20, 25, 0.98) 100%
+    ),
+    linear-gradient(180deg, rgba(8, 10, 13, 0.18), rgba(8, 10, 13, 0.56));
+}
+
+.live-scoreboard-map-art {
+  position: absolute;
+  z-index: -2;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 48%;
+  filter: saturate(0.88) contrast(1.1);
 }
 
 .live-scoreboard .team-plate {
@@ -5889,6 +5918,34 @@ button.team-stats-row {
 
 .live-scoreboard .score {
   gap: 7px;
+}
+
+.live-map-identity {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  color: #f4f7fb;
+  line-height: 1;
+  text-shadow: 0 1px 5px rgba(0, 0, 0, 0.9);
+}
+
+.live-map-identity svg {
+  color: var(--gold);
+}
+
+.live-map-identity em {
+  color: #c1cad5;
+  font-size: 9px;
+  font-style: normal;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.live-map-identity strong {
+  font-size: 12px;
+  text-transform: uppercase;
 }
 
 .live-scoreboard .score b {
@@ -8261,7 +8318,13 @@ input[type="range"] {
   .score-hero.live-scoreboard {
     grid-template-columns: 1fr;
     min-height: 0;
-    padding: 10px;
+    padding: 12px 10px;
+  }
+
+  .score-hero.live-scoreboard::before {
+    background:
+      linear-gradient(180deg, rgba(16, 20, 25, 0.72), rgba(16, 20, 25, 0.9)),
+      linear-gradient(90deg, rgba(101, 167, 255, 0.12), transparent 48%, rgba(236, 106, 106, 0.12));
   }
 
   .live-scoreboard .team-logo {
