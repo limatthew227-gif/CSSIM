@@ -1,7 +1,7 @@
 import { expectedRating, playerValue, type PlacementTier } from "./career";
 import type { Player, PlayerStats } from "./gameData";
 
-export const MANAGER_CAREER_VERSION = 14;
+export const MANAGER_CAREER_VERSION = 15;
 export const MANAGER_START_DATE = "2026-07-20";
 export const MANAGER_SALARY_MODEL_VERSION = 2;
 export const MANAGER_POTENTIAL_LAB_COST = 200_000;
@@ -20,6 +20,58 @@ export type ManagerBoardObjectiveStatus = "active" | "completed" | "failed";
 export type ManagerFinancialPressure = "healthy" | "watch" | "critical";
 export type ManagerTrainingFocus = "balanced" | "mechanics" | "tactics" | "role" | "recovery";
 export type ManagerCoinSide = "heads" | "tails";
+export type ManagerPerformanceCampFocus = "tactical" | "mechanics" | "recovery";
+export type ManagerPerformanceCampStatus = "active" | "completed";
+
+export interface ManagerPerformanceCampProgram {
+  id: ManagerPerformanceCampFocus;
+  name: string;
+  department: string;
+  description: string;
+  benefit: string;
+  cost: number;
+  durationDays: number;
+}
+
+export const managerPerformanceCampPrograms: ManagerPerformanceCampProgram[] = [
+  {
+    id: "tactical",
+    name: "System Camp",
+    department: "Tactical unit",
+    description: "Build protocols, communication, and late-round structure around the starting five.",
+    benefit: "+7 starter familiarity / +8 squad development",
+    cost: 18_000,
+    durationDays: 7,
+  },
+  {
+    id: "mechanics",
+    name: "Firepower Camp",
+    department: "Performance unit",
+    description: "High-volume aim work and pressure scrims accelerate the entire squad's development.",
+    benefit: "+24 squad development / +5 form",
+    cost: 22_000,
+    durationDays: 7,
+  },
+  {
+    id: "recovery",
+    name: "Reset Camp",
+    department: "Player care",
+    description: "A controlled reset restores confidence and freshness before the next competition block.",
+    benefit: "+10 morale / +8 form",
+    cost: 12_000,
+    durationDays: 7,
+  },
+];
+
+export interface ManagerPerformanceCamp {
+  id: string;
+  focus: ManagerPerformanceCampFocus;
+  bookedOn: string;
+  startsOn: string;
+  endsOn: string;
+  cost: number;
+  status: ManagerPerformanceCampStatus;
+}
 
 export interface ManagerCareerPlayerSeed {
   id: string;
@@ -268,6 +320,7 @@ export interface ManagerCareerState {
   contracts: ManagerPlayerContract[];
   playerDynamics: ManagerPlayerDynamics[];
   trainingPlans: ManagerTrainingPlan[];
+  performanceCamps: ManagerPerformanceCamp[];
   boardObjective: ManagerBoardObjective;
   market: ManagerMarketState;
   inbox: ManagerInboxItem[];
@@ -278,6 +331,13 @@ export interface ManagerEligibility {
   eligible: boolean;
   reasons: string[];
   totalCost: number;
+}
+
+export interface ManagerPerformanceCampEligibility {
+  eligible: boolean;
+  reasons: string[];
+  startsOn: string;
+  endsOn: string;
 }
 
 export function isCurrentManagerWorldRoster(roster: { era: string; year: string }) {
@@ -796,6 +856,148 @@ export function resolveManagerPotentialInvestment(
   };
 }
 
+export function managerActivePerformanceCamp(state: Pick<ManagerCareerState, "performanceCamps">) {
+  return state.performanceCamps.find((camp) => camp.status === "active");
+}
+
+export function managerPerformanceCampEligibility(
+  state: ManagerCareerState,
+  focus: ManagerPerformanceCampFocus,
+): ManagerPerformanceCampEligibility {
+  const program = managerPerformanceCampPrograms.find((item) => item.id === focus)!;
+  const startsOn = addDays(state.date, 1);
+  const endsOn = addDays(state.date, program.durationDays);
+  const reasons: string[] = [];
+  if (state.activeEventId) reasons.push("An event is currently in progress");
+  if (managerActivePerformanceCamp(state)) reasons.push("Another performance camp is already active");
+  if (state.cash < program.cost) reasons.push(`The program requires $${program.cost.toLocaleString()} in available cash`);
+  if (state.contracts.filter((contract) => contract.status !== "expired").length < 5) reasons.push("At least five contracted players are required");
+  const conflict = state.registrations.find((registration) => {
+    if (registration.status !== "confirmed" && registration.status !== "active") return false;
+    const event = managerEventById(registration.eventId);
+    if (!event) return false;
+    const eventStartsOn = managerEventStartForRank(event, state.vrsRank, state.season);
+    const eventEndsOn = event.majorCycle
+      ? managerMajorStageEnd(managerMajorEntryStage(state.vrsRank), state.season)
+      : managerEventSchedule(event, state.season).endsOn;
+    return rangesOverlap(startsOn, endsOn, eventStartsOn, eventEndsOn);
+  });
+  if (conflict) {
+    const event = managerEventById(conflict.eventId)!;
+    reasons.push(`${managerEventName(event, state.season)} overlaps the seven-day camp window`);
+  }
+  return { eligible: reasons.length === 0, reasons, startsOn, endsOn };
+}
+
+export function scheduleManagerPerformanceCamp(
+  state: ManagerCareerState,
+  focus: ManagerPerformanceCampFocus,
+): ManagerCareerState {
+  const program = managerPerformanceCampPrograms.find((item) => item.id === focus);
+  if (!program) return state;
+  const eligibility = managerPerformanceCampEligibility(state, focus);
+  if (!eligibility.eligible) return state;
+  const camp: ManagerPerformanceCamp = {
+    id: `${state.seed}:${state.date}:performance-camp:${focus}:${state.performanceCamps.length + 1}`,
+    focus,
+    bookedOn: state.date,
+    startsOn: eligibility.startsOn,
+    endsOn: eligibility.endsOn,
+    cost: program.cost,
+    status: "active",
+  };
+  return {
+    ...state,
+    cash: state.cash - program.cost,
+    performanceCamps: [...state.performanceCamps, camp],
+    ledger: [
+      ...state.ledger,
+      {
+        id: ledgerId(state, `performance-camp:${focus}`),
+        date: state.date,
+        category: "development",
+        description: `${program.name} booking`,
+        amount: -program.cost,
+      },
+    ],
+    inbox: [
+      {
+        id: inboxId(state, `performance-camp:${focus}`),
+        kind: "event",
+        createdOn: state.date,
+        title: `${program.name} booked`,
+        body: `${program.department} will run from ${eligibility.startsOn} through ${eligibility.endsOn}. ${program.benefit}.`,
+        deadline: eligibility.endsOn,
+        mandatory: false,
+        read: false,
+      },
+      ...state.inbox,
+    ],
+  };
+}
+
+function resolveManagerPerformanceCamps(state: ManagerCareerState, nextDate: string): ManagerCareerState {
+  const completed = state.performanceCamps.filter((camp) => camp.status === "active" && camp.endsOn <= nextDate);
+  if (!completed.length) return state;
+  const starterIds = new Set(state.contracts.filter((contract) => contract.status === "active").map((contract) => contract.playerId));
+  const contractedIds = new Set(state.contracts.filter((contract) => contract.status !== "expired").map((contract) => contract.playerId));
+  let playerDynamics = state.playerDynamics;
+  let trainingPlans = state.trainingPlans;
+  const resultItems: ManagerInboxItem[] = [];
+  completed.forEach((camp) => {
+    const program = managerPerformanceCampPrograms.find((item) => item.id === camp.focus)!;
+    playerDynamics = playerDynamics.map((item) => {
+      if (!contractedIds.has(item.playerId)) return item;
+      if (camp.focus === "tactical") {
+        return {
+          ...item,
+          familiarity: clampScore(item.familiarity + (starterIds.has(item.playerId) ? 7 : 2)),
+          morale: clampScore(item.morale + 2),
+          lastUpdatedOn: camp.endsOn,
+        };
+      }
+      if (camp.focus === "mechanics") {
+        return {
+          ...item,
+          form: clampScore(item.form + 5),
+          morale: clampScore(item.morale - 1),
+          lastUpdatedOn: camp.endsOn,
+        };
+      }
+      return {
+        ...item,
+        morale: clampScore(item.morale + 10),
+        form: clampScore(item.form + 8),
+        familiarity: clampScore(item.familiarity + (starterIds.has(item.playerId) ? 2 : 0)),
+        lastUpdatedOn: camp.endsOn,
+      };
+    });
+    if (camp.focus !== "recovery") {
+      const progress = camp.focus === "mechanics" ? 24 : 8;
+      trainingPlans = trainingPlans.map((plan) => contractedIds.has(plan.playerId)
+        ? { ...plan, progress: plan.currentOvr < plan.potentialOvr ? plan.progress + progress : 0, lastUpdatedOn: camp.endsOn }
+        : plan);
+    }
+    resultItems.push({
+      id: `${camp.id}:complete`,
+      kind: "result",
+      createdOn: camp.endsOn,
+      title: `${program.name} complete`,
+      body: `${program.benefit}. The performance department has applied the gains to the current squad.`,
+      mandatory: false,
+      read: false,
+    });
+  });
+  const completedIds = new Set(completed.map((camp) => camp.id));
+  return {
+    ...state,
+    playerDynamics,
+    trainingPlans,
+    performanceCamps: state.performanceCamps.map((camp) => completedIds.has(camp.id) ? { ...camp, status: "completed" as const } : camp),
+    inbox: [...resultItems.reverse(), ...state.inbox],
+  };
+}
+
 function managerTrainingAgeBase(age: number) {
   if (age <= 19) return 32;
   if (age <= 22) return 25;
@@ -1147,6 +1349,7 @@ export function createManagerCareer(seed: string, start: ManagerCareerStart = {}
     contracts,
     playerDynamics: createPlayerDynamics(seed, contracts),
     trainingPlans: createManagerTrainingPlans(start.players ?? [], MANAGER_START_DATE),
+    performanceCamps: [],
     boardObjective: createBoardObjective(seed, vrsRank, 1),
     market: createManagerMarketState(),
     inbox: [],
@@ -1354,6 +1557,7 @@ export function normalizeManagerCareer(
     contracts,
     playerDynamics,
     trainingPlans,
+    performanceCamps: saved.performanceCamps ?? [],
     boardObjective: saved.boardObjective ?? createBoardObjective(base.seed, saved.vrsRank ?? base.vrsRank, saved.season ?? base.season),
     market: {
       ...base.market,
@@ -2799,7 +3003,8 @@ export function advanceManagerDate(state: ManagerCareerState, nextDate: string):
       ...recoveredState.inbox,
     ],
   };
-  const resolvedTrades = resolveManagerTradeTimeline(advanced, nextDate);
+  const resolvedCamps = resolveManagerPerformanceCamps(advanced, nextDate);
+  const resolvedTrades = resolveManagerTradeTimeline(resolvedCamps, nextDate);
   const objective = resolvedTrades.boardObjective;
   if (objective.status !== "active" || nextDate < objective.deadline) return resolvedTrades;
   const completed = resolvedTrades.vrsRank <= objective.targetRank;
@@ -2906,7 +3111,10 @@ export function nextManagerCheckpoint(state: ManagerCareerState) {
   const objectiveDates = state.boardObjective.status === "active" && state.boardObjective.deadline > state.date
     ? [state.boardObjective.deadline]
     : [];
-  return [...dates, ...tradeDates, ...objectiveDates].sort()[0];
+  const campDates = state.performanceCamps
+    .filter((camp) => camp.status === "active" && camp.endsOn > state.date)
+    .map((camp) => camp.endsOn);
+  return [...dates, ...tradeDates, ...objectiveDates, ...campDates].sort()[0];
 }
 
 export function managerPlacementLabel(placement: PlacementTier) {

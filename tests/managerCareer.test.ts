@@ -27,6 +27,9 @@ import {
   managerPlayerDynamics,
   managerTeamFamiliarity,
   managerTrainingPlan,
+  managerActivePerformanceCamp,
+  managerPerformanceCampEligibility,
+  managerPerformanceCampPrograms,
   MANAGER_CAREER_VERSION,
   MANAGER_POTENTIAL_LAB_COST,
   evaluateManagerTradeProposal,
@@ -40,6 +43,7 @@ import {
   releaseManagerPlayerContract,
   resolveManagerTrainingCycle,
   resolveManagerPotentialInvestment,
+  scheduleManagerPerformanceCamp,
   resolveManagerOrganization,
   scoutManagerCandidate,
   setManagerStartingLineup,
@@ -151,6 +155,57 @@ test("Potential Lab charges for every flip and can push potential beyond 99", ()
   assert.match(state.inbox[0].body, /increased to 100/);
 });
 
+test("performance camps occupy calendar time, charge cash, and apply squad gains", () => {
+  const players = roster.map((id, index) => ({
+    id,
+    handle: id,
+    role: index === 0 ? "IGL" : "Rifler",
+    ovr: 76,
+    potential: 82,
+  }));
+  const base = createManagerCareer("camp-system", {
+    organizationId: "club",
+    organizationName: "Club",
+    cash: 100_000,
+    players,
+  });
+  const before = managerPlayerDynamics(base, "p1")!;
+  const beforeProgress = managerTrainingPlan(base, players[0]).progress;
+  const program = managerPerformanceCampPrograms.find((item) => item.id === "tactical")!;
+  const eligibility = managerPerformanceCampEligibility(base, "tactical");
+  assert.deepEqual({ eligible: eligibility.eligible, startsOn: eligibility.startsOn, endsOn: eligibility.endsOn }, {
+    eligible: true,
+    startsOn: "2026-07-21",
+    endsOn: "2026-07-27",
+  });
+
+  const booked = scheduleManagerPerformanceCamp(base, "tactical");
+  assert.equal(booked.cash, base.cash - program.cost);
+  assert.equal(managerActivePerformanceCamp(booked)?.endsOn, "2026-07-27");
+  assert.equal(booked.ledger.at(-1)?.category, "development");
+
+  const advanced = advanceManagerDate(booked, "2026-07-27");
+  assert.equal(managerActivePerformanceCamp(advanced), undefined);
+  assert.equal(advanced.performanceCamps[0].status, "completed");
+  assert.equal(managerPlayerDynamics(advanced, "p1")!.familiarity, before.familiarity + 7);
+  assert.equal(managerTrainingPlan(advanced, players[0]).progress, beforeProgress + 8);
+  assert.ok(advanced.inbox.some((item) => item.title === "System Camp complete"));
+});
+
+test("performance camps cannot overlap a confirmed tournament", () => {
+  const base = createManagerCareer("camp-conflict", {
+    organizationId: "club",
+    organizationName: "Club",
+    cash: 100_000,
+    players: rosterPlayers,
+  });
+  const registered = registerManagerEvent(base, "frontier-open-2026", roster);
+  const eligibility = managerPerformanceCampEligibility(registered, "mechanics");
+  assert.equal(eligibility.eligible, false);
+  assert.ok(eligibility.reasons.some((reason) => reason.includes("Frontier Open")));
+  assert.equal(scheduleManagerPerformanceCamp(registered, "mechanics"), registered);
+});
+
 test("old manager saves receive organization, contract, and market defaults during migration", () => {
   const oldState = createManagerCareer("legacy-a");
   const migrated = normalizeManagerCareer(
@@ -166,6 +221,7 @@ test("old manager saves receive organization, contract, and market defaults duri
   assert.equal(migrated.organizationName, "Legacy Club");
   assert.equal(migrated.contracts.length, 1);
   assert.equal(migrated.trainingPlans.length, 1);
+  assert.deepEqual(migrated.performanceCamps, []);
   assert.deepEqual(migrated.market, {
     scoutedPlayerIds: [],
     shortlistedPlayerIds: [],

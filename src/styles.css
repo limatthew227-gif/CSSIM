@@ -13878,6 +13878,204 @@ input[type="range"] {
   font-size: 18px;
 }
 
+.manager-camp-planner {
+  display: grid;
+  border-bottom: 1px solid #4a402f;
+  background: #12191d;
+}
+
+.manager-camp-planner > header {
+  display: flex;
+  gap: 18px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 15px;
+  border-bottom: 1px solid #3e3b33;
+  background: #171d1f;
+}
+
+.manager-camp-planner > header > span {
+  display: grid;
+  grid-template-columns: 26px auto;
+  gap: 1px 7px;
+  align-items: center;
+}
+
+.manager-camp-planner > header svg {
+  grid-row: 1 / 4;
+  color: #e8b357;
+}
+
+.manager-camp-planner > header small,
+.manager-camp-planner > header p,
+.manager-camp-planner > header > div small {
+  color: #838e92;
+  font-size: 8px;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.manager-camp-planner > header h3,
+.manager-camp-planner > header p {
+  margin: 0;
+}
+
+.manager-camp-planner > header h3 {
+  font-size: 15px;
+}
+
+.manager-camp-planner > header p {
+  font-weight: 700;
+  text-transform: none;
+}
+
+.manager-camp-planner > header > div {
+  display: grid;
+  justify-items: end;
+}
+
+.manager-camp-planner > header > div b {
+  color: #f0c46d;
+  font-size: 19px;
+  line-height: 1;
+}
+
+.manager-camp-options {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1px;
+  background: #3b3c38;
+}
+
+.manager-camp-options > article {
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: start;
+  min-width: 0;
+  padding: 14px;
+  background: #151d21;
+}
+
+.manager-camp-options > article.tactical {
+  box-shadow: inset 0 2px #5da9df;
+}
+
+.manager-camp-options > article.mechanics {
+  box-shadow: inset 0 2px #e1a849;
+}
+
+.manager-camp-options > article.recovery {
+  box-shadow: inset 0 2px #65c3a5;
+}
+
+.manager-camp-option-icon,
+.manager-camp-active-icon {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  border: 1px solid #46545a;
+  border-radius: 6px;
+  color: #a9bac2;
+  background: #202b30;
+}
+
+.manager-camp-options > article > span:nth-child(2),
+.manager-camp-active-copy,
+.manager-camp-active-dates {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.manager-camp-options small,
+.manager-camp-options p,
+.manager-camp-active small,
+.manager-camp-active p,
+.manager-camp-active em {
+  color: #869399;
+  font-size: 8px;
+  font-style: normal;
+  font-weight: 800;
+}
+
+.manager-camp-options small,
+.manager-camp-active small {
+  text-transform: uppercase;
+}
+
+.manager-camp-options strong,
+.manager-camp-active strong {
+  color: #edf2f4;
+  font-size: 13px;
+}
+
+.manager-camp-options p,
+.manager-camp-active p {
+  min-height: 28px;
+  margin: 0;
+  line-height: 1.45;
+}
+
+.manager-camp-options > article > div {
+  display: grid;
+  grid-column: 2 / -1;
+  gap: 3px;
+  padding-top: 9px;
+  border-top: 1px solid #343f44;
+}
+
+.manager-camp-options > article > div b {
+  color: #cbd5d9;
+  font-size: 9px;
+}
+
+.manager-camp-options > article > button {
+  grid-column: 3;
+  grid-row: 1 / 3;
+  align-self: end;
+  min-width: 92px;
+}
+
+.manager-camp-active {
+  display: grid;
+  grid-template-columns: 48px minmax(190px, 1fr) minmax(230px, auto) auto;
+  gap: 13px;
+  align-items: center;
+  padding: 16px;
+  box-shadow: inset 3px 0 #e0a94c;
+  background: #182329;
+}
+
+.manager-camp-active.tactical {
+  box-shadow: inset 3px 0 #5da9df;
+}
+
+.manager-camp-active.recovery {
+  box-shadow: inset 3px 0 #65c3a5;
+}
+
+.manager-camp-active-icon {
+  width: 46px;
+  height: 46px;
+  color: #f0bf68;
+}
+
+.manager-camp-active-dates {
+  padding: 0 16px;
+  border-right: 1px solid #3a474c;
+  border-left: 1px solid #3a474c;
+}
+
+.manager-camp-active-dates b {
+  font-size: 10px;
+}
+
+.manager-camp-active-dates em {
+  color: #6dd3aa;
+}
+
 .manager-development-board .manager-training-list {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -14540,6 +14738,21 @@ input[type="range"] {
   .manager-contract-card-grid {
     grid-template-columns: 1fr;
   }
+
+  .manager-camp-options {
+    grid-template-columns: 1fr;
+  }
+
+  .manager-camp-active {
+    grid-template-columns: 48px minmax(0, 1fr) auto;
+  }
+
+  .manager-camp-active-dates {
+    grid-column: 2;
+    padding: 9px 0 0;
+    border: 0;
+    border-top: 1px solid #3a474c;
+  }
 }
 
 @media (max-width: 760px) {
@@ -14560,6 +14773,38 @@ input[type="range"] {
 
   .manager-development-budget {
     justify-items: start;
+  }
+
+  .manager-camp-planner > header {
+    align-items: flex-start;
+  }
+
+  .manager-camp-planner > header > div {
+    display: none;
+  }
+
+  .manager-camp-options > article {
+    grid-template-columns: 38px minmax(0, 1fr);
+  }
+
+  .manager-camp-options > article > button {
+    grid-row: auto;
+    grid-column: 2;
+    justify-content: center;
+  }
+
+  .manager-camp-active {
+    grid-template-columns: 42px minmax(0, 1fr);
+  }
+
+  .manager-camp-active-icon {
+    width: 40px;
+    height: 40px;
+  }
+
+  .manager-camp-active > button {
+    grid-column: 1 / -1;
+    justify-content: center;
   }
 
   .manager-development-board .manager-training-row {

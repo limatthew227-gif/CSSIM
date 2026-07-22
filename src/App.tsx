@@ -196,6 +196,9 @@ import {
   managerContractReleaseCost,
   MANAGER_POTENTIAL_LAB_COST,
   managerTrainingPlan,
+  managerActivePerformanceCamp,
+  managerPerformanceCampEligibility,
+  managerPerformanceCampPrograms,
   managerRenewalBonus,
   managerPlacementLabel,
   managerMonthlyPayroll,
@@ -226,6 +229,7 @@ import {
   releaseManagerPlayerContract,
   resolveManagerTrainingCycle,
   resolveManagerPotentialInvestment,
+  scheduleManagerPerformanceCamp,
   scoutManagerCandidate,
   submitManagerFreeAgentOffer,
   renewManagerPlayerContract,
@@ -246,6 +250,7 @@ import {
   type ManagerEvent,
   type ManagerMajorStage,
   type ManagerCoinSide,
+  type ManagerPerformanceCampFocus,
   type ManagerTrainingFocus,
 } from "./managerCareer";
 import {
@@ -2974,6 +2979,13 @@ function App() {
     commitManagerCareer(next);
   }
 
+  function scheduleManagerCamp(focus: ManagerPerformanceCampFocus) {
+    if (!managerCareer) return;
+    const next = scheduleManagerPerformanceCamp(managerCareer, focus);
+    if (next === managerCareer) return;
+    commitManagerCareer(next);
+  }
+
   function openManagerRecruitment(role: Role | "all" = "all") {
     setManagerMarketRole(role);
     pushScreen("manager-market");
@@ -3830,6 +3842,8 @@ function App() {
           onOpenRecruitment={openManagerRecruitment}
           onSetTrainingFocus={updateManagerTrainingFocus}
           onPotentialInvestment={investManagerPlayerPotential}
+          onSchedulePerformanceCamp={scheduleManagerCamp}
+          onAdvanceDate={advanceManagerCareer}
         />
       )}
 
@@ -10407,6 +10421,8 @@ function ManagerRosterPage({
   onOpenRecruitment,
   onSetTrainingFocus,
   onPotentialInvestment,
+  onSchedulePerformanceCamp,
+  onAdvanceDate,
 }: {
   team: FieldTeam;
   roster: Player[];
@@ -10421,6 +10437,8 @@ function ManagerRosterPage({
   onOpenRecruitment: (role: Role | "all") => void;
   onSetTrainingFocus: (player: Player, focus: ManagerTrainingFocus) => void;
   onPotentialInvestment: (player: Player, choice: ManagerCoinSide, result: ManagerCoinSide) => void;
+  onSchedulePerformanceCamp: (focus: ManagerPerformanceCampFocus) => void;
+  onAdvanceDate: (targetDate?: string) => void;
 }) {
   const [view, setView] = useState<ManagerRosterView>("lineup");
   const [lineupIds, setLineupIds] = useState(() => starters.map((player) => player.id));
@@ -10470,6 +10488,11 @@ function ManagerRosterPage({
   const releaseCost = releaseContract ? managerContractReleaseCost(releaseContract) : 0;
   const potentialPlayer = potentialFlip ? activeRoster.find((player) => player.id === potentialFlip.playerId) : undefined;
   const potentialPlan = potentialPlayer ? managerTrainingPlan(career, potentialPlayer) : undefined;
+  const activeCamp = managerActivePerformanceCamp(career);
+  const activeCampProgram = activeCamp
+    ? managerPerformanceCampPrograms.find((program) => program.id === activeCamp.focus)
+    : undefined;
+  const completedCampCount = career.performanceCamps.filter((camp) => camp.status === "completed").length;
   const toggleLineupPlayer = (playerId: string) => {
     if (lineupLocked) return;
     setLineupIds((current) => current.includes(playerId)
@@ -10592,6 +10615,38 @@ function ManagerRosterPage({
             <span><Dumbbell size={17} /><small>Performance department</small><h2>Player development</h2></span>
             <div className="manager-development-budget"><small>Potential Lab budget</small><b>{fmtMoney(career.cash)}</b><em>{fmtMoney(MANAGER_POTENTIAL_LAB_COST)} per flip</em></div>
           </div>
+          <section className={`manager-camp-planner ${activeCamp ? "running" : ""}`} aria-label="Performance camp planner">
+            <header>
+              <span><Zap size={17} /><small>Seven-day team block</small><h3>Performance Camp</h3><p>Trade calendar space and cash for a focused squad-wide gain.</p></span>
+              <div><b>{completedCampCount}</b><small>camps completed</small></div>
+            </header>
+            {activeCamp && activeCampProgram ? (
+              <div className={`manager-camp-active ${activeCamp.focus}`}>
+                <span className="manager-camp-active-icon">
+                  {activeCamp.focus === "tactical" ? <Swords size={25} /> : activeCamp.focus === "mechanics" ? <Crosshair size={25} /> : <Shield size={25} />}
+                </span>
+                <span className="manager-camp-active-copy"><small>{activeCampProgram.department} / in progress</small><strong>{activeCampProgram.name}</strong><p>{activeCampProgram.description}</p></span>
+                <span className="manager-camp-active-dates"><small>Camp window</small><b>{managerFormatDate(activeCamp.startsOn)} - {managerFormatDate(activeCamp.endsOn)}</b><em>{activeCampProgram.benefit}</em></span>
+                <button className="primary" onClick={() => onAdvanceDate(activeCamp.endsOn)}><FastForward size={16} /> Finish camp</button>
+              </div>
+            ) : (
+              <div className="manager-camp-options">
+                {managerPerformanceCampPrograms.map((program) => {
+                  const eligibility = managerPerformanceCampEligibility(career, program.id);
+                  return (
+                    <article className={program.id} key={program.id}>
+                      <span className="manager-camp-option-icon">
+                        {program.id === "tactical" ? <Swords size={20} /> : program.id === "mechanics" ? <Crosshair size={20} /> : <Shield size={20} />}
+                      </span>
+                      <span><small>{program.department}</small><strong>{program.name}</strong><p>{program.description}</p></span>
+                      <div><b>{program.benefit}</b><small>{managerFormatDate(eligibility.startsOn)} - {managerFormatDate(eligibility.endsOn)}</small></div>
+                      <button className="secondary" disabled={!eligibility.eligible} onClick={() => onSchedulePerformanceCamp(program.id)} title={eligibility.reasons[0] ?? `Book ${program.name}`}><CalendarDays size={15} /> {fmtMoney(program.cost)}</button>
+                    </article>
+                  );
+                })}
+              </div>
+            )}
+          </section>
           <div className="manager-training-list">
             {activeRoster.map((player) => {
               const plan = managerTrainingPlan(career, player);
