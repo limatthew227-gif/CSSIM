@@ -11547,28 +11547,13 @@ function ManagerHomePage({
             </div>
           </section>
 
-          <section className="manager-section manager-history-section">
-            <div className="manager-section-head">
-              <div><span>Organization record</span><h2>Completed events</h2></div>
-              <button className="text-action" onClick={onOpenHistory}>Club honors <ArrowRight size={14} /></button>
-            </div>
-            {history.length ? (
-              <div className="manager-history-table">
-                {history.slice(-5).reverse().map((entry, index) => (
-                  <button type="button" key={`${entry.event}-${index}`} onClick={() => onOpenPastEvent(entry)} title={`Open ${entry.eventName ?? `Event ${entry.event}`} overview`}>
-                    <span>S{entry.season ?? 1}</span>
-                    <strong>{entry.eventName ?? `Event ${entry.event}`}</strong>
-                    <b>{placementLabel(entry.tier, entry.record)}</b>
-                    <em>{entry.record.wins}-{entry.record.losses}</em>
-                    <small>+{entry.points ?? 0} VRS / {fmtMoney(entry.prize)}</small>
-                    <ArrowRight size={14} />
-                  </button>
-                ))}
-              </div>
-            ) : (
-              <div className="manager-empty-state">The first completed event will begin the organization record.</div>
-            )}
-          </section>
+          <ManagerTrophyCabinet
+            compact
+            team={team}
+            history={history}
+            onOpenEvent={onOpenPastEvent}
+            onOpenHistory={onOpenHistory}
+          />
         </div>
 
         <aside className="manager-home-side">
@@ -11787,6 +11772,88 @@ function managerHistoryDate(entry: CareerHistoryEntry, event?: ManagerEvent) {
   return undefined;
 }
 
+const managerTrophySlotHints = [
+  "Major champion",
+  "LAN champion",
+  "Major finalist",
+  "Podium finish",
+  "Elite event title",
+  "Top-four finish",
+  "International final",
+  "Historic season",
+];
+
+function managerTrophyDisplayScore(entry: CareerHistoryEntry) {
+  const placementScore = entry.tier === "champion" ? 400 : entry.tier === "runner-up" ? 260 : entry.tier === "top4" ? 150 : entry.tier === "top8" ? 70 : 20;
+  const event = managerEventForHistory(entry);
+  const majorScore = event?.tier === "major" || entry.eventName?.toLowerCase().includes("major") ? 180 : 0;
+  const lanScore = event?.environment === "LAN" ? 35 : 0;
+  return placementScore + majorScore + lanScore;
+}
+
+function ManagerTrophyCabinet({
+  team,
+  history,
+  compact = false,
+  onOpenEvent,
+  onOpenHistory,
+}: {
+  team: FieldTeam;
+  history: CareerHistoryEntry[];
+  compact?: boolean;
+  onOpenEvent: (entry: CareerHistoryEntry) => void;
+  onOpenHistory?: () => void;
+}) {
+  const slotCount = compact ? 4 : 8;
+  const artifacts = history
+    .map((entry, index) => ({ entry, index, score: managerTrophyDisplayScore(entry) }))
+    .sort((a, b) => b.score - a.score || (b.entry.season ?? 1) - (a.entry.season ?? 1) || b.index - a.index)
+    .slice(0, slotCount);
+  const emptySlots = Math.max(0, slotCount - artifacts.length);
+
+  return (
+    <section
+      className={`manager-trophy-room${compact ? " compact" : ""}`}
+      style={{ "--trophy-accent": team.accent } as React.CSSProperties}
+      aria-label={`${team.name} trophy room`}
+    >
+      <header className="manager-trophy-room-head">
+        <div><span>Organization legacy</span><h2>{compact ? "Trophy cabinet" : "The trophy room"}</h2><small>{history.length ? `${history.length} archived event${history.length === 1 ? "" : "s"}` : "The first display is waiting"}</small></div>
+        {onOpenHistory && <button className="text-action" onClick={onOpenHistory}>Enter room <ArrowRight size={14} /></button>}
+      </header>
+      <div className="manager-trophy-case">
+        {artifacts.map(({ entry, index }) => {
+          const event = managerEventForHistory(entry);
+          const completedOn = managerHistoryDate(entry, event);
+          const tone = managerHonorTone(entry);
+          const Icon = entry.tier === "champion" ? Trophy : entry.tier === "runner-up" || entry.tier === "top4" ? Award : Shield;
+          return (
+            <button
+              type="button"
+              className={`manager-trophy-slot ${tone}`}
+              key={entry.archive?.id ?? `${entry.event}-${index}`}
+              onClick={() => onOpenEvent(entry)}
+              title={`Open ${entry.eventName ?? event?.name ?? `Event ${entry.event}`} overview`}
+            >
+              <span className="manager-trophy-object" aria-hidden="true"><Icon size={compact ? 40 : 50} strokeWidth={1.55} /><i /></span>
+              <span className="manager-trophy-plaque"><TeamLogo team={team} small /><b>{managerHonorPlacement(entry)}</b></span>
+              <strong>{entry.eventName ?? event?.name ?? `Event ${entry.event}`}</strong>
+              <small>{completedOn ? managerFormatDate(completedOn) : `Season ${entry.season ?? 1}`}</small>
+            </button>
+          );
+        })}
+        {Array.from({ length: emptySlots }, (_, index) => (
+          <div className="manager-trophy-slot empty" key={`empty-${index}`} aria-hidden="true">
+            <span className="manager-trophy-object"><Trophy size={compact ? 36 : 44} strokeWidth={1.35} /><i /></span>
+            <strong>{managerTrophySlotHints[artifacts.length + index]}</strong>
+            <small>Unclaimed</small>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 function ManagerClubHonorsPage({
   team,
   career,
@@ -11830,6 +11897,8 @@ function ManagerClubHonorsPage({
         <div><Coins size={18} /><span><b>{fmtMoney(earnings)}</b><small>Prize money earned</small></span></div>
         <div><TrendingUp size={18} /><span><b>#{career.vrsRank}</b><small>Current VRS rank</small></span></div>
       </section>
+
+      <ManagerTrophyCabinet team={team} history={history} onOpenEvent={onOpenEvent} />
 
       <nav className="manager-honors-tabs" role="tablist" aria-label="Organization achievements">
         <button type="button" role="tab" aria-selected={activeTab === "major"} className={activeTab === "major" ? "active" : ""} onClick={() => setActiveTab("major")}><Trophy size={16} /> Majors <span>{majorEntries.length}</span></button>

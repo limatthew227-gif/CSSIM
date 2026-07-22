@@ -15537,6 +15537,244 @@ input[type="range"] {
   color: var(--accent);
 }
 
+.manager-trophy-room {
+  overflow: hidden;
+  border: 1px solid #3a454f;
+  border-radius: 8px;
+  background: #101519;
+  box-shadow: 0 16px 34px rgba(0, 0, 0, 0.2);
+}
+
+.manager-trophy-room-head {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 62px;
+  padding: 11px 17px;
+  border-bottom: 1px solid #303a42;
+  box-shadow: inset 4px 0 0 var(--trophy-accent, var(--accent));
+  background: #191f24;
+}
+
+.manager-trophy-room-head > div {
+  display: grid;
+  grid-template-columns: auto auto;
+  gap: 2px 10px;
+  align-items: baseline;
+  min-width: 0;
+}
+
+.manager-trophy-room-head span {
+  grid-column: 1 / -1;
+  color: var(--trophy-accent, var(--accent));
+  font-size: 8px;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.manager-trophy-room-head h2 {
+  margin: 0;
+  color: #eef2f5;
+  font-size: 15px;
+  line-height: 1.1;
+}
+
+.manager-trophy-room-head small {
+  overflow: hidden;
+  color: #828d96;
+  font-size: 8px;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.manager-trophy-case {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  padding: 10px 13px 15px;
+  background: #0d1216;
+}
+
+.manager-trophy-case::before {
+  content: "";
+  position: absolute;
+  top: 10px;
+  right: 13px;
+  left: 13px;
+  height: 3px;
+  background: #303a42;
+  box-shadow: 0 3px 9px rgba(0, 0, 0, 0.5);
+}
+
+.manager-trophy-slot {
+  --trophy-metal: #9aa5ae;
+  position: relative;
+  display: grid;
+  grid-template-rows: minmax(80px, 1fr) auto auto auto;
+  gap: 5px;
+  align-items: end;
+  justify-items: center;
+  min-width: 0;
+  min-height: 184px;
+  padding: 20px 14px 17px;
+  border: 0;
+  border-right: 1px solid #222b31;
+  border-radius: 0;
+  color: #d6dde2;
+  text-align: center;
+  background: transparent;
+}
+
+.manager-trophy-slot:nth-child(4n) {
+  border-right: 0;
+}
+
+.manager-trophy-slot:nth-child(n + 5) {
+  border-top: 1px solid #222b31;
+}
+
+button.manager-trophy-slot {
+  cursor: pointer;
+}
+
+button.manager-trophy-slot:hover,
+button.manager-trophy-slot:focus-visible {
+  color: #fff;
+  background: #151d22;
+}
+
+.manager-trophy-slot::after {
+  content: "";
+  position: absolute;
+  right: 8px;
+  bottom: 7px;
+  left: 8px;
+  height: 5px;
+  background: #354149;
+  box-shadow: 0 5px 8px rgba(0, 0, 0, 0.52);
+}
+
+.manager-trophy-slot.champion {
+  --trophy-metal: #efc34a;
+}
+
+.manager-trophy-slot.runner-up {
+  --trophy-metal: #c4ccd2;
+}
+
+.manager-trophy-slot.podium {
+  --trophy-metal: #d8893b;
+}
+
+.manager-trophy-object {
+  position: relative;
+  display: grid;
+  width: 78px;
+  height: 82px;
+  place-items: end center;
+  color: var(--trophy-metal);
+  transition: transform 180ms ease, filter 180ms ease;
+}
+
+.manager-trophy-object svg {
+  width: 100%;
+  height: 100%;
+  filter: drop-shadow(0 8px 7px rgba(0, 0, 0, 0.52));
+}
+
+.manager-trophy-object i {
+  position: absolute;
+  bottom: -5px;
+  width: 54px;
+  height: 8px;
+  border: 1px solid color-mix(in srgb, var(--trophy-metal), #000 52%);
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--trophy-metal), #111 62%);
+  box-shadow: 0 5px 7px rgba(0, 0, 0, 0.45);
+}
+
+button.manager-trophy-slot:hover .manager-trophy-object,
+button.manager-trophy-slot:focus-visible .manager-trophy-object {
+  filter: brightness(1.12);
+  transform: translateY(-3px);
+}
+
+.manager-trophy-plaque {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  min-height: 29px;
+  padding: 3px 8px;
+  border: 1px solid #3a454c;
+  border-radius: 4px;
+  background: #171e23;
+}
+
+.manager-trophy-plaque .team-logo {
+  width: 22px;
+  height: 22px;
+}
+
+.manager-trophy-plaque b {
+  color: var(--trophy-metal);
+  font-size: 11px;
+}
+
+.manager-trophy-slot > strong {
+  overflow: hidden;
+  width: 100%;
+  color: inherit;
+  font-size: 10px;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.manager-trophy-slot > small {
+  color: #748089;
+  font-size: 8px;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.manager-trophy-slot.empty {
+  --trophy-metal: #3f484e;
+  grid-template-rows: minmax(80px, 1fr) auto auto;
+  opacity: 0.64;
+}
+
+.manager-trophy-slot.empty .manager-trophy-object {
+  width: 68px;
+  height: 72px;
+}
+
+.manager-trophy-room.compact .manager-trophy-room-head {
+  min-height: 54px;
+}
+
+.manager-trophy-room.compact .manager-trophy-slot {
+  grid-template-rows: minmax(62px, 1fr) auto auto auto;
+  min-height: 158px;
+  padding: 16px 10px 15px;
+}
+
+.manager-trophy-room.compact .manager-trophy-object {
+  width: 59px;
+  height: 62px;
+}
+
+.manager-trophy-room.compact .manager-trophy-slot.empty {
+  grid-template-rows: minmax(62px, 1fr) auto auto;
+}
+
+.manager-trophy-room.compact .manager-trophy-slot.empty .manager-trophy-object {
+  width: 54px;
+  height: 57px;
+}
+
 .manager-honors-page,
 .manager-legacy-event-page {
   display: grid;
@@ -15986,6 +16224,23 @@ input[type="range"] {
 }
 
 @media (max-width: 1050px) {
+  .manager-trophy-case {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .manager-trophy-slot,
+  .manager-trophy-slot:nth-child(4n) {
+    border-right: 1px solid #222b31;
+  }
+
+  .manager-trophy-slot:nth-child(2n) {
+    border-right: 0;
+  }
+
+  .manager-trophy-slot:nth-child(n + 3) {
+    border-top: 1px solid #222b31;
+  }
+
   .manager-honors-kpis {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
