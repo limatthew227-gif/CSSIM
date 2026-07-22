@@ -63,6 +63,23 @@ test("Major direct invites are always accepted in VRS order", () => {
   );
 });
 
+test("each bypassed Major stage reserves its eight direct invites for the VRS band", () => {
+  const pool = Array.from({ length: 64 }, (_, index) => roster(`team-${index + 1}`, index + 1));
+
+  assert.deepEqual(
+    pickCircuitDirectInvites(pool, circuitEventById("stage-1"), 8).map((team) => team.rank),
+    [17, 18, 19, 20, 21, 22, 23, 24],
+  );
+  assert.deepEqual(
+    pickCircuitDirectInvites(pool, circuitEventById("stage-2"), 8).map((team) => team.rank),
+    [9, 10, 11, 12, 13, 14, 15, 16],
+  );
+  assert.deepEqual(
+    pickCircuitDirectInvites(pool, circuitEventById("stage-3"), 8).map((team) => team.rank),
+    [1, 2, 3, 4, 5, 6, 7, 8],
+  );
+});
+
 test("the next stage preserves qualifiers before filling direct-invite slots", () => {
   const qualifiers = Array.from({ length: 8 }, (_, index) => roster(`qualified-${index + 1}`, 40 + index));
   const invites = Array.from({ length: 10 }, (_, index) => roster(`invite-${index + 1}`, index + 1));

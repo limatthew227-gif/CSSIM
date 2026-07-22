@@ -1071,14 +1071,20 @@ function App() {
       ? { ...current, vrsRank: managerAuthoritativeVrsRank }
       : current);
   }, [managerAuthoritativeVrsRank, managerCareer]);
-  const managerEventRosters = useMemo(
-    () => rankRostersByVrs(managerWorldRosters.filter((roster) => (
-      isCurrentManagerWorldRoster(roster)
-      && roster.id !== managerControlledOrganizationId
+  const managerEventRosters = useMemo(() => {
+    const currentWorld = managerWorldRosters.filter(isCurrentManagerWorldRoster);
+    const rankedWorld = rankRostersByVrs(currentWorld.map((roster) => {
+      const controlled = roster.id === managerControlledOrganizationId
+        || roster.name.trim().toLowerCase() === managerControlledOrganizationName;
+      return controlled && managerCareer
+        ? { ...roster, vrsPoints: managerCareer.vrsPoints }
+        : roster;
+    }));
+    return rankedWorld.filter((roster) => (
+      roster.id !== managerControlledOrganizationId
       && roster.name.trim().toLowerCase() !== managerControlledOrganizationName
-    ))),
-    [managerControlledOrganizationId, managerControlledOrganizationName, managerWorldRosters],
-  );
+    ));
+  }, [managerCareer, managerControlledOrganizationId, managerControlledOrganizationName, managerWorldRosters]);
   const managerFreeAgents = useMemo(
     () => createManagerFreeAgentPool(managerCareer?.seed ?? vaultRunId, 18, {
       vrsRank: managerCareer?.vrsRank,
@@ -2766,7 +2772,7 @@ function App() {
     const qualifiers = circuitStageQualifiers(swissField, swissRecords, yourTeam, record);
     const archivedResults = [...normalizedCircuitArchive, ...tagCircuitResults(matchResults, managerMajorStage)];
     const nextField = buildNextCircuitField(
-      rosterPool,
+      managerEventRosters,
       managerMajorNextStage,
       qualifiers,
       [yourTeam, ...swissField],
@@ -3180,9 +3186,11 @@ function App() {
     const majorStage = event.majorCycle && nextCareer.activeMajorStage
       ? circuitEventById(nextCareer.activeMajorStage)
       : undefined;
-    const nextSwissField = majorStage
-      ? buildManagerMajorField(managerEventRosters, majorStage, managerControlledOrganizationId)
-      : buildManagerField(managerEventRosters, event, managerControlledOrganizationId);
+    const majorEntryRoute = majorStage
+      ? simulateManagerMajorEntryRoute(managerEventRosters, majorStage, settings, difficulty)
+      : undefined;
+    const nextSwissField = majorEntryRoute?.field
+      ?? buildManagerField(managerEventRosters, event, managerControlledOrganizationId);
     const nextSwissRecords = initialSwissRecords(nextSwissField);
     const directPairs = event.format === "single-elimination"
       ? buildPlayoffPairs("quarterfinal", [yourTeam, ...nextSwissField.slice(0, 7)], yourTeam)
@@ -3196,7 +3204,7 @@ function App() {
       : selectOpponentForRecord({ wins: 0, losses: 0 }, nextSwissField, nextSwissRecords, []);
     commitManagerCareer(nextCareer);
     if (majorStage) setCircuitEventId(majorStage.id);
-    setCircuitMajorResults([]);
+    setCircuitMajorResults(majorEntryRoute?.archivedResults ?? []);
     setRecord({ wins: 0, losses: 0 });
     setPhase(event.format === "single-elimination" ? "playoffs" : "swiss");
     setPlayoffRound("quarterfinal");
@@ -15071,6 +15079,52 @@ function buildManagerMajorField(rosterPool: Roster[], event: CircuitEvent, contr
     ? pickCircuitRosters(available, event, SWISS_OPPONENT_COUNT)
     : pickCircuitDirectInvites(available, event, SWISS_OPPONENT_COUNT);
   return rosters.map(toTournamentTeam);
+}
+
+function simulateManagerMajorEntryRoute(
+  rosterPool: Roster[],
+  entryEvent: CircuitEvent,
+  settings: CustomSettings,
+  difficulty: Difficulty,
+) {
+  const entryIndex = circuitEventIndex(entryEvent.id);
+  if (entryIndex === 0) {
+    return {
+      field: buildManagerMajorField(rosterPool, entryEvent),
+      archivedResults: [] as SwissResult[],
+    };
+  }
+
+  let stageField = pickCircuitRosters(
+    rosterPool,
+    circuitEvents[0],
+    SWISS_FIELD_SIZE,
+  ).map(toTournamentTeam);
+  const archivedResults: SwissResult[] = [];
+
+  for (let index = 0; index < entryIndex; index += 1) {
+    const stage = circuitEvents[index];
+    const simulation = simulateNeutralSwissStage(stageField, settings, difficulty);
+    archivedResults.push(...tagCircuitResults(simulation.results, stage));
+    const qualifiers = circuitStageQualifiers(stageField, simulation.records);
+    const nextStage = circuitEvents[index + 1];
+    const enteringNextStage = index + 1 === entryIndex;
+    const nextField = buildNextCircuitField(
+      rosterPool,
+      nextStage,
+      qualifiers,
+      stageField,
+      enteringNextStage,
+      archivedResults,
+    );
+    if (enteringNextStage) return { field: nextField, archivedResults };
+    stageField = nextField;
+  }
+
+  return {
+    field: buildManagerMajorField(rosterPool, entryEvent),
+    archivedResults,
+  };
 }
 
 function buildManagerField(rosterPool: Roster[], event: ManagerEvent, controlledOrganizationId?: string) {
