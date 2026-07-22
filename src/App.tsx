@@ -184,11 +184,15 @@ import {
   type RecordMatchInput,
 } from "./matchDatabase";
 import {
+  acceptManagerIncomingOffer,
   advanceManagerMajorStage,
   acceptManagerTradeCounter,
   advanceManagerDate,
   completeManagerEvent,
   createManagerCareer,
+  createManagerIncomingOffer,
+  counterManagerIncomingOffer,
+  declineManagerIncomingOffer,
   launchManagerEvent as beginManagerEvent,
   managerEventById,
   managerEventName,
@@ -225,6 +229,7 @@ import {
   managerMajorProjection,
   managerMajorStageHasPlayoffs,
   managerMajorStageLabel,
+  markManagerInboxRead,
   managerLineupEditLocked,
   managerSeasonLabel,
   isCurrentManagerWorldRoster,
@@ -263,6 +268,8 @@ import {
   type ManagerCasinoStake,
   type ManagerPerformanceCampFocus,
   type ManagerTrainingFocus,
+  type ManagerInboxItem,
+  type ManagerIncomingOffer,
 } from "./managerCareer";
 import {
   applyManagerRosterMoves,
@@ -361,7 +368,7 @@ const BUY_CALL_OPTIONS: Array<{ id: BuyCall; label: string }> = [
   { id: "save", label: "Save" },
 ];
 
-type Screen = "setup" | "teams" | "draft" | "coach" | "manager-select" | "manager-home" | "manager-calendar" | "manager-roster" | "manager-market" | "manager-history" | "manager-event-overview" | "swiss" | "playoffs" | "veto" | "match" | "result" | "universe" | "overview" | "stats" | "results" | "series-detail" | "player-detail" | "team-detail" | "balance-lab" | "vault" | "vault-replay" | "vault-team" | "compare" | "transfer";
+type Screen = "setup" | "teams" | "draft" | "coach" | "manager-select" | "manager-home" | "manager-inbox" | "manager-calendar" | "manager-roster" | "manager-market" | "manager-history" | "manager-event-overview" | "swiss" | "playoffs" | "veto" | "match" | "result" | "universe" | "overview" | "stats" | "results" | "series-detail" | "player-detail" | "team-detail" | "balance-lab" | "vault" | "vault-replay" | "vault-team" | "compare" | "transfer";
 type Mode = "classic" | "random" | "circuit" | "manager" | "spectator";
 type RunKind = "player" | "spectator";
 type SwissRecord = { wins: number; losses: number };
@@ -377,6 +384,14 @@ type LiveFeedView = "feed" | "map";
 type TeamLabView = "builder" | "scout" | "integrity";
 type ScoutSortKey = "ovr" | "hltv" | "audit" | "aim" | "clutch" | "consistency" | "awp" | "igl" | "team";
 type ScoutAuditSeverity = "danger" | "warn" | "info";
+
+interface ManagerVrsStanding {
+  team: Pick<Roster | FieldTeam, "id" | "tag" | "name" | "country" | "accent" | "logo">;
+  rank: number;
+  points: number;
+  movement: number;
+  managed: boolean;
+}
 
 interface TeamFormPlayer {
   handle: string;
@@ -1039,6 +1054,22 @@ function App() {
     () => applyManagerRosterMoves(rosterPool, managerCareer?.market?.rosterMoves ?? []),
     [managerCareer?.market?.rosterMoves, rosterPool],
   );
+  const managerAuthoritativeVrsRank = useMemo(() => {
+    if (!managerCareer) return 64;
+    const controlledName = managerCareer.organizationName.trim().toLowerCase();
+    const rankedWorld = managerWorldRosters.filter((roster) => (
+      isCurrentManagerWorldRoster(roster)
+      && roster.id !== managerControlledOrganizationId
+      && roster.name.trim().toLowerCase() !== controlledName
+    ));
+    return circuitWorldRank(managerCareer.vrsPoints, rankedWorld);
+  }, [managerCareer, managerControlledOrganizationId, managerWorldRosters]);
+  useEffect(() => {
+    if (!managerCareer || managerCareer.vrsRank === managerAuthoritativeVrsRank) return;
+    setManagerCareer((current) => current && current.vrsRank !== managerAuthoritativeVrsRank
+      ? { ...current, vrsRank: managerAuthoritativeVrsRank }
+      : current);
+  }, [managerAuthoritativeVrsRank, managerCareer]);
   const managerEventRosters = useMemo(
     () => rankRostersByVrs(managerWorldRosters.filter((roster) => (
       isCurrentManagerWorldRoster(roster)
@@ -1121,16 +1152,54 @@ function App() {
         accent: managerOrganization.accent,
         logo: managerOrganization.logo,
         trophies: managerOrganization.trophies,
-        rank: managerCareer?.vrsRank,
+        rank: managerAuthoritativeVrsRank,
         vrsPoints: managerCareer?.vrsPoints,
       };
     }
     return {
       ...team,
-      rank: mode === "manager" ? managerCareer?.vrsRank : circuitWorldRank(circuitPoints, builtInHltvRosters),
+      rank: mode === "manager" ? managerAuthoritativeVrsRank : circuitWorldRank(circuitPoints, builtInHltvRosters),
       vrsPoints: mode === "manager" ? managerCareer?.vrsPoints : circuitPoints,
     };
-  }, [teamName, formAdjustedPlayers, coach, mode, circuitPoints, managerCareer?.vrsPoints, managerCareer?.vrsRank, managerOrganization]);
+  }, [teamName, formAdjustedPlayers, coach, mode, circuitPoints, managerAuthoritativeVrsRank, managerCareer?.vrsPoints, managerOrganization]);
+  const managerVrsStandings = useMemo<ManagerVrsStanding[]>(() => {
+    if (!managerCareer) return [];
+    const controlledName = managerCareer.organizationName.trim().toLowerCase();
+    const world = managerWorldRosters.filter((roster) => (
+      isCurrentManagerWorldRoster(roster)
+      && roster.id !== managerControlledOrganizationId
+      && roster.name.trim().toLowerCase() !== controlledName
+    ));
+    const baselineOrder = [
+      ...world.map((team) => ({ id: team.id, rank: team.rank ?? 64 })),
+      { id: yourTeam.id, rank: managerCareer.boardObjective.startingRank },
+    ].sort((left, right) => left.rank - right.rank || left.id.localeCompare(right.id));
+    const baselineRanks = new Map(baselineOrder.map((entry, index) => [entry.id, index + 1]));
+    const rows: Array<{ team: Roster | FieldTeam; points: number; baselineRank: number; managed: boolean }> = world.map((team) => ({
+      team,
+      points: team.vrsPoints ?? 0,
+      baselineRank: baselineRanks.get(team.id) ?? 64,
+      managed: false,
+    }));
+    rows.push({
+      team: yourTeam,
+      points: managerCareer.vrsPoints,
+      baselineRank: baselineRanks.get(yourTeam.id) ?? managerCareer.boardObjective.startingRank,
+      managed: true,
+    });
+    rows.sort((left, right) => (
+      right.points - left.points
+      || left.baselineRank - right.baselineRank
+      || left.team.id.localeCompare(right.team.id)
+    ));
+    return rows.map((row, index) => ({
+      team: row.team,
+      rank: index + 1,
+      points: row.points,
+      movement: row.baselineRank - (index + 1),
+      managed: row.managed,
+    }));
+  }, [managerCareer, managerControlledOrganizationId, managerWorldRosters, yourTeam]);
   const bonuses = useMemo(() => composition(selected, settings, true), [selected, settings]);
   const opponentBonuses = useMemo(() => composition(opponent.players, settings, opponent.id === "user"), [opponent, settings]);
   const missingRoles = requiredRoles.filter((role) => !selected.some((player) => player.role === role));
@@ -2896,25 +2965,49 @@ function App() {
   function commitManagerCareer(next: ManagerCareerState) {
     const current = managerCareer;
     if (current?.status === "bankrupt" && next !== current) return;
-    const crossedTime = current && next.date > current.date;
+    const rankWorld = applyManagerRosterMoves(rosterPool, next.market.rosterMoves).filter((roster) => (
+      isCurrentManagerWorldRoster(roster)
+      && roster.id !== managerControlledOrganizationId
+      && roster.name.trim().toLowerCase() !== next.organizationName.trim().toLowerCase()
+    ));
+    const authoritativeRank = circuitWorldRank(next.vrsPoints, rankWorld);
+    const rankedNext: ManagerCareerState = {
+      ...next,
+      vrsRank: authoritativeRank,
+      inbox: current && next.vrsPoints !== current.vrsPoints
+        ? next.inbox.map((item) => item.kind === "ranking" && item.createdOn === next.date
+          ? {
+              ...item,
+              title: authoritativeRank < current.vrsRank
+                ? `VRS rise: #${current.vrsRank} to #${authoritativeRank}`
+                : authoritativeRank > current.vrsRank
+                  ? `VRS drop: #${current.vrsRank} to #${authoritativeRank}`
+                  : `VRS position held at #${authoritativeRank}`,
+              rankBefore: current.vrsRank,
+              rankAfter: authoritativeRank,
+            }
+          : item)
+        : next.inbox,
+    };
+    const crossedTime = current && rankedNext.date > current.date;
     const aiTransferActivity = crossedTime
       ? createManagerAiTransferActivity({
-          seed: next.seed,
-          rosters: applyManagerRosterMoves(rosterPool, next.market.rosterMoves).filter(isCurrentManagerWorldRoster),
+          seed: rankedNext.seed,
+          rosters: applyManagerRosterMoves(rosterPool, rankedNext.market.rosterMoves).filter(isCurrentManagerWorldRoster),
           fromDate: current.date,
-          toDate: next.date,
-          existingMoves: next.market.rosterMoves,
+          toDate: rankedNext.date,
+          existingMoves: rankedNext.market.rosterMoves,
           excludedOrganizationId: managerControlledOrganizationId,
-          excludedOrganizationName: managerOrganization?.name ?? next.organizationName,
+          excludedOrganizationName: managerOrganization?.name ?? rankedNext.organizationName,
           recentPerformance: managerRecentPerformance,
         })
       : [];
-    const synchronized = aiTransferActivity.length
+    const transferSynchronized = aiTransferActivity.length
       ? {
-          ...next,
+          ...rankedNext,
           market: {
-            ...next.market,
-            rosterMoves: [...next.market.rosterMoves, ...aiTransferActivity.flatMap((activity) => activity.moves)],
+            ...rankedNext.market,
+            rosterMoves: [...rankedNext.market.rosterMoves, ...aiTransferActivity.flatMap((activity) => activity.moves)],
           },
           inbox: [
             ...[...aiTransferActivity].reverse().map((activity) => ({
@@ -2926,10 +3019,23 @@ function App() {
               mandatory: false,
               read: false,
             })),
-            ...next.inbox,
+            ...rankedNext.inbox,
           ],
         }
-      : next;
+      : rankedNext;
+    const synchronized = crossedTime
+      ? createManagerIncomingOffer(
+          transferSynchronized,
+          managerSquad,
+          applyManagerRosterMoves(rosterPool, transferSynchronized.market.rosterMoves)
+            .filter((roster) => (
+              isCurrentManagerWorldRoster(roster)
+              && roster.id !== managerControlledOrganizationId
+              && roster.name.trim().toLowerCase() !== managerControlledOrganizationName
+            )),
+          rankedNext.date,
+        )
+      : transferSynchronized;
     setManagerCareer(synchronized);
     setCareerMoney(synchronized.cash);
   }
@@ -2944,6 +3050,22 @@ function App() {
         if (!incoming) return roster;
         return roster.map((player) => player.id === offer.outgoing.id ? withCareerMeta(incoming) : player);
       }, current));
+    }
+    commitManagerCareer(next);
+  }
+
+  function commitManagerIncomingCareer(next: ManagerCareerState) {
+    if (!managerCareer || next === managerCareer) return;
+    const previousApplied = new Set(managerCareer.market.incomingOffers.filter((offer) => offer.appliedOn).map((offer) => offer.id));
+    const soldPlayerIds = new Set(next.market.incomingOffers
+      .filter((offer) => offer.appliedOn && !previousApplied.has(offer.id))
+      .map((offer) => offer.targetPlayer.id));
+    if (soldPlayerIds.size) {
+      setSelected((current) => {
+        const retained = current.filter((player) => !soldPlayerIds.has(player.id));
+        const promoted = managerSquad.filter((player) => !soldPlayerIds.has(player.id) && !retained.some((starter) => starter.id === player.id));
+        return [...retained, ...promoted].slice(0, 5);
+      });
     }
     commitManagerCareer(next);
   }
@@ -3521,7 +3643,7 @@ function App() {
     ? [
         { id: "setup", label: "Setup", active: screen === "setup" },
         { id: "club", label: "Club", active: screen === "manager-select" || screen === "coach" },
-        { id: "hq", label: "HQ", active: screen === "manager-home" },
+        { id: "hq", label: "HQ", active: screen === "manager-home" || screen === "manager-inbox" },
         { id: "calendar", label: "Calendar", active: screen === "manager-calendar" },
         { id: "roster", label: "Roster", active: screen === "manager-roster" },
         { id: "market", label: "Market", active: screen === "manager-market" },
@@ -3568,6 +3690,10 @@ function App() {
           </button>
           {mode === "manager" && managerCareer && (
             <>
+              <button className="icon-button manager-top-link top-utility-button" disabled={screen === "manager-inbox"} onClick={() => pushScreen("manager-inbox")} title="Inbox and VRS reports">
+                <Mail size={18} />
+                <span>Inbox</span>
+              </button>
               <button className="icon-button manager-top-link top-utility-button" disabled={screen === "manager-calendar"} onClick={() => pushScreen("manager-calendar")} title="Tournament calendar">
                 <CalendarDays size={18} />
                 <span>Calendar</span>
@@ -3810,6 +3936,7 @@ function App() {
           onOpenCalendar={() => pushScreen("manager-calendar")}
           onOpenRoster={() => pushScreen("manager-roster")}
           onOpenMarket={() => pushScreen("manager-market")}
+          onOpenInbox={() => pushScreen("manager-inbox")}
           onRegister={registerForManagerEvent}
           onWithdraw={withdrawFromManagerEvent}
           onLaunch={launchRegisteredManagerEvent}
@@ -3818,6 +3945,18 @@ function App() {
           onOpenPlayer={openPlayerDetail}
           onOpenHistory={() => pushScreen("manager-history")}
           onOpenPastEvent={openManagerHistoryEntry}
+        />
+      )}
+
+      {screen === "manager-inbox" && mode === "manager" && managerCareer && (
+        <ManagerInboxPage
+          team={yourTeam}
+          career={managerCareer}
+          standings={managerVrsStandings}
+          worldTeams={managerWorldRosters}
+          onBack={goBackScreen}
+          onCareerChange={commitManagerIncomingCareer}
+          onRead={(itemId) => commitManagerCareer(markManagerInboxRead(managerCareer, itemId))}
         />
       )}
 
@@ -11329,6 +11468,206 @@ function ManagerMarketPage({
   );
 }
 
+type ManagerInboxTab = "inbox" | "transfers" | "vrs";
+
+function ManagerInboxKindIcon({ kind }: { kind: ManagerInboxItem["kind"] }) {
+  if (kind === "ranking") return <TrendingUp size={17} />;
+  if (kind === "market") return <ArrowLeftRight size={17} />;
+  if (kind === "finance") return <Coins size={17} />;
+  if (kind === "result") return <Trophy size={17} />;
+  if (kind === "deadline") return <Clock3 size={17} />;
+  return <Mail size={17} />;
+}
+
+function managerIncomingOfferRosterLock(career: ManagerCareerState, offer: ManagerIncomingOffer) {
+  return career.registrations.some((registration) => {
+    if (!registration.lockedRosterIds.includes(offer.targetPlayer.id)) return false;
+    if (registration.status === "active") return true;
+    const event = managerEventById(registration.eventId);
+    if (!event || registration.status !== "confirmed") return false;
+    const schedule = managerEventSchedule(event, career.season);
+    return career.date >= schedule.rosterLockOn && career.date <= schedule.endsOn;
+  });
+}
+
+function ManagerInboxPage({
+  team,
+  career,
+  standings,
+  worldTeams,
+  onBack,
+  onCareerChange,
+  onRead,
+}: {
+  team: FieldTeam;
+  career: ManagerCareerState;
+  standings: ManagerVrsStanding[];
+  worldTeams: Roster[];
+  onBack: () => void;
+  onCareerChange: (career: ManagerCareerState) => void;
+  onRead: (itemId: string) => void;
+}) {
+  const [tab, setTab] = useState<ManagerInboxTab>("inbox");
+  const messages = [...career.inbox].sort((left, right) => (
+    right.createdOn.localeCompare(left.createdOn) || right.id.localeCompare(left.id)
+  ));
+  const [selectedMessageId, setSelectedMessageId] = useState(messages.find((item) => !item.read)?.id ?? messages[0]?.id);
+  const selectedMessage = messages.find((item) => item.id === selectedMessageId) ?? messages[0];
+  const offers = [...career.market.incomingOffers].sort((left, right) => (
+    right.createdOn.localeCompare(left.createdOn) || right.id.localeCompare(left.id)
+  ));
+  const activeOfferCount = offers.filter((offer) => offer.status === "pending" || offer.status === "counter-pending").length;
+  const [counterValues, setCounterValues] = useState<Record<string, number>>({});
+  const activeContractCount = career.contracts.filter((contract) => contract.status !== "expired").length;
+  const teamById = new Map(worldTeams.map((roster) => [roster.id, roster]));
+  const unreadCount = messages.filter((item) => !item.read).length;
+
+  function openMessage(item: ManagerInboxItem) {
+    setSelectedMessageId(item.id);
+    if (!item.read) onRead(item.id);
+  }
+
+  function buyerTeam(offer: ManagerIncomingOffer): Pick<Roster, "id" | "tag" | "name" | "country" | "accent" | "logo"> {
+    return teamById.get(offer.buyerTeamId) ?? {
+      id: offer.buyerTeamId,
+      tag: offer.buyerTeamName.split(/\s+/).map((word) => word[0]).join("").slice(0, 3).toUpperCase(),
+      name: offer.buyerTeamName,
+      country: "World",
+      accent: "#69aef8",
+    };
+  }
+
+  return (
+    <main className="layout fullscreen-page manager-page manager-inbox-page">
+      <section className="manager-calendar-head manager-inbox-head">
+        <div>
+          <button className="back-link" onClick={onBack}><ArrowLeft size={15} /> Headquarters</button>
+          <span>Communications center</span>
+          <h1>Inbox & world desk</h1>
+          <p>Club decisions, transfer approaches, and the live Valve Regional Standings.</p>
+        </div>
+        <div className="manager-inbox-summary">
+          <span><small>Unread</small><b>{unreadCount}</b></span>
+          <span><small>Live offers</small><b>{activeOfferCount}</b></span>
+          <span><small>VRS</small><b>#{career.vrsRank}</b><em>{career.vrsPoints.toLocaleString()} pts</em></span>
+        </div>
+      </section>
+
+      <nav className="manager-inbox-tabs" role="tablist" aria-label="Inbox workspace">
+        <button className={tab === "inbox" ? "active" : ""} role="tab" aria-selected={tab === "inbox"} onClick={() => setTab("inbox")}><Mail size={16} /> Inbox <b>{unreadCount}</b></button>
+        <button className={tab === "transfers" ? "active" : ""} role="tab" aria-selected={tab === "transfers"} onClick={() => setTab("transfers")}><ArrowLeftRight size={16} /> Transfers {activeOfferCount > 0 && <b>{activeOfferCount}</b>}</button>
+        <button className={tab === "vrs" ? "active" : ""} role="tab" aria-selected={tab === "vrs"} onClick={() => setTab("vrs")}><TrendingUp size={16} /> VRS ranking</button>
+      </nav>
+
+      {tab === "inbox" && (
+        <section className="manager-mail-workspace">
+          <div className="manager-mail-list" role="list">
+            <header><span>Correspondence</span><small>{messages.length} messages</small></header>
+            {messages.map((item) => (
+              <button
+                type="button"
+                role="listitem"
+                key={item.id}
+                className={`${item.id === selectedMessage?.id ? "active" : ""} ${item.read ? "read" : "unread"}`}
+                onClick={() => openMessage(item)}
+              >
+                <i className={`manager-mail-kind ${item.kind}`}><ManagerInboxKindIcon kind={item.kind} /></i>
+                <span><small>{item.kind} / {managerFormatDate(item.createdOn)}</small><strong>{item.title}</strong><em>{item.body}</em></span>
+                {!item.read && <b aria-label="Unread" />}
+              </button>
+            ))}
+            {!messages.length && <div className="manager-empty-state">The communications desk is clear.</div>}
+          </div>
+          <article className="manager-mail-reader">
+            {selectedMessage ? (
+              <>
+                <header>
+                  <i className={`manager-mail-kind ${selectedMessage.kind}`}><ManagerInboxKindIcon kind={selectedMessage.kind} /></i>
+                  <span><small>{selectedMessage.kind} report / {managerFormatDate(selectedMessage.createdOn)}</small><h2>{selectedMessage.title}</h2></span>
+                </header>
+                <p>{selectedMessage.body}</p>
+                <div className="manager-mail-metadata">
+                  {selectedMessage.deadline && <span><small>Response deadline</small><b>{managerFormatDate(selectedMessage.deadline)}</b></span>}
+                  {selectedMessage.rankAfter != null && <span><small>VRS movement</small><b>#{selectedMessage.rankBefore} <ArrowRight size={13} /> #{selectedMessage.rankAfter}</b></span>}
+                  {selectedMessage.pointsDelta != null && <span><small>Points earned</small><b className="positive">+{selectedMessage.pointsDelta}</b></span>}
+                  {selectedMessage.eventId && <span><small>Event</small><b>{managerEventName(managerEventById(selectedMessage.eventId) ?? managerEvents[0], career.season)}</b></span>}
+                </div>
+                {selectedMessage.offerId && (
+                  <button className="primary" onClick={() => setTab("transfers")}><ArrowLeftRight size={16} /> Open negotiation</button>
+                )}
+              </>
+            ) : <div className="manager-empty-state">Select a message to read it.</div>}
+          </article>
+        </section>
+      )}
+
+      {tab === "transfers" && (
+        <div className="manager-transfer-desk">
+          <section className="manager-incoming-offers">
+            <div className="manager-section-head"><div><span>Negotiation desk</span><h2>Incoming offers</h2></div><small>{activeOfferCount} requiring action</small></div>
+            {offers.map((offer) => {
+              const buyer = buyerTeam(offer);
+              const locked = managerIncomingOfferRosterLock(career, offer);
+              const canSell = activeContractCount > 5 && !locked;
+              const pending = offer.status === "pending";
+              const counter = counterValues[offer.id] ?? Math.ceil(offer.cashOffered * 1.15 / 5_000) * 5_000;
+              return (
+                <article className={`manager-incoming-offer ${offer.status}`} key={offer.id}>
+                  <div className="manager-offer-club"><TeamLogo team={buyer} /><span><small>{offer.status.replace("-", " ")} / expires {managerFormatDate(offer.expiresOn)}</small><strong>{buyer.name}</strong><em>Approach for {offer.targetPlayer.handle}</em></span></div>
+                  <div className="manager-offer-player">
+                    {playerPhoto(offer.targetPlayer.handle) ? <img src={playerPhoto(offer.targetPlayer.handle)} alt={offer.targetPlayer.handle} /> : <Avatar label={offer.targetPlayer.handle} accent={team.accent} />}
+                    <span><strong>{offer.targetPlayer.handle}</strong><small>{offer.targetPlayer.role} / {offer.targetPlayer.ovr} OVR</small></span>
+                  </div>
+                  <div className="manager-offer-money"><small>{offer.counterCash != null ? "Your counter" : "Cash offer"}</small><b>{fmtMoney(offer.counterCash ?? offer.cashOffered)}</b><em>{offer.reasons[0]}</em></div>
+                  <div className="manager-offer-actions">
+                    {pending ? (
+                      <>
+                        <button className="primary" disabled={!canSell} onClick={() => onCareerChange(acceptManagerIncomingOffer(career, offer.id))}><CheckCircle2 size={15} /> Accept</button>
+                        <label><span>Counter</span><input type="number" min={offer.cashOffered + 5_000} step="5000" value={counter} onChange={(event) => setCounterValues((current) => ({ ...current, [offer.id]: Number(event.target.value) || 0 }))} /></label>
+                        <button className="secondary" disabled={!canSell || counter <= offer.cashOffered} onClick={() => onCareerChange(counterManagerIncomingOffer(career, offer.id, counter))}><ArrowLeftRight size={15} /> Send</button>
+                        <button className="danger" onClick={() => onCareerChange(declineManagerIncomingOffer(career, offer.id))}><Ban size={15} /> Decline</button>
+                      </>
+                    ) : offer.status === "counter-pending" ? (
+                      <><span className="manager-offer-wait"><Clock3 size={15} /> Response due {managerFormatDate(offer.responseOn ?? offer.expiresOn)}</span><button className="danger" onClick={() => onCareerChange(declineManagerIncomingOffer(career, offer.id))}>Withdraw</button></>
+                    ) : <span className={`manager-offer-status ${offer.status}`}>{offer.status}</span>}
+                  </div>
+                  {pending && !canSell && <p className="manager-offer-blocked">{locked ? "This player is committed to a locked event roster." : "Sign a sixth eligible player before accepting or countering. The club cannot fall below five contracts."}</p>}
+                </article>
+              );
+            })}
+            {!offers.length && <div className="manager-empty-state">No clubs have made a formal approach yet. Offers arrive as the calendar advances.</div>}
+          </section>
+          <aside className="manager-transfer-wire">
+            <div className="manager-section-head"><div><span>World market</span><h2>Completed moves</h2></div><Radio size={17} /></div>
+            {[...career.market.rosterMoves].reverse().map((move) => {
+              const club = teamById.get(move.clubId) ?? { id: move.clubId, tag: move.clubName.slice(0, 3).toUpperCase(), name: move.clubName, country: "World", accent: "#69aef8" } as Roster;
+              return <div className="manager-wire-move" key={move.id}><TeamLogo team={club} small /><span><small>{managerFormatDate(move.completedOn)}</small><strong>{move.acquiredPlayer.handle} joins {move.clubName}</strong><em>{move.acquiredPlayer.role} / {move.acquiredPlayer.ovr} OVR</em></span></div>;
+            })}
+            {!career.market.rosterMoves.length && <div className="manager-empty-state">The world transfer window has been quiet.</div>}
+          </aside>
+        </div>
+      )}
+
+      {tab === "vrs" && (
+        <section className="manager-vrs-board">
+          <header><div><span>Valve Regional Standings</span><h2>Global ranking</h2><p>Current points and movement across the active manager world.</p></div><div><small>Updated</small><b>{managerFormatDate(career.date)}</b></div></header>
+          <div className="manager-vrs-columns"><span>Rank</span><span>Team</span><span>Points</span><span>Movement</span></div>
+          <div className="manager-vrs-list">
+            {standings.map((standing) => (
+              <div className={standing.managed ? "managed" : ""} key={standing.team.id}>
+                <b>#{standing.rank}</b>
+                <span><TeamLogo team={standing.team} small /><strong><Flag country={standing.team.country} /> {standing.team.name}</strong>{standing.managed && <em>Your club</em>}</span>
+                <strong>{standing.points.toLocaleString()}</strong>
+                <small className={standing.movement > 0 ? "positive" : standing.movement < 0 ? "negative" : ""}>{standing.movement > 0 ? `+${standing.movement}` : standing.movement || "-"}</small>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+    </main>
+  );
+}
+
 function ManagerHomePage({
   team,
   roster,
@@ -11342,6 +11681,7 @@ function ManagerHomePage({
   onOpenCalendar,
   onOpenRoster,
   onOpenMarket,
+  onOpenInbox,
   onRegister,
   onWithdraw,
   onLaunch,
@@ -11363,6 +11703,7 @@ function ManagerHomePage({
   onOpenCalendar: () => void;
   onOpenRoster: () => void;
   onOpenMarket: () => void;
+  onOpenInbox: () => void;
   onRegister: (eventId: string) => void;
   onWithdraw: (eventId: string) => void;
   onLaunch: (eventId: string) => void;
@@ -11453,6 +11794,7 @@ function ManagerHomePage({
           </div>
         </div>
         <div className="manager-command-actions">
+          <button className="secondary" onClick={onOpenInbox}><Mail size={16} /> Inbox{unread.length ? ` (${unread.length})` : ""}</button>
           <button className="secondary" onClick={onOpenRoster}><Users size={16} /> Roster</button>
           <button className="secondary" onClick={onOpenMarket}><BriefcaseBusiness size={16} /> Recruitment</button>
           <button className="secondary" onClick={onOpenCalendar}><CalendarDays size={16} /> Calendar</button>
@@ -11467,7 +11809,7 @@ function ManagerHomePage({
         <div><span>Available cash</span><b>{fmtMoney(career.cash)}</b><small className={`manager-pressure-${financial.pressure}`}>{financial.inDebt ? "Season-end insolvency risk" : Number.isFinite(financial.runwayMonths) ? `${financial.runwayMonths.toFixed(1)} months runway` : "No active payroll"}</small></div>
         <div><span>Board confidence</span><b>{career.boardConfidence}</b><small>{career.boardConfidence >= 70 ? "Secure" : career.boardConfidence >= 45 ? "Stable" : "Under review"}</small></div>
         <div><span>Reputation</span><b>{career.reputation}</b><small>{career.reputation >= 70 ? "Elite pull" : career.reputation >= 45 ? "Established" : "Building"}</small></div>
-        <div><span>Inbox</span><b>{unread.length}</b><small>unread decision{unread.length === 1 ? "" : "s"}</small></div>
+        <button type="button" className="manager-kpi-action" onClick={onOpenInbox}><span>Inbox</span><b>{unread.length}</b><small>unread decision{unread.length === 1 ? "" : "s"}</small><ArrowRight size={15} /></button>
       </section>
 
       <section className={`manager-objective-strip ${career.boardObjective.status}`} aria-label="Board objective">
@@ -11529,11 +11871,11 @@ function ManagerHomePage({
           <section className="manager-section manager-inbox-section">
             <div className="manager-section-head">
               <div><span>Decision queue</span><h2>Inbox</h2></div>
-              <small>{unread.length} unread</small>
+              <button className="text-action" onClick={onOpenInbox}>{unread.length} unread <ArrowRight size={14} /></button>
             </div>
             <div className="manager-inbox-list">
               {decisionItems.slice(0, 6).map((item) => (
-                <div className={item.read ? "read" : ""} key={item.id}>
+                <button type="button" onClick={onOpenInbox} className={item.read ? "read" : ""} key={item.id}>
                   <span className={`manager-mail-icon ${item.kind}`}><Mail size={15} /></span>
                   <span>
                     <small>{item.kind} / {managerFormatDate(item.createdOn)}</small>
@@ -11541,7 +11883,7 @@ function ManagerHomePage({
                     <em>{item.body}</em>
                   </span>
                   {item.deadline && <b>{managerFormatDate(item.deadline)}</b>}
-                </div>
+                </button>
               ))}
               {!decisionItems.length && <div className="manager-empty-state">No decisions require attention.</div>}
             </div>
@@ -15897,7 +16239,7 @@ function matchAchievements(
 function sanitizeLoadedScreen(screen: Screen | undefined, snapshot: RunSnapshot): Screen {
   if (!screen) return "setup";
   if (screen === "manager-select") return "setup";
-  if (screen === "manager-home" || screen === "manager-calendar" || screen === "manager-roster" || screen === "manager-market") {
+  if (screen === "manager-home" || screen === "manager-inbox" || screen === "manager-calendar" || screen === "manager-roster" || screen === "manager-market") {
     return snapshot.mode === "manager" && snapshot.managerCareer ? screen : "setup";
   }
   if (screen === "universe") {

@@ -2,11 +2,15 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { Player } from "../src/gameData";
 import {
+  acceptManagerIncomingOffer,
   advanceManagerMajorStage,
   acceptManagerTradeCounter,
   advanceManagerDate,
   completeManagerEvent,
   createManagerCareer,
+  createManagerIncomingOffer,
+  counterManagerIncomingOffer,
+  declineManagerIncomingOffer,
   launchManagerEvent,
   isCurrentManagerWorldRoster,
   managerEventById,
@@ -262,6 +266,7 @@ test("old manager saves receive organization, contract, and market defaults duri
     signedPlayerIds: [],
     offers: [],
     tradeOffers: [],
+    incomingOffers: [],
     clubRelationships: [],
     rosterMoves: [],
     unavailablePlayerIds: [],
@@ -545,6 +550,112 @@ test("a manager cannot sign beyond the eight-player contract limit", () => {
     majorCycles: 3,
     squadRole: "starter",
   }), scouted);
+});
+
+function incomingOfferFixture(seed = "incoming-offer") {
+  const managed = [
+    { id: "managed-awp", handle: "managedAWP", role: "AWP", ovr: 83, age: 21, potential: 88 },
+    { id: "managed-igl", handle: "managedIGL", role: "IGL", ovr: 76, age: 26, potential: 78 },
+    { id: "managed-entry", handle: "managedEntry", role: "Entry", ovr: 81, age: 20, potential: 87 },
+    { id: "managed-rifle", handle: "managedRifle", role: "Rifler", ovr: 79, age: 23, potential: 83 },
+    { id: "managed-support", handle: "managedSupport", role: "Support", ovr: 75, age: 25, potential: 77 },
+    { id: "managed-sixth", handle: "managedSixth", role: "Rifler", ovr: 73, age: 19, potential: 82 },
+  ];
+  const world = [{
+    id: "buyer-club",
+    name: "Buyer Club",
+    rank: 18,
+    players: [
+      { id: "buyer-awp", handle: "buyerAWP", role: "AWP", ovr: 76, age: 25 },
+      { id: "buyer-igl", handle: "buyerIGL", role: "IGL", ovr: 72, age: 28 },
+      { id: "buyer-entry", handle: "buyerEntry", role: "Entry", ovr: 74, age: 24 },
+      { id: "buyer-rifle", handle: "buyerRifle", role: "Rifler", ovr: 75, age: 24 },
+      { id: "buyer-support", handle: "buyerSupport", role: "Support", ovr: 71, age: 26 },
+    ],
+  }];
+  const career = createManagerCareer(seed, {
+    organizationId: "managed-club",
+    organizationName: "Managed Club",
+    cash: 250_000,
+    players: managed,
+  });
+  return { managed, world, career };
+}
+
+test("AI clubs make deterministic incoming offers for contracted players", () => {
+  const { managed, world, career } = incomingOfferFixture("incoming-deterministic");
+  const date = "2026-07-24";
+  const first = createManagerIncomingOffer(career, managed, world, date);
+  const replay = createManagerIncomingOffer(career, managed, world, date);
+  assert.equal(first.market.incomingOffers.length, 1);
+  assert.deepEqual(first.market.incomingOffers, replay.market.incomingOffers);
+  assert.equal(first.market.incomingOffers[0].buyerTeamId, "buyer-club");
+  assert.ok(first.market.incomingOffers[0].cashOffered > 0);
+  assert.equal(first.inbox[0].offerId, first.market.incomingOffers[0].id);
+});
+
+test("accepting an incoming bid sells the player and updates the buyer roster", () => {
+  const { managed, world, career } = incomingOfferFixture("incoming-accepted");
+  const offered = createManagerIncomingOffer(career, managed, world, career.date);
+  const offer = offered.market.incomingOffers[0];
+  const accepted = acceptManagerIncomingOffer(offered, offer.id);
+  assert.equal(accepted.market.incomingOffers[0].status, "accepted");
+  assert.equal(accepted.contracts.length, 5);
+  assert.equal(accepted.contracts.some((contract) => contract.playerId === offer.targetPlayer.id), false);
+  assert.equal(accepted.cash, career.cash + offer.cashOffered);
+  assert.equal(accepted.ledger.at(-1)?.category, "transfer");
+  assert.equal(accepted.market.rosterMoves.at(-1)?.clubId, "buyer-club");
+  assert.equal(accepted.market.rosterMoves.at(-1)?.acquiredPlayer.id, offer.targetPlayer.id);
+});
+
+test("incoming counteroffers resolve on the calendar", () => {
+  const { managed, world, career } = incomingOfferFixture("incoming-counter-accepted");
+  const offered = createManagerIncomingOffer(career, managed, world, career.date);
+  const offer = offered.market.incomingOffers[0];
+  const countered = counterManagerIncomingOffer(offered, offer.id, offer.buyerLimit);
+  assert.equal(countered.market.incomingOffers[0].status, "counter-pending");
+  assert.equal(nextManagerCheckpoint(countered), countered.market.incomingOffers[0].responseOn);
+  const accepted = advanceManagerDate(countered, countered.market.incomingOffers[0].responseOn!);
+  assert.equal(accepted.market.incomingOffers[0].status, "accepted");
+  assert.equal(accepted.cash, career.cash + offer.buyerLimit);
+
+  const secondFixture = incomingOfferFixture("incoming-counter-rejected");
+  const secondOfferState = createManagerIncomingOffer(secondFixture.career, secondFixture.managed, secondFixture.world, secondFixture.career.date);
+  const secondOffer = secondOfferState.market.incomingOffers[0];
+  const expensiveCounter = Math.floor(secondOffer.buyerLimit * 1.5 / 5_000) * 5_000;
+  const waiting = counterManagerIncomingOffer(secondOfferState, secondOffer.id, expensiveCounter);
+  const rejected = advanceManagerDate(waiting, waiting.market.incomingOffers[0].responseOn!);
+  assert.equal(rejected.market.incomingOffers[0].status, "rejected");
+});
+
+test("incoming bids can be declined and cannot strip a five-player or locked roster", () => {
+  const { managed, world, career } = incomingOfferFixture("incoming-guardrails");
+  const offered = createManagerIncomingOffer(career, managed, world, career.date);
+  const offer = offered.market.incomingOffers[0];
+  const declined = declineManagerIncomingOffer(offered, offer.id);
+  assert.equal(declined.market.incomingOffers[0].status, "declined");
+  assert.equal(declined.contracts.length, 6);
+
+  const fivePlayerCareer = createManagerCareer("incoming-five", {
+    organizationId: "managed-club",
+    organizationName: "Managed Club",
+    players: managed.slice(0, 5),
+  });
+  const fivePlayerOffer = createManagerIncomingOffer(fivePlayerCareer, managed.slice(0, 5), world, fivePlayerCareer.date);
+  assert.equal(fivePlayerOffer.market.incomingOffers.length, 1);
+  assert.equal(acceptManagerIncomingOffer(fivePlayerOffer, fivePlayerOffer.market.incomingOffers[0].id), fivePlayerOffer);
+
+  const locked = {
+    ...offered,
+    registrations: [{
+      eventId: "frontier-open-2026",
+      status: "active" as const,
+      registeredOn: offered.date,
+      feePaid: 0,
+      lockedRosterIds: [offer.targetPlayer.id, ...managed.filter((player) => player.id !== offer.targetPlayer.id).slice(0, 4).map((player) => player.id)],
+    }],
+  };
+  assert.equal(acceptManagerIncomingOffer(locked, offer.id), locked);
 });
 
 test("a fair one-for-one trade applies cash, contracts, and negotiation history", () => {
@@ -922,6 +1033,10 @@ test("launch and completion settle event money, VRS, rank, and status", () => {
   assert.equal(completed.cash, launched.cash + event.prizes.champion);
   assert.ok(completed.vrsPoints > launched.vrsPoints);
   assert.ok(completed.vrsRank < launched.vrsRank);
+  const rankingReport = completed.inbox.find((item) => item.kind === "ranking");
+  assert.equal(rankingReport?.rankBefore, launched.vrsRank);
+  assert.equal(rankingReport?.rankAfter, completed.vrsRank);
+  assert.ok((rankingReport?.pointsDelta ?? 0) > 0);
 });
 
 test("completed events build lineup familiarity and affect benched promised starters", () => {

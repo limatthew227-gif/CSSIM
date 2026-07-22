@@ -1,7 +1,7 @@
 import { expectedRating, playerValue, type PlacementTier } from "./career";
 import type { Player, PlayerStats } from "./gameData";
 
-export const MANAGER_CAREER_VERSION = 16;
+export const MANAGER_CAREER_VERSION = 17;
 export const MANAGER_START_DATE = "2026-07-20";
 export const MANAGER_SALARY_MODEL_VERSION = 2;
 export const MANAGER_POTENTIAL_LAB_ELITE_COST = 200_000;
@@ -10,11 +10,12 @@ export const MANAGER_CASINO_STAKES = [5_000, 25_000, 100_000] as const;
 export type ManagerEventTier = "open" | "challenger" | "elite" | "major";
 export type ManagerEntryType = "open" | "vrs" | "qualifier" | "invite";
 export type ManagerRegistrationStatus = "confirmed" | "active" | "completed" | "withdrawn";
-export type ManagerInboxKind = "welcome" | "event" | "deadline" | "result" | "finance" | "market";
+export type ManagerInboxKind = "welcome" | "event" | "deadline" | "result" | "finance" | "market" | "ranking";
 export type ManagerSquadRole = "star" | "starter" | "rotation" | "prospect" | "bench";
 export type ManagerContractStatus = "active" | "bench" | "transfer-listed" | "expired";
 export type ManagerOfferStatus = "accepted" | "rejected";
 export type ManagerTradeOfferStatus = "pending" | "accepted" | "rejected" | "countered" | "delayed" | "expired" | "withdrawn" | "superseded" | "outbid";
+export type ManagerIncomingOfferStatus = "pending" | "counter-pending" | "accepted" | "declined" | "rejected" | "expired";
 export type ManagerEventFormat = "swiss" | "round-robin" | "single-elimination";
 export type ManagerMajorStage = "mrq" | "stage-1" | "stage-2" | "stage-3";
 export type ManagerBoardObjectiveStatus = "active" | "completed" | "failed";
@@ -206,6 +207,30 @@ export interface ManagerTradeOffer {
   reasons: string[];
 }
 
+export interface ManagerIncomingOffer {
+  id: string;
+  buyerTeamId: string;
+  buyerTeamName: string;
+  targetPlayer: ManagerCareerPlayerSeed;
+  displacedPlayer: ManagerCareerPlayerSeed;
+  createdOn: string;
+  expiresOn: string;
+  cashOffered: number;
+  buyerLimit: number;
+  status: ManagerIncomingOfferStatus;
+  counterCash?: number;
+  responseOn?: string;
+  appliedOn?: string;
+  reasons: string[];
+}
+
+export interface ManagerOfferWorldTeam {
+  id: string;
+  name: string;
+  rank?: number;
+  players: ManagerCareerPlayerSeed[];
+}
+
 export interface ManagerClubRelationship {
   clubId: string;
   clubName: string;
@@ -241,6 +266,7 @@ export interface ManagerMarketState {
   signedPlayerIds: string[];
   offers: ManagerMarketOffer[];
   tradeOffers: ManagerTradeOffer[];
+  incomingOffers: ManagerIncomingOffer[];
   clubRelationships: ManagerClubRelationship[];
   rosterMoves: ManagerClubRosterMove[];
   unavailablePlayerIds: string[];
@@ -300,7 +326,11 @@ export interface ManagerInboxItem {
   title: string;
   body: string;
   eventId?: string;
+  offerId?: string;
   deadline?: string;
+  rankBefore?: number;
+  rankAfter?: number;
+  pointsDelta?: number;
   mandatory: boolean;
   read: boolean;
 }
@@ -1376,6 +1406,7 @@ function createManagerMarketState(): ManagerMarketState {
     signedPlayerIds: [],
     offers: [],
     tradeOffers: [],
+    incomingOffers: [],
     clubRelationships: [],
     rosterMoves: [],
     unavailablePlayerIds: [],
@@ -1697,6 +1728,7 @@ export function normalizeManagerCareer(
       signedPlayerIds: saved.market?.signedPlayerIds ?? [],
       offers: saved.market?.offers ?? [],
       tradeOffers,
+      incomingOffers: saved.market?.incomingOffers ?? [],
       clubRelationships: saved.market?.clubRelationships ?? [],
       rosterMoves,
       unavailablePlayerIds: saved.market?.unavailablePlayerIds ?? [],
@@ -2176,6 +2208,242 @@ export function managerPlayerTradeValue(player: ManagerCareerPlayerSeed) {
   return playerValue(player);
 }
 
+function managerIncomingOfferTransferAllowed(state: ManagerCareerState, playerId: string, onDate = state.date) {
+  const eligibleContracts = state.contracts.filter((contract) => contract.status !== "expired");
+  return eligibleContracts.length > 5
+    && eligibleContracts.some((contract) => contract.playerId === playerId)
+    && !managerTradeLockingEvent(state, playerId, onDate);
+}
+
+function managerIncomingOfferCooldown(state: Pick<ManagerCareerState, "seed" | "market">, onDate: string) {
+  const dates = state.market.incomingOffers.map((offer) => offer.createdOn).sort();
+  const latest = dates[dates.length - 1];
+  if (!latest) return true;
+  const cooldown = 18 + stableHash(`${state.seed}:${latest}:incoming-cooldown`) % 5;
+  return addDays(latest, cooldown) <= onDate;
+}
+
+export function createManagerIncomingOffer(
+  state: ManagerCareerState,
+  managedPlayers: ManagerCareerPlayerSeed[],
+  worldTeams: ManagerOfferWorldTeam[],
+  onDate = state.date,
+): ManagerCareerState {
+  const activeOffer = state.market.incomingOffers.some((offer) => (
+    offer.status === "pending" || offer.status === "counter-pending"
+  ));
+  if (activeOffer || !managerIncomingOfferCooldown(state, onDate)) return state;
+
+  const contractedIds = new Set(state.contracts
+    .filter((contract) => contract.status !== "expired")
+    .map((contract) => contract.playerId));
+  const contractByPlayer = new Map(state.contracts.map((contract) => [contract.playerId, contract]));
+  const targets = managedPlayers.filter((player) => contractedIds.has(player.id));
+  const candidates = worldTeams.flatMap((team) => team.players.flatMap((displacedPlayer) => targets
+    .filter((targetPlayer) => (
+      targetPlayer.role === displacedPlayer.role
+      && targetPlayer.id !== displacedPlayer.id
+      && targetPlayer.ovr >= displacedPlayer.ovr - 2
+    ))
+    .map((targetPlayer) => {
+      const contract = contractByPlayer.get(targetPlayer.id);
+      const value = Math.max(managerPlayerTradeValue(targetPlayer), contract?.buyout ?? 0);
+      const clubPremium = (team.rank ?? 64) <= 8 ? 1.2 : (team.rank ?? 64) <= 20 ? 1.08 : 1;
+      const buyerLimit = Math.max(25_000, roundTo(value * clubPremium * (1.02 + (stableHash(`${state.seed}:${onDate}:${team.id}:${targetPlayer.id}:limit`) % 15) / 100), 5_000));
+      const openingRatio = 0.78 + (stableHash(`${state.seed}:${onDate}:${team.id}:${targetPlayer.id}:opening`) % 13) / 100;
+      return {
+        team,
+        displacedPlayer,
+        targetPlayer,
+        buyerLimit,
+        cashOffered: Math.max(20_000, roundTo(buyerLimit * openingRatio, 5_000)),
+        score: (targetPlayer.ovr - displacedPlayer.ovr) * 20
+          + Math.max(0, 30 - (team.rank ?? 64))
+          + stableHash(`${state.seed}:${onDate}:${team.id}:${targetPlayer.id}:score`) % 35,
+      };
+    })));
+  const selected = candidates.sort((left, right) => right.score - left.score || left.team.id.localeCompare(right.team.id))[0];
+  if (!selected) return state;
+
+  const expiresOn = addDays(onDate, 5);
+  const offer: ManagerIncomingOffer = {
+    id: `${state.seed}:incoming:${onDate}:${selected.team.id}:${selected.targetPlayer.id}`,
+    buyerTeamId: selected.team.id,
+    buyerTeamName: selected.team.name,
+    targetPlayer: selected.targetPlayer,
+    displacedPlayer: selected.displacedPlayer,
+    createdOn: onDate,
+    expiresOn,
+    cashOffered: selected.cashOffered,
+    buyerLimit: selected.buyerLimit,
+    status: "pending",
+    reasons: [
+      `${selected.team.name} wants an upgrade at ${selected.targetPlayer.role}`,
+      `${selected.targetPlayer.handle}'s current level and contract control shaped the valuation`,
+    ],
+  };
+  return {
+    ...state,
+    market: {
+      ...state.market,
+      incomingOffers: [...state.market.incomingOffers, offer],
+    },
+    inbox: [
+      {
+        id: inboxId(state, `incoming-offer:${offer.id}`),
+        kind: "market",
+        createdOn: onDate,
+        title: `${selected.team.name} bid for ${selected.targetPlayer.handle}`,
+        body: `The club has offered $${selected.cashOffered.toLocaleString()}. Accept, counter, or decline before ${expiresOn}.`,
+        offerId: offer.id,
+        deadline: expiresOn,
+        mandatory: true,
+        read: false,
+      },
+      ...state.inbox,
+    ],
+  };
+}
+
+function applyManagerIncomingOffer(
+  state: ManagerCareerState,
+  offerId: string,
+  cash: number,
+  appliedOn: string,
+): ManagerCareerState {
+  const offer = state.market.incomingOffers.find((item) => item.id === offerId);
+  if (!offer || offer.appliedOn || !managerIncomingOfferTransferAllowed(state, offer.targetPlayer.id, appliedOn)) return state;
+  const contracts = state.contracts.filter((contract) => contract.playerId !== offer.targetPlayer.id);
+  const next: ManagerCareerState = {
+    ...state,
+    cash: state.cash + cash,
+    contracts,
+    trainingPlans: state.trainingPlans.filter((plan) => plan.playerId !== offer.targetPlayer.id),
+    playerDynamics: state.playerDynamics.filter((item) => item.playerId !== offer.targetPlayer.id),
+    registrations: state.registrations.map((registration) => {
+      const event = managerEventById(registration.eventId);
+      if (
+        registration.status !== "confirmed"
+        || !event
+        || appliedOn >= managerEventSchedule(event, state.season).rosterLockOn
+        || !registration.lockedRosterIds.includes(offer.targetPlayer.id)
+      ) return registration;
+      return { ...registration, lockedRosterIds: managerStartingLineupIds(contracts) };
+    }),
+    market: {
+      ...state.market,
+      signedPlayerIds: state.market.signedPlayerIds.filter((id) => id !== offer.targetPlayer.id),
+      unavailablePlayerIds: Array.from(new Set([...state.market.unavailablePlayerIds, offer.targetPlayer.id])),
+      incomingOffers: state.market.incomingOffers.map((item) => item.id === offerId
+        ? { ...item, status: "accepted" as const, appliedOn, cashOffered: cash, responseOn: undefined }
+        : item),
+      rosterMoves: state.market.rosterMoves.some((move) => move.id === `${offer.id}:buyer-move`)
+        ? state.market.rosterMoves
+        : [...state.market.rosterMoves, {
+            id: `${offer.id}:buyer-move`,
+            clubId: offer.buyerTeamId,
+            clubName: offer.buyerTeamName,
+            releasedPlayerId: offer.displacedPlayer.id,
+            acquiredPlayer: offer.targetPlayer,
+            completedOn: appliedOn,
+          }],
+    },
+    ledger: [
+      ...state.ledger,
+      {
+        id: ledgerId(state, `incoming-transfer:${offer.targetPlayer.id}`),
+        date: appliedOn,
+        category: "transfer",
+        description: `${offer.targetPlayer.handle} sold to ${offer.buyerTeamName}`,
+        amount: cash,
+      },
+    ],
+    inbox: [
+      {
+        id: inboxId(state, `incoming-complete:${offer.id}`),
+        kind: "market",
+        createdOn: appliedOn,
+        title: `${offer.targetPlayer.handle} joins ${offer.buyerTeamName}`,
+        body: `${offer.buyerTeamName} paid $${cash.toLocaleString()}. The transfer is complete and the player has left the contracted squad.`,
+        offerId: offer.id,
+        mandatory: false,
+        read: false,
+      },
+      ...state.inbox,
+    ],
+  };
+  return updateClubRelationship(next, offer.buyerTeamId, offer.buyerTeamName, 6, { completedTrades: 1 }, appliedOn);
+}
+
+export function acceptManagerIncomingOffer(state: ManagerCareerState, offerId: string): ManagerCareerState {
+  const offer = state.market.incomingOffers.find((item) => item.id === offerId && item.status === "pending");
+  if (!offer || state.date > offer.expiresOn) return state;
+  return applyManagerIncomingOffer(state, offerId, offer.cashOffered, state.date);
+}
+
+export function counterManagerIncomingOffer(state: ManagerCareerState, offerId: string, counterCash: number): ManagerCareerState {
+  const offer = state.market.incomingOffers.find((item) => item.id === offerId && item.status === "pending");
+  if (
+    !offer
+    || state.date > offer.expiresOn
+    || counterCash <= offer.cashOffered
+    || counterCash > offer.buyerLimit * 2
+    || !managerIncomingOfferTransferAllowed(state, offer.targetPlayer.id)
+  ) return state;
+  const responseOn = addDays(state.date, 2);
+  return {
+    ...state,
+    market: {
+      ...state.market,
+      incomingOffers: state.market.incomingOffers.map((item) => item.id === offerId
+        ? { ...item, status: "counter-pending" as const, counterCash: roundTo(counterCash, 5_000), responseOn }
+        : item),
+    },
+    inbox: [
+      {
+        id: inboxId(state, `incoming-counter:${offer.id}`),
+        kind: "market",
+        createdOn: state.date,
+        title: `Counteroffer sent to ${offer.buyerTeamName}`,
+        body: `${state.organizationName} requested $${roundTo(counterCash, 5_000).toLocaleString()} for ${offer.targetPlayer.handle}. A response is expected by ${responseOn}.`,
+        offerId: offer.id,
+        deadline: responseOn,
+        mandatory: false,
+        read: false,
+      },
+      ...state.inbox,
+    ],
+  };
+}
+
+export function declineManagerIncomingOffer(state: ManagerCareerState, offerId: string): ManagerCareerState {
+  const offer = state.market.incomingOffers.find((item) => item.id === offerId && (item.status === "pending" || item.status === "counter-pending"));
+  if (!offer) return state;
+  const next: ManagerCareerState = {
+    ...state,
+    market: {
+      ...state.market,
+      incomingOffers: state.market.incomingOffers.map((item) => item.id === offerId
+        ? { ...item, status: "declined" as const, responseOn: undefined, reasons: [...item.reasons, `${state.organizationName} declined the approach`] }
+        : item),
+    },
+    inbox: [
+      {
+        id: inboxId(state, `incoming-declined:${offer.id}`),
+        kind: "market",
+        createdOn: state.date,
+        title: `${offer.buyerTeamName} offer declined`,
+        body: `${offer.targetPlayer.handle} remains under contract with ${state.organizationName}.`,
+        offerId: offer.id,
+        mandatory: false,
+        read: false,
+      },
+      ...state.inbox,
+    ],
+  };
+  return updateClubRelationship(next, offer.buyerTeamId, offer.buyerTeamName, -1, { failedNegotiations: 1 });
+}
+
 export function evaluateManagerTradeProposal(
   state: Pick<ManagerCareerState, "seed" | "reputation" | "vrsRank"> & Partial<Pick<ManagerCareerState, "market">>,
   proposal: ManagerTradeProposal,
@@ -2557,12 +2825,89 @@ function expireManagerTradeCounters(state: ManagerCareerState, throughDate: stri
     }, state);
 }
 
+function resolveManagerIncomingOffer(state: ManagerCareerState, offerId: string) {
+  const offer = state.market.incomingOffers.find((item) => item.id === offerId && item.status === "counter-pending");
+  if (!offer || offer.counterCash == null || !offer.responseOn) return state;
+  const accepted = offer.counterCash <= offer.buyerLimit
+    && managerIncomingOfferTransferAllowed(state, offer.targetPlayer.id, offer.responseOn);
+  if (accepted) {
+    return applyManagerIncomingOffer(state, offer.id, offer.counterCash, offer.responseOn);
+  }
+  const rosterBlocked = !managerIncomingOfferTransferAllowed(state, offer.targetPlayer.id, offer.responseOn);
+  const next: ManagerCareerState = {
+    ...state,
+    market: {
+      ...state.market,
+      incomingOffers: state.market.incomingOffers.map((item) => item.id === offer.id
+        ? {
+            ...item,
+            status: "rejected" as const,
+            responseOn: undefined,
+            reasons: [...item.reasons, rosterBlocked
+              ? "The transfer could not clear the squad-size or roster-lock rules"
+              : `${offer.buyerTeamName} would not meet the counter valuation`],
+          }
+        : item),
+    },
+    inbox: [
+      {
+        id: inboxId(state, `incoming-counter-response:${offer.id}`),
+        kind: "market",
+        createdOn: offer.responseOn,
+        title: rosterBlocked
+          ? `${offer.targetPlayer.handle} transfer could not proceed`
+          : `${offer.buyerTeamName} rejected the counteroffer`,
+        body: rosterBlocked
+          ? "The club must retain five eligible players and cannot transfer a player on a locked event roster."
+          : `${offer.buyerTeamName} ended negotiations after the $${offer.counterCash.toLocaleString()} counteroffer.`,
+        offerId: offer.id,
+        mandatory: false,
+        read: false,
+      },
+      ...state.inbox,
+    ],
+  };
+  return updateClubRelationship(next, offer.buyerTeamId, offer.buyerTeamName, -3, { failedNegotiations: 1 }, offer.responseOn);
+}
+
+function expireManagerIncomingOffers(state: ManagerCareerState, throughDate: string) {
+  return state.market.incomingOffers
+    .filter((offer) => offer.status === "pending" && offer.expiresOn <= throughDate)
+    .reduce<ManagerCareerState>((current, offer) => ({
+      ...current,
+      market: {
+        ...current.market,
+        incomingOffers: current.market.incomingOffers.map((item) => item.id === offer.id
+          ? { ...item, status: "expired" as const, reasons: [...item.reasons, "The response window closed"] }
+          : item),
+      },
+      inbox: [
+        {
+          id: inboxId(current, `incoming-expired:${offer.id}`),
+          kind: "market",
+          createdOn: offer.expiresOn,
+          title: `${offer.buyerTeamName} withdrew its bid`,
+          body: `The $${offer.cashOffered.toLocaleString()} offer for ${offer.targetPlayer.handle} expired without a response.`,
+          offerId: offer.id,
+          mandatory: false,
+          read: false,
+        },
+        ...current.inbox,
+      ],
+    }), state);
+}
+
 export function resolveManagerTradeTimeline(state: ManagerCareerState, throughDate: string) {
   const responded = state.market.tradeOffers
     .filter((offer) => offer.status === "pending" && offer.responseOn <= throughDate)
     .sort((left, right) => left.responseOn.localeCompare(right.responseOn) || left.id.localeCompare(right.id))
     .reduce<ManagerCareerState>((current, offer) => resolveManagerTradeOffer(current, offer.id), state);
-  return expireManagerTradeCounters(responded, throughDate);
+  const outgoingResolved = expireManagerTradeCounters(responded, throughDate);
+  const incomingResponded = outgoingResolved.market.incomingOffers
+    .filter((offer) => offer.status === "counter-pending" && offer.responseOn && offer.responseOn <= throughDate)
+    .sort((left, right) => left.responseOn!.localeCompare(right.responseOn!) || left.id.localeCompare(right.id))
+    .reduce<ManagerCareerState>((current, offer) => resolveManagerIncomingOffer(current, offer.id), outgoingResolved);
+  return expireManagerIncomingOffers(incomingResponded, throughDate);
 }
 
 export function acceptManagerTradeCounter(state: ManagerCareerState, offerId: string) {
@@ -3040,6 +3385,23 @@ export function completeManagerEvent(
           }]
         : []),
       {
+        id: inboxId(working, `ranking:${eventId}:${nextRank}:${points}`),
+        kind: "ranking",
+        createdOn: completedOn,
+        title: nextRank < working.vrsRank
+          ? `VRS rise: #${working.vrsRank} to #${nextRank}`
+          : nextRank > working.vrsRank
+            ? `VRS drop: #${working.vrsRank} to #${nextRank}`
+            : `VRS position held at #${nextRank}`,
+        body: `${event.shortName} added ${points} points. ${working.organizationName} now has ${working.vrsPoints + points} VRS points.`,
+        eventId,
+        rankBefore: working.vrsRank,
+        rankAfter: nextRank,
+        pointsDelta: points,
+        mandatory: false,
+        read: false,
+      },
+      {
         id: inboxId(working, `result:${eventId}`),
         kind: "result",
         createdOn: completedOn,
@@ -3266,13 +3628,18 @@ export function nextManagerCheckpoint(state: ManagerCareerState) {
     if (offer.status === "countered" && offer.expiresOn && offer.expiresOn > state.date) return [offer.expiresOn];
     return [];
   });
+  const incomingOfferDates = state.market.incomingOffers.flatMap((offer) => {
+    if (offer.status === "pending" && offer.expiresOn > state.date) return [offer.expiresOn];
+    if (offer.status === "counter-pending" && offer.responseOn && offer.responseOn > state.date) return [offer.responseOn];
+    return [];
+  });
   const objectiveDates = state.boardObjective.status === "active" && state.boardObjective.deadline > state.date
     ? [state.boardObjective.deadline]
     : [];
   const campDates = state.performanceCamps
     .filter((camp) => camp.status === "active" && camp.endsOn > state.date)
     .map((camp) => camp.endsOn);
-  return [...dates, ...tradeDates, ...objectiveDates, ...campDates].sort()[0];
+  return [...dates, ...tradeDates, ...incomingOfferDates, ...objectiveDates, ...campDates].sort()[0];
 }
 
 export function managerPlacementLabel(placement: PlacementTier) {
