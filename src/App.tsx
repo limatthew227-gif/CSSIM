@@ -135,6 +135,7 @@ import {
 import { hltvTop20Coaches, hltvTop20Rosters } from "./hltvTop20";
 import { hltvRanked27To50Coaches, hltvRanked27To50Rosters } from "./hltvRanked27To50";
 import { playerPhoto } from "./playerPhotos";
+import { mapArtImages } from "./mapArt";
 import { decideAutoCoach } from "./autoCoach";
 import { simulateRadarPlayers, MAP_LAYOUTS, getStepDelay } from "./radarSim";
 import { mapGeometries, hasPixelNav } from "./mapGeometry";
@@ -4673,7 +4674,9 @@ function App() {
                   onClick={() => ban(map.id)}
                   style={{ "--map": map.accent } as React.CSSProperties}
                 >
-                  <div className="map-art" />
+                  <div className="map-art">
+                    <img src={mapArtImages[map.id]} alt="" aria-hidden="true" />
+                  </div>
                   <span>{vetoMapLabel(veto, map.id)}</span>
                   <strong>{map.name}</strong>
                 </button>
@@ -12633,7 +12636,7 @@ function EventOverviewPage({
             <div className="overview-map-list">
               {mapPool.map((map) => {
                 const played = mapUsage.get(map.id) ?? 0;
-                const art = radarImages[map.id];
+                const art = mapArtImages[map.id];
                 return (
                   <div
                     className="overview-map-row"
