@@ -194,7 +194,7 @@ import {
   managerEventEligibility,
   managerContractDurationLabel,
   managerContractReleaseCost,
-  MANAGER_POTENTIAL_LAB_COST,
+  MANAGER_CASINO_STAKES,
   managerTrainingPlan,
   managerActivePerformanceCamp,
   managerPerformanceCampEligibility,
@@ -203,6 +203,9 @@ import {
   managerPlacementLabel,
   managerMonthlyPayroll,
   managerPotentialCoinResult,
+  managerPotentialLabCost,
+  managerCasinoCoinResult,
+  managerCasinoVisitAllowed,
   managerRecommendedSalary,
   managerFinancialStatus,
   managerFamiliarityLabel,
@@ -229,6 +232,7 @@ import {
   releaseManagerPlayerContract,
   resolveManagerTrainingCycle,
   resolveManagerPotentialInvestment,
+  resolveManagerCasinoVisit,
   scheduleManagerPerformanceCamp,
   scoutManagerCandidate,
   submitManagerFreeAgentOffer,
@@ -250,6 +254,7 @@ import {
   type ManagerEvent,
   type ManagerMajorStage,
   type ManagerCoinSide,
+  type ManagerCasinoStake,
   type ManagerPerformanceCampFocus,
   type ManagerTrainingFocus,
 } from "./managerCareer";
@@ -2878,6 +2883,7 @@ function App() {
 
   function commitManagerCareer(next: ManagerCareerState) {
     const current = managerCareer;
+    if (current?.status === "bankrupt" && next !== current) return;
     const crossedTime = current && next.date > current.date;
     const aiTransferActivity = crossedTime
       ? createManagerAiTransferActivity({
@@ -2979,6 +2985,13 @@ function App() {
     commitManagerCareer(next);
   }
 
+  function playManagerCasinoNight(player: Player, stake: ManagerCasinoStake, choice: ManagerCoinSide, result: ManagerCoinSide) {
+    if (!managerCareer) return;
+    const next = resolveManagerCasinoVisit(managerCareer, player, stake, choice, result);
+    if (next === managerCareer) return;
+    commitManagerCareer(next);
+  }
+
   function scheduleManagerCamp(focus: ManagerPerformanceCampFocus) {
     if (!managerCareer) return;
     const next = scheduleManagerPerformanceCamp(managerCareer, focus);
@@ -3006,6 +3019,11 @@ function App() {
     if (!checkpoint) {
       const next = startNextManagerSeason(managerCareer);
       if (next === managerCareer) return;
+      if (next.status === "bankrupt") {
+        commitManagerCareer(next);
+        setScreen("manager-home");
+        return;
+      }
       const contractedIds = new Set(next.contracts.filter((contract) => contract.status !== "expired").map((contract) => contract.playerId));
       const nextLineup = selected
         .filter((player) => contractedIds.has(player.id))
@@ -3842,6 +3860,7 @@ function App() {
           onOpenRecruitment={openManagerRecruitment}
           onSetTrainingFocus={updateManagerTrainingFocus}
           onPotentialInvestment={investManagerPlayerPotential}
+          onCasinoVisit={playManagerCasinoNight}
           onSchedulePerformanceCamp={scheduleManagerCamp}
           onAdvanceDate={advanceManagerCareer}
         />
@@ -10213,7 +10232,7 @@ function PlayerCareerPanel({
 
 // ---- Career transfer window ----------------------------------------------------------------------
 
-const fmtMoney = (amount: number) => `$${Math.round(amount).toLocaleString()}`;
+const fmtMoney = (amount: number) => `${amount < 0 ? "-" : ""}$${Math.abs(Math.round(amount)).toLocaleString()}`;
 
 function CircuitProgressStrip({
   event,
@@ -10402,6 +10421,16 @@ type ManagerRosterView = "lineup" | "development" | "contracts";
 type ManagerPotentialFlipState = {
   playerId: string;
   startingPotential: number;
+  cost: number;
+  status: "choosing" | "flipping" | "won" | "lost";
+  choice?: ManagerCoinSide;
+  result?: ManagerCoinSide;
+};
+
+type ManagerCasinoFlipState = {
+  playerId: string;
+  stake: ManagerCasinoStake;
+  startingCash: number;
   status: "choosing" | "flipping" | "won" | "lost";
   choice?: ManagerCoinSide;
   result?: ManagerCoinSide;
@@ -10421,6 +10450,7 @@ function ManagerRosterPage({
   onOpenRecruitment,
   onSetTrainingFocus,
   onPotentialInvestment,
+  onCasinoVisit,
   onSchedulePerformanceCamp,
   onAdvanceDate,
 }: {
@@ -10437,6 +10467,7 @@ function ManagerRosterPage({
   onOpenRecruitment: (role: Role | "all") => void;
   onSetTrainingFocus: (player: Player, focus: ManagerTrainingFocus) => void;
   onPotentialInvestment: (player: Player, choice: ManagerCoinSide, result: ManagerCoinSide) => void;
+  onCasinoVisit: (player: Player, stake: ManagerCasinoStake, choice: ManagerCoinSide, result: ManagerCoinSide) => void;
   onSchedulePerformanceCamp: (focus: ManagerPerformanceCampFocus) => void;
   onAdvanceDate: (targetDate?: string) => void;
 }) {
@@ -10447,13 +10478,21 @@ function ManagerRosterPage({
   const [renewalCycles, setRenewalCycles] = useState(3);
   const [releasePlayerId, setReleasePlayerId] = useState("");
   const [potentialFlip, setPotentialFlip] = useState<ManagerPotentialFlipState | null>(null);
+  const [casinoPlayerId, setCasinoPlayerId] = useState("");
+  const [casinoStake, setCasinoStake] = useState<ManagerCasinoStake>(MANAGER_CASINO_STAKES[0]);
+  const [casinoFlip, setCasinoFlip] = useState<ManagerCasinoFlipState | null>(null);
   const potentialFlipTimer = useRef<number | undefined>(undefined);
+  const casinoFlipTimer = useRef<number | undefined>(undefined);
   useEffect(() => setLineupIds(starters.map((player) => player.id)), [starters]);
   useEffect(() => () => {
     if (potentialFlipTimer.current) window.clearTimeout(potentialFlipTimer.current);
+    if (casinoFlipTimer.current) window.clearTimeout(casinoFlipTimer.current);
   }, []);
   const contractByPlayer = new Map(career.contracts.map((contract) => [contract.playerId, contract]));
   const activeRoster = roster.filter((player) => contractByPlayer.get(player.id)?.status !== "expired");
+  useEffect(() => {
+    if (activeRoster[0] && !activeRoster.some((player) => player.id === casinoPlayerId)) setCasinoPlayerId(activeRoster[0].id);
+  }, [activeRoster, casinoPlayerId]);
   const monthlyPayroll = managerMonthlyPayroll(career);
   const dynamicsByPlayer = new Map(career.playerDynamics.map((item) => [item.playerId, item]));
   const teamFamiliarity = managerTeamFamiliarity(career);
@@ -10488,6 +10527,10 @@ function ManagerRosterPage({
   const releaseCost = releaseContract ? managerContractReleaseCost(releaseContract) : 0;
   const potentialPlayer = potentialFlip ? activeRoster.find((player) => player.id === potentialFlip.playerId) : undefined;
   const potentialPlan = potentialPlayer ? managerTrainingPlan(career, potentialPlayer) : undefined;
+  const nextPotentialCost = potentialPlayer ? managerPotentialLabCost(career, potentialPlayer) : 0;
+  const casinoPlayer = activeRoster.find((player) => player.id === (casinoFlip?.playerId ?? casinoPlayerId));
+  const casinoEligibility = casinoPlayer ? managerCasinoVisitAllowed(career, casinoPlayer, casinoStake) : undefined;
+  const casinoNet = career.casinoVisits.reduce((total, visit) => total + visit.net, 0);
   const activeCamp = managerActivePerformanceCamp(career);
   const activeCampProgram = activeCamp
     ? managerPerformanceCampPrograms.find((program) => program.id === activeCamp.focus)
@@ -10523,15 +10566,37 @@ function ManagerRosterPage({
     setReleasePlayerId("");
   };
   const openPotentialLab = (player: Player) => {
-    setPotentialFlip({ playerId: player.id, startingPotential: managerTrainingPlan(career, player).potentialOvr, status: "choosing" });
+    setPotentialFlip({
+      playerId: player.id,
+      startingPotential: managerTrainingPlan(career, player).potentialOvr,
+      cost: managerPotentialLabCost(career, player),
+      status: "choosing",
+    });
   };
   const startPotentialFlip = (choice: ManagerCoinSide) => {
-    if (!potentialPlayer || potentialFlip?.status !== "choosing" || career.cash < MANAGER_POTENTIAL_LAB_COST) return;
+    if (!potentialPlayer || potentialFlip?.status !== "choosing" || career.cash < potentialFlip.cost) return;
     const result = managerPotentialCoinResult(career, potentialPlayer);
     onPotentialInvestment(potentialPlayer, choice, result);
-    setPotentialFlip({ playerId: potentialPlayer.id, startingPotential: potentialFlip.startingPotential, status: "flipping", choice, result });
+    setPotentialFlip({ ...potentialFlip, status: "flipping", choice, result });
     potentialFlipTimer.current = window.setTimeout(() => {
       setPotentialFlip((current) => current && current.status === "flipping"
+        ? { ...current, status: current.choice === current.result ? "won" : "lost" }
+        : current);
+    }, 1700);
+  };
+  const openCasinoTable = () => {
+    if (!casinoPlayer || !casinoEligibility?.allowed) return;
+    setCasinoFlip({ playerId: casinoPlayer.id, stake: casinoStake, startingCash: career.cash, status: "choosing" });
+  };
+  const startCasinoFlip = (choice: ManagerCoinSide) => {
+    if (!casinoPlayer || !casinoFlip || casinoFlip.status !== "choosing") return;
+    const eligibility = managerCasinoVisitAllowed(career, casinoPlayer, casinoFlip.stake);
+    if (!eligibility.allowed) return;
+    const result = managerCasinoCoinResult(career, casinoPlayer, casinoFlip.stake);
+    onCasinoVisit(casinoPlayer, casinoFlip.stake, choice, result);
+    setCasinoFlip({ ...casinoFlip, status: "flipping", choice, result });
+    casinoFlipTimer.current = window.setTimeout(() => {
+      setCasinoFlip((current) => current && current.status === "flipping"
         ? { ...current, status: current.choice === current.result ? "won" : "lost" }
         : current);
     }, 1700);
@@ -10613,7 +10678,7 @@ function ManagerRosterPage({
         <section className="manager-training-desk manager-development-board" aria-label="Player training plans" role="tabpanel">
           <div className="manager-training-head">
             <span><Dumbbell size={17} /><small>Performance department</small><h2>Player development</h2></span>
-            <div className="manager-development-budget"><small>Potential Lab budget</small><b>{fmtMoney(career.cash)}</b><em>{fmtMoney(MANAGER_POTENTIAL_LAB_COST)} per flip</em></div>
+            <div className="manager-development-budget"><small>Development budget</small><b>{fmtMoney(career.cash)}</b><em>Lab price scales with player ceiling</em></div>
           </div>
           <section className={`manager-camp-planner ${activeCamp ? "running" : ""}`} aria-label="Performance camp planner">
             <header>
@@ -10647,13 +10712,24 @@ function ManagerRosterPage({
               </div>
             )}
           </section>
+          <section className="manager-casino-desk" aria-label="Casino night">
+            <div className="manager-casino-intro">
+              <span><Dice5 size={20} /></span>
+              <div><small>Optional player outing / fair coin</small><h3>Casino Night</h3><p>Take one contracted player to the table. Club cash funds the stake, while the result affects that player's morale and form.</p></div>
+            </div>
+            <label><span>Player</span><select value={casinoPlayerId} onChange={(event) => setCasinoPlayerId(event.target.value)}>{activeRoster.map((player) => <option value={player.id} key={player.id}>{player.handle} / {player.role}</option>)}</select></label>
+            <div className="manager-casino-stakes"><span>Table stake</span><div className="segmented">{MANAGER_CASINO_STAKES.map((stake) => <button className={casinoStake === stake ? "selected" : ""} onClick={() => setCasinoStake(stake)} key={stake}>{fmtMoney(stake)}</button>)}</div></div>
+            <div className="manager-casino-record"><span><small>Club record</small><b>{career.casinoVisits.filter((visit) => visit.net > 0).length}-{career.casinoVisits.filter((visit) => visit.net < 0).length}</b></span><span><small>Casino net</small><b className={casinoNet >= 0 ? "positive" : "negative"}>{casinoNet >= 0 ? "+" : "-"}{fmtMoney(Math.abs(casinoNet))}</b></span></div>
+            <button className="secondary manager-casino-open" disabled={!casinoEligibility?.allowed} onClick={openCasinoTable} title={casinoEligibility?.reasons[0] ?? "Open the casino table"}><Dice5 size={16} /> Open table</button>
+          </section>
           <div className="manager-training-list">
             {activeRoster.map((player) => {
               const plan = managerTrainingPlan(career, player);
               const focus = managerTrainingFocusOptions.find((option) => option.id === plan.focus)!;
               const potential = Math.max(player.ovr, plan.potentialOvr);
               const atCeiling = player.ovr >= potential;
-              const labDisabled = career.cash < MANAGER_POTENTIAL_LAB_COST;
+              const labCost = managerPotentialLabCost(career, player);
+              const labDisabled = career.status !== "active" || career.cash < labCost;
               return (
                 <article className="manager-training-row" key={player.id}>
                   <div className="manager-training-player">
@@ -10675,7 +10751,7 @@ function ManagerRosterPage({
                   <div className="manager-training-card-footer">
                     <span><small>Last review</small><strong className={plan.lastOvrChange > 0 ? "positive" : ""}>{plan.lastOvrChange > 0 ? `+${plan.lastOvrChange} OVR` : plan.lastRating != null ? `${plan.lastRating.toFixed(2)} rating` : "No event sample"}</strong></span>
                     <span><small>Lab record</small><strong>{plan.potentialLabWins} / {plan.potentialLabAttempts}</strong></span>
-                    <button className="secondary compact manager-potential-button" disabled={labDisabled} onClick={() => openPotentialLab(player)} title={career.cash < MANAGER_POTENTIAL_LAB_COST ? "Not enough available cash" : `Open Potential Lab for ${player.handle}`}><Coins size={15} /> Potential Lab</button>
+                    <button className="secondary compact manager-potential-button" disabled={labDisabled} onClick={() => openPotentialLab(player)} title={career.cash < labCost ? "Not enough available cash" : `Open Potential Lab for ${player.handle} at ${fmtMoney(labCost)}`}><Coins size={15} /> Lab {fmtMoney(labCost)}</button>
                   </div>
                 </article>
               );
@@ -10782,10 +10858,7 @@ function ManagerRosterPage({
               <div><span><small>OVR</small><b>{potentialPlayer.ovr}</b></span><i /><span><small>Potential</small><b>{potentialPlan.potentialOvr}</b></span></div>
             </div>
             <div className="manager-coin-stage" aria-live="polite">
-              <div className={`manager-coin ${potentialFlip.status === "flipping" ? "flipping" : "settled"} ${potentialFlip.result ?? "heads"}`}>
-                <span className="manager-coin-face front"><b>H</b><small>Heads</small></span>
-                <span className="manager-coin-face back"><b>T</b><small>Tails</small></span>
-              </div>
+              <ManagerAnimatedCoin status={potentialFlip.status} result={potentialFlip.result} />
             </div>
             {potentialFlip.status === "choosing" ? (
               <div className="manager-coin-decision">
@@ -10801,16 +10874,58 @@ function ManagerRosterPage({
               <div className={`manager-coin-result ${potentialFlip.status}`}>
                 <span><small>The coin landed {potentialFlip.result}</small><h3>{potentialFlip.status === "won" ? "Potential unlocked" : "The call missed"}</h3><p>{potentialFlip.status === "won" ? `${potentialPlayer.handle}'s ceiling rises from ${potentialFlip.startingPotential} to ${potentialPlan.potentialOvr}.` : `${potentialPlayer.handle} stays at ${potentialPlan.potentialOvr} potential.`}</p></span>
                 <div>
-                  <button className="secondary" disabled={career.cash < MANAGER_POTENTIAL_LAB_COST} onClick={() => setPotentialFlip({ playerId: potentialPlayer.id, startingPotential: potentialPlan.potentialOvr, status: "choosing" })}><RefreshCcw size={15} /> Run it again</button>
+                  <button className="secondary" disabled={career.cash < nextPotentialCost} onClick={() => setPotentialFlip({ playerId: potentialPlayer.id, startingPotential: potentialPlan.potentialOvr, cost: nextPotentialCost, status: "choosing" })}><RefreshCcw size={15} /> Run it again</button>
                   <button className="primary" onClick={() => setPotentialFlip(null)}><CheckCircle2 size={15} /> Return to development</button>
                 </div>
               </div>
             )}
-            <footer><span><small>Investment</small><b>{fmtMoney(MANAGER_POTENTIAL_LAB_COST)}</b></span><span><small>Success chance</small><b>50%</b></span><span><small>Available cash</small><b>{fmtMoney(career.cash)}</b></span><p>Potential can exceed 99. Current OVR still has to be earned through training and event performance.</p></footer>
+            <footer><span><small>Investment</small><b>{fmtMoney(potentialFlip.cost)}</b></span><span><small>Success chance</small><b>50%</b></span><span><small>Available cash</small><b>{fmtMoney(career.cash)}</b></span><p>Cost rises with the ceiling's value. Potential can exceed 99, while OVR still has to be earned.</p></footer>
+          </section>
+        </div>
+      )}
+      {casinoFlip && casinoPlayer && (
+        <div className="manager-coin-overlay manager-casino-overlay">
+          <section className={`manager-coin-dialog manager-casino-dialog ${casinoFlip.status}`} role="dialog" aria-modal="true" aria-labelledby="casino-night-title">
+            <header>
+              <span><Dice5 size={18} /><small>Player lounge / one visit per club day</small><h2 id="casino-night-title">Casino Night</h2></span>
+              <button className="icon-only" disabled={casinoFlip.status === "flipping"} onClick={() => setCasinoFlip(null)} title="Close casino table"><ArrowLeft size={17} /></button>
+            </header>
+            <div className="manager-coin-player">
+              {playerPhoto(casinoPlayer.handle) ? <img src={playerPhoto(casinoPlayer.handle)} alt={casinoPlayer.handle} /> : <Avatar label={casinoPlayer.handle} accent={team.accent} />}
+              <span><small>Tonight's player</small><strong><Flag country={casinoPlayer.country} /> {casinoPlayer.handle}</strong><em>{casinoPlayer.role} / morale {dynamicsByPlayer.get(casinoPlayer.id)?.morale ?? 50}</em></span>
+              <div><span><small>Cash</small><b>{fmtMoney(casinoFlip.startingCash)}</b></span><i /><span><small>Stake</small><b>{fmtMoney(casinoFlip.stake)}</b></span></div>
+            </div>
+            <div className="manager-coin-stage" aria-live="polite"><ManagerAnimatedCoin status={casinoFlip.status} result={casinoFlip.result} /></div>
+            {casinoFlip.status === "choosing" ? (
+              <div className="manager-coin-decision">
+                <span><small>Even odds / net win equals stake</small><h3>Make the call</h3><p>A win adds {fmtMoney(casinoFlip.stake)} to club cash and lifts {casinoPlayer.handle}'s morale. A loss removes the stake and dents morale.</p></span>
+                <div>
+                  <button onClick={() => startCasinoFlip("heads")}><b>H</b><span><strong>Heads</strong><small>Call the crest</small></span></button>
+                  <button onClick={() => startCasinoFlip("tails")}><b>T</b><span><strong>Tails</strong><small>Call the reverse</small></span></button>
+                </div>
+              </div>
+            ) : casinoFlip.status === "flipping" ? (
+              <div className="manager-coin-pending"><span /><b>{casinoPlayer.handle} called {casinoFlip.choice}</b><small>The stake is on the table. Waiting for the coin...</small></div>
+            ) : (
+              <div className={`manager-coin-result ${casinoFlip.status}`}>
+                <span><small>The coin landed {casinoFlip.result}</small><h3>{casinoFlip.status === "won" ? "The table pays" : "The stake is gone"}</h3><p>{casinoFlip.status === "won" ? `${casinoPlayer.handle} brought home ${fmtMoney(casinoFlip.stake)} in profit.` : `${casinoPlayer.handle}'s call missed and the club lost ${fmtMoney(casinoFlip.stake)}.`}</p></span>
+                <div><button className="primary" onClick={() => setCasinoFlip(null)}><CheckCircle2 size={15} /> Leave the table</button></div>
+              </div>
+            )}
+            <footer><span><small>Stake</small><b>{fmtMoney(casinoFlip.stake)}</b></span><span><small>Win chance</small><b>50%</b></span><span><small>Club cash</small><b>{fmtMoney(career.cash)}</b></span><p>Casino Night is optional and limited to one visit per in-game date. Debt cannot be used as a stake.</p></footer>
           </section>
         </div>
       )}
     </main>
+  );
+}
+
+function ManagerAnimatedCoin({ status, result }: { status: "choosing" | "flipping" | "won" | "lost"; result?: ManagerCoinSide }) {
+  return (
+    <div className={`manager-coin ${status === "flipping" ? "flipping" : "settled"} ${result ?? "heads"}`}>
+      <span className="manager-coin-face front"><b>H</b><small>Heads</small></span>
+      <span className="manager-coin-face back"><b>T</b><small>Tails</small></span>
+    </div>
   );
 }
 
@@ -11205,6 +11320,35 @@ function ManagerHomePage({
           ? () => onAdvance(managerEventStartForRank(nextConfirmed, career.vrsRank, career.season))
           : () => onAdvance();
 
+  if (career.status === "bankrupt") {
+    const wins = history.filter((entry) => entry.tier === "champion").length;
+    const prizeMoney = history.reduce((total, entry) => total + entry.prize, 0);
+    return (
+      <main className="layout fullscreen-page manager-page manager-ended-page">
+        <section className="manager-command-bar manager-ended-command">
+          <div className="manager-org-id"><TeamLogo team={team} /><div><span>Final organization report / Season {career.season}</span><h1>{team.name}</h1><p>Career closed {managerFormatDate(career.endedOn ?? career.date)}</p></div></div>
+          <div className="manager-command-actions"><button className="secondary" onClick={onOpenHistory}><Trophy size={16} /> Club honors</button></div>
+        </section>
+        <section className="manager-insolvency-report">
+          <div className="manager-insolvency-mark"><TrendingDown size={34} /></div>
+          <div><small>Season-end financial ruling</small><h2>The organization is insolvent</h2><p>{career.endReason ?? `${career.organizationName} ended the season with a negative balance.`} The board gave the club leeway to finish its calendar, but a new season cannot begin with unpaid obligations.</p></div>
+          <span><small>Closing balance</small><b>{fmtMoney(career.cash)}</b><em>Career complete</em></span>
+        </section>
+        <section className="manager-ended-kpis">
+          <div><small>Seasons managed</small><b>{career.season}</b></div>
+          <div><small>Events completed</small><b>{history.length}</b></div>
+          <div><small>Championships</small><b>{wins}</b></div>
+          <div><small>Prize money earned</small><b>{fmtMoney(prizeMoney)}</b></div>
+          <div><small>Final VRS rank</small><b>#{career.vrsRank}</b></div>
+        </section>
+        <section className="manager-section manager-history-section">
+          <div className="manager-section-head"><div><span>Organization record</span><h2>Final event ledger</h2></div><button className="text-action" onClick={onOpenHistory}>Open full history <ArrowRight size={14} /></button></div>
+          {history.length ? <div className="manager-history-table">{history.slice(-8).reverse().map((entry, index) => <button type="button" key={`${entry.event}-${index}`} onClick={() => onOpenPastEvent(entry)}><span>S{entry.season ?? 1}</span><strong>{entry.eventName ?? `Event ${entry.event}`}</strong><b>{placementLabel(entry.tier, entry.record)}</b><em>{entry.record.wins}-{entry.record.losses}</em><small>{fmtMoney(entry.prize)}</small><ArrowRight size={14} /></button>)}</div> : <div className="manager-empty-state">No events were completed before the organization closed.</div>}
+        </section>
+      </main>
+    );
+  }
+
   return (
     <main className="layout fullscreen-page manager-page">
       <section className="manager-command-bar">
@@ -11228,7 +11372,7 @@ function ManagerHomePage({
 
       <section className="manager-kpis" aria-label="Organization status">
         <div><span>VRS ranking</span><b>#{career.vrsRank}</b><small>{career.vrsPoints.toLocaleString()} points</small></div>
-        <div><span>Available cash</span><b>{fmtMoney(career.cash)}</b><small className={`manager-pressure-${financial.pressure}`}>{Number.isFinite(financial.runwayMonths) ? `${financial.runwayMonths.toFixed(1)} months runway` : "No active payroll"}</small></div>
+        <div><span>Available cash</span><b>{fmtMoney(career.cash)}</b><small className={`manager-pressure-${financial.pressure}`}>{financial.inDebt ? "Season-end insolvency risk" : Number.isFinite(financial.runwayMonths) ? `${financial.runwayMonths.toFixed(1)} months runway` : "No active payroll"}</small></div>
         <div><span>Board confidence</span><b>{career.boardConfidence}</b><small>{career.boardConfidence >= 70 ? "Secure" : career.boardConfidence >= 45 ? "Stable" : "Under review"}</small></div>
         <div><span>Reputation</span><b>{career.reputation}</b><small>{career.reputation >= 70 ? "Elite pull" : career.reputation >= 45 ? "Established" : "Building"}</small></div>
         <div><span>Inbox</span><b>{unread.length}</b><small>unread decision{unread.length === 1 ? "" : "s"}</small></div>

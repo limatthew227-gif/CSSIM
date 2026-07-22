@@ -370,6 +370,7 @@ Required persistent state includes:
 ```ts
 interface ManagerCareerState {
   version: number;
+  status: "active" | "bankrupt";
   seed: string;
   date: string;
   organizationId: string;
@@ -385,6 +386,7 @@ interface ManagerCareerState {
   inbox: InboxItem[];
   finances: LedgerEntry[];
   scouting: ScoutReport[];
+  casinoVisits: CasinoVisit[];
   careerHistory: CareerHistoryEntry[];
 }
 ```
@@ -427,12 +429,12 @@ Match difficulty remains a separate setting and continues to control match simul
 
 ## 23. Failure and Recovery
 
-There is no arbitrary game over after one bad season.
+There is no instant game over when payroll or travel pushes the organization below zero. The board allows the current calendar to finish, but the closing books must be solvent before another season begins.
 
 - Low board confidence reduces future budget and may trigger a warning objective.
 - Sustained failure can cause dismissal, ending that organization tenure.
 - The save may continue by accepting an offer from another organization.
-- Bankruptcy triggers an emergency board advance or forced player sale before dismissal.
+- A negative season-end balance closes the organization and ends the run. The final report preserves club honors and archived event access.
 - A manager history page records teams managed, trophies, Major placements, trades, and career earnings.
 
 Changing organizations is a later milestone, but the state model should not assume the user controls one organization forever.
@@ -497,7 +499,9 @@ Do not add staff departments, academy leagues, injuries, sponsors, or job switch
 - **Lineup management playable:** the Roster screen supports an explicit starting five across an eight-player squad, updates starter and bench status, carries unlocked lineup changes into event registration, and prevents changes after roster lock.
 - **Roster planning playable:** a five-slot depth chart exposes IGL, AWP, Entry, Support, and flex coverage before registration. Vacant roles link directly to filtered recruitment, while surplus bench contracts can be released for a settlement without bypassing event locks or the five-player minimum.
 - **Player training playable:** every contracted player has a persistent balanced, mechanics, tactics, role, or recovery plan. Event cycles convert age, remaining potential, participation, placement, and performance against expectations into development progress; younger high-potential performers improve fastest, bench players progress at a reduced rate, and every completed development level updates the player's saved OVR and underlying attributes. Recovery trades most development speed for morale and form restoration, and training plans lock while an event is active.
-- **Potential Lab playable:** a manager can commit $200,000 to a save-deterministic heads-or-tails flip for any contracted player. A correct call permanently adds one to that player's save-local potential, with no 99 ceiling; a miss still consumes the investment. Every attempt is recorded in the player's development plan, organization ledger, and Inbox.
+- **Potential Lab playable:** a manager can commit to a save-deterministic heads-or-tails flip for any contracted player. Pricing scales from $25,000 for a sub-70 ceiling through $200,000 near 99, then rises above 99 as each additional point becomes more valuable. A correct call permanently adds one to that player's save-local potential; a miss still consumes the investment. Every attempt is recorded in the player's development plan, organization ledger, and Inbox.
+- **Casino Night playable:** between events, one contracted player per in-game date can join the manager at a fair coin table using a $5,000, $25,000, or $100,000 club stake. Wins return the stake as profit and lift morale; losses remove the stake and lower morale and form. Visits persist in the save and the ledger, cannot use debt, and remain entirely optional.
+- **Season-end insolvency playable:** cash may fall below zero during a season without immediately ending the run. When the user attempts to open the next season, final payroll is processed and a remaining negative balance closes the organization with a read-only career report.
 - **Performance Camps playable:** between events, the manager can reserve a seven-day System, Firepower, or Reset camp. Camps become real calendar checkpoints, cannot overlap a confirmed tournament, charge the ledger when booked, and resolve squad-wide familiarity, development progress, morale, and form through normal date advancement.
 - **Roster operations redesigned:** Lineup, Development, and Contracts now use separate workspaces. The lineup view provides a visual starting-five selector, Development combines training and Potential Lab records, and Contracts uses responsive player cards instead of a wide spreadsheet.
 - **Phase 5 playable foundation:** save-local morale, recent form, and familiarity move after events, benching, signings, trades, and failed transfer talks. These values use capped modifiers in the next event. Headquarters now exposes a persistent board mandate, payroll runway pressure, squad pulse, and a separate Universe transfer wire. Player profiles include a Manager tab for contracts, scouting confidence, value, availability, and roster fit. Completed seasons now roll into alternating Spring/Fall six-month cycles with fresh event dates, registrations, board mandates, and contract-year decisions.

@@ -31,7 +31,10 @@ import {
   managerPerformanceCampEligibility,
   managerPerformanceCampPrograms,
   MANAGER_CAREER_VERSION,
-  MANAGER_POTENTIAL_LAB_COST,
+  MANAGER_POTENTIAL_LAB_ELITE_COST,
+  managerPotentialLabCost,
+  managerCasinoCoinResult,
+  managerCasinoVisitAllowed,
   evaluateManagerTradeProposal,
   managerRecommendedSalary,
   managerRenewalBonus,
@@ -43,6 +46,7 @@ import {
   releaseManagerPlayerContract,
   resolveManagerTrainingCycle,
   resolveManagerPotentialInvestment,
+  resolveManagerCasinoVisit,
   scheduleManagerPerformanceCamp,
   resolveManagerOrganization,
   scoutManagerCandidate,
@@ -136,23 +140,51 @@ test("Potential Lab charges for every flip and can push potential beyond 99", ()
   let state = createManagerCareer("potential-lab", {
     organizationId: "club",
     organizationName: "Club",
-    cash: MANAGER_POTENTIAL_LAB_COST * 3,
+    cash: MANAGER_POTENTIAL_LAB_ELITE_COST * 3,
     players: [player, ...rosterPlayers.slice(1)],
   });
 
   state = resolveManagerPotentialInvestment(state, player, "heads", "tails");
-  assert.equal(state.cash, MANAGER_POTENTIAL_LAB_COST * 2);
+  assert.equal(state.cash, MANAGER_POTENTIAL_LAB_ELITE_COST * 2);
   assert.equal(managerTrainingPlan(state, player).potentialOvr, 99);
   assert.equal(managerTrainingPlan(state, player).potentialLabAttempts, 1);
   assert.equal(managerTrainingPlan(state, player).potentialLabWins, 0);
 
   state = resolveManagerPotentialInvestment(state, player, "tails", "tails");
-  assert.equal(state.cash, MANAGER_POTENTIAL_LAB_COST);
+  assert.equal(state.cash, MANAGER_POTENTIAL_LAB_ELITE_COST);
   assert.equal(managerTrainingPlan(state, player).potentialOvr, 100);
   assert.equal(managerTrainingPlan(state, player).potentialLabAttempts, 2);
   assert.equal(managerTrainingPlan(state, player).potentialLabWins, 1);
   assert.equal(state.ledger.at(-1)?.category, "development");
   assert.match(state.inbox[0].body, /increased to 100/);
+  assert.equal(managerPotentialLabCost(state, player), 250_000);
+});
+
+test("Potential Lab pricing scales with the value of the player's ceiling", () => {
+  const low = { id: "low-pot", handle: "low", role: "Rifler", ovr: 64, potential: 68 };
+  const prospect = { id: "prospect-pot", handle: "prospect", role: "Entry", ovr: 77, potential: 83 };
+  const star = { id: "star-pot", handle: "star", role: "AWP", ovr: 89, potential: 94 };
+  const state = createManagerCareer("potential-prices", { players: [low, prospect, star] });
+
+  assert.equal(managerPotentialLabCost(state, low), 25_000);
+  assert.equal(managerPotentialLabCost(state, prospect), 85_000);
+  assert.equal(managerPotentialLabCost(state, star), 160_000);
+});
+
+test("Casino Night moves club cash, affects the selected player, and is limited to one visit per day", () => {
+  const player = { id: "casino-player", handle: "lucky", role: "Rifler", ovr: 74, potential: 80 };
+  const base = createManagerCareer("casino-night", { cash: 100_000, players: [player] });
+  const morale = managerPlayerDynamics(base, player.id)!.morale;
+  const result = managerCasinoCoinResult(base, player, 25_000);
+  const won = resolveManagerCasinoVisit(base, player, 25_000, result, result);
+
+  assert.equal(won.cash, 125_000);
+  assert.equal(won.casinoVisits.length, 1);
+  assert.equal(won.casinoVisits[0].net, 25_000);
+  assert.equal(won.ledger.at(-1)?.category, "casino");
+  assert.equal(managerPlayerDynamics(won, player.id)!.morale, morale + 6);
+  assert.equal(managerCasinoVisitAllowed(won, player, 5_000).allowed, false);
+  assert.equal(resolveManagerCasinoVisit(won, player, 5_000, "heads", "tails"), won);
 });
 
 test("performance camps occupy calendar time, charge cash, and apply squad gains", () => {
@@ -222,6 +254,8 @@ test("old manager saves receive organization, contract, and market defaults duri
   assert.equal(migrated.contracts.length, 1);
   assert.equal(migrated.trainingPlans.length, 1);
   assert.deepEqual(migrated.performanceCamps, []);
+  assert.deepEqual(migrated.casinoVisits, []);
+  assert.equal(migrated.status, "active");
   assert.deepEqual(migrated.market, {
     scoutedPlayerIds: [],
     shortlistedPlayerIds: [],
@@ -936,6 +970,14 @@ test("financial pressure reports payroll runway bands", () => {
   assert.equal(managerFinancialStatus({ ...state, cash: payroll * 5 }).pressure, "healthy");
   assert.equal(managerFinancialStatus({ ...state, cash: payroll * 3 }).pressure, "watch");
   assert.equal(managerFinancialStatus({ ...state, cash: payroll }).pressure, "critical");
+  assert.equal(managerFinancialStatus({ ...state, cash: -1 }).inDebt, true);
+});
+
+test("negative cash is survivable during the season", () => {
+  const state = { ...createManagerCareer("debt-leeway"), cash: -12_000 };
+  const advanced = advanceManagerDate(state, "2026-07-21");
+  assert.equal(advanced.status, "active");
+  assert.ok(advanced.cash < 0);
 });
 
 test("reaching the board VRS target completes the mandate once", () => {
@@ -1071,6 +1113,23 @@ test("a completed manager season opens a fresh six-month event cycle", () => {
   });
   assert.equal(managerEventName(frontier, next.season), "Frontier Open Spring 2027");
   assert.equal(nextManagerCheckpoint(next), "2027-01-23");
+});
+
+test("a manager career ends only when season-end books close below zero", () => {
+  const base = createManagerCareer("season-insolvent", { cash: -30_000 });
+  const completedSeason = advanceManagerDate({
+    ...base,
+    completedEventIds: managerEvents.map((event) => event.id),
+    registrations: base.registrations.map((registration) => ({ ...registration, status: "completed" as const })),
+  }, "2026-11-23");
+  assert.equal(nextManagerCheckpoint(completedSeason), undefined);
+
+  const ended = startNextManagerSeason(completedSeason);
+  assert.equal(ended.status, "bankrupt");
+  assert.equal(ended.season, 1);
+  assert.equal(ended.boardConfidence, 0);
+  assert.match(ended.endReason ?? "", /unpaid obligations/);
+  assert.equal(startNextManagerSeason(ended), ended);
 });
 
 test("manager season rollover stays locked while calendar decisions remain", () => {

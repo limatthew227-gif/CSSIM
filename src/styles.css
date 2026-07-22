@@ -13352,6 +13352,109 @@ input[type="range"] {
   white-space: nowrap;
 }
 
+.manager-ended-page {
+  align-content: start;
+}
+
+.manager-ended-command {
+  border-left-color: #ef737a;
+}
+
+.manager-insolvency-report {
+  display: grid;
+  grid-template-columns: 70px minmax(0, 1fr) minmax(190px, auto);
+  gap: 18px;
+  align-items: center;
+  min-height: 156px;
+  padding: 20px;
+  border: 1px solid #654044;
+  border-left: 4px solid #ef737a;
+  border-radius: 8px;
+  background: #20181b;
+}
+
+.manager-insolvency-mark {
+  display: grid;
+  width: 66px;
+  height: 66px;
+  place-items: center;
+  border: 1px solid #75464b;
+  border-radius: 8px;
+  color: #ff858b;
+  background: #2a1b1f;
+}
+
+.manager-insolvency-report > div:nth-child(2) {
+  min-width: 0;
+}
+
+.manager-insolvency-report small,
+.manager-ended-kpis small {
+  color: #ac8588;
+  font-size: 8px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.manager-insolvency-report h2 {
+  margin: 3px 0 7px;
+  color: #fff1f1;
+  font-size: 25px;
+}
+
+.manager-insolvency-report p {
+  max-width: 780px;
+  margin: 0;
+  color: #b9a4a6;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.manager-insolvency-report > span {
+  display: grid;
+  justify-items: end;
+  padding-left: 20px;
+  border-left: 1px solid #5c373b;
+}
+
+.manager-insolvency-report > span b {
+  color: #ff7d84;
+  font-size: 27px;
+}
+
+.manager-insolvency-report > span em {
+  color: #d5b0b2;
+  font-size: 9px;
+  font-style: normal;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.manager-ended-kpis {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  overflow: hidden;
+  border: 1px solid #40363a;
+  border-radius: 8px;
+  background: #17191e;
+}
+
+.manager-ended-kpis > div {
+  display: grid;
+  gap: 2px;
+  padding: 13px 15px;
+  border-right: 1px solid #40363a;
+}
+
+.manager-ended-kpis > div:last-child {
+  border-right: 0;
+}
+
+.manager-ended-kpis b {
+  color: #f3f0f1;
+  font-size: 20px;
+}
+
 .manager-home-grid {
   display: grid;
   grid-template-columns: minmax(0, 1.45fr) minmax(350px, 0.72fr);
@@ -13585,6 +13688,31 @@ input[type="range"] {
 
   .manager-player-profile-state > div:last-child {
     border-bottom: 0;
+  }
+
+  .manager-insolvency-report {
+    grid-template-columns: 54px minmax(0, 1fr);
+  }
+
+  .manager-insolvency-mark {
+    width: 52px;
+    height: 52px;
+  }
+
+  .manager-insolvency-report > span {
+    grid-column: 1 / -1;
+    justify-items: start;
+    padding: 12px 0 0;
+    border-top: 1px solid #5c373b;
+    border-left: 0;
+  }
+
+  .manager-ended-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .manager-ended-kpis > div {
+    border-bottom: 1px solid #40363a;
   }
 }
 
@@ -14373,6 +14501,128 @@ input[type="range"] {
   margin-right: auto;
 }
 
+.manager-casino-desk {
+  display: grid;
+  grid-template-columns: minmax(260px, 1.45fr) minmax(135px, 0.62fr) minmax(230px, 0.95fr) minmax(145px, 0.62fr) auto;
+  gap: 14px;
+  align-items: center;
+  padding: 13px 14px;
+  border-top: 1px solid #4a4131;
+  border-bottom: 1px solid #4a4131;
+  background: linear-gradient(90deg, #201c18 0%, #171c1e 52%, #18201d 100%);
+}
+
+.manager-casino-intro {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  gap: 11px;
+  align-items: center;
+  min-width: 0;
+}
+
+.manager-casino-intro > span {
+  display: grid;
+  width: 40px;
+  height: 40px;
+  place-items: center;
+  border: 1px solid #79613b;
+  border-radius: 7px;
+  color: #efbd64;
+  background: #2c251b;
+}
+
+.manager-casino-intro > div {
+  min-width: 0;
+}
+
+.manager-casino-intro small,
+.manager-casino-desk label > span,
+.manager-casino-stakes > span,
+.manager-casino-record small {
+  display: block;
+  color: #998f7e;
+  font-size: 8px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.manager-casino-intro h3 {
+  margin: 2px 0;
+  color: #f4e6c9;
+  font-size: 15px;
+}
+
+.manager-casino-intro p {
+  margin: 0;
+  overflow: hidden;
+  color: #9ba4a0;
+  font-size: 9px;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.manager-casino-desk label,
+.manager-casino-stakes {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.manager-casino-desk select {
+  width: 100%;
+  min-height: 34px;
+  border-color: #4c463a;
+  color: #f2ead8;
+  background: #171b1c;
+}
+
+.manager-casino-stakes .segmented {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.manager-casino-stakes button {
+  min-width: 0;
+  min-height: 34px;
+  padding: 5px;
+  color: #9d9a91;
+  font-size: 9px;
+}
+
+.manager-casino-stakes button.selected {
+  color: #2a2111;
+  background: #e4ad50;
+}
+
+.manager-casino-record {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  min-width: 0;
+}
+
+.manager-casino-record > span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.manager-casino-record b {
+  overflow: hidden;
+  color: #f0f2ef;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.manager-casino-open {
+  min-height: 36px;
+  border-color: #7d633a;
+  color: #f2d79e;
+  background: #2a241b;
+}
+
 .manager-coin-overlay {
   position: fixed;
   z-index: 1000;
@@ -14391,6 +14641,26 @@ input[type="range"] {
   border-radius: 8px;
   background: #151b1e;
   box-shadow: 0 30px 90px rgba(0, 0, 0, 0.58);
+}
+
+.manager-casino-dialog {
+  border-color: #785c34;
+}
+
+.manager-casino-dialog > header {
+  background: #282018;
+}
+
+.manager-casino-dialog .manager-coin-player > div {
+  grid-template-columns: 86px 20px 78px;
+}
+
+.manager-casino-dialog .manager-coin-player > div b {
+  font-size: 12px;
+}
+
+.manager-casino-dialog .manager-coin-player > div > span:first-child b {
+  color: #70d0a1;
 }
 
 .manager-coin-dialog > header {
@@ -14753,6 +15023,19 @@ input[type="range"] {
     border: 0;
     border-top: 1px solid #3a474c;
   }
+
+  .manager-casino-desk {
+    grid-template-columns: minmax(250px, 1fr) minmax(140px, 0.55fr) minmax(230px, 0.8fr);
+  }
+
+  .manager-casino-record {
+    grid-column: 1 / 3;
+  }
+
+  .manager-casino-open {
+    grid-column: 3;
+    grid-row: 2;
+  }
 }
 
 @media (max-width: 760px) {
@@ -14773,6 +15056,25 @@ input[type="range"] {
 
   .manager-development-budget {
     justify-items: start;
+  }
+
+  .manager-casino-desk {
+    grid-template-columns: 1fr;
+  }
+
+  .manager-casino-intro p {
+    overflow: visible;
+    white-space: normal;
+  }
+
+  .manager-casino-record,
+  .manager-casino-open {
+    grid-row: auto;
+    grid-column: auto;
+  }
+
+  .manager-casino-open {
+    justify-content: center;
   }
 
   .manager-camp-planner > header {

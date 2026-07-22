@@ -1,10 +1,11 @@
 import { expectedRating, playerValue, type PlacementTier } from "./career";
 import type { Player, PlayerStats } from "./gameData";
 
-export const MANAGER_CAREER_VERSION = 15;
+export const MANAGER_CAREER_VERSION = 16;
 export const MANAGER_START_DATE = "2026-07-20";
 export const MANAGER_SALARY_MODEL_VERSION = 2;
-export const MANAGER_POTENTIAL_LAB_COST = 200_000;
+export const MANAGER_POTENTIAL_LAB_ELITE_COST = 200_000;
+export const MANAGER_CASINO_STAKES = [5_000, 25_000, 100_000] as const;
 
 export type ManagerEventTier = "open" | "challenger" | "elite" | "major";
 export type ManagerEntryType = "open" | "vrs" | "qualifier" | "invite";
@@ -20,6 +21,8 @@ export type ManagerBoardObjectiveStatus = "active" | "completed" | "failed";
 export type ManagerFinancialPressure = "healthy" | "watch" | "critical";
 export type ManagerTrainingFocus = "balanced" | "mechanics" | "tactics" | "role" | "recovery";
 export type ManagerCoinSide = "heads" | "tails";
+export type ManagerCareerStatus = "active" | "bankrupt";
+export type ManagerCasinoStake = typeof MANAGER_CASINO_STAKES[number];
 export type ManagerPerformanceCampFocus = "tactical" | "mechanics" | "recovery";
 export type ManagerPerformanceCampStatus = "active" | "completed";
 
@@ -71,6 +74,17 @@ export interface ManagerPerformanceCamp {
   endsOn: string;
   cost: number;
   status: ManagerPerformanceCampStatus;
+}
+
+export interface ManagerCasinoVisit {
+  id: string;
+  playerId: string;
+  playerHandle: string;
+  date: string;
+  stake: ManagerCasinoStake;
+  choice: ManagerCoinSide;
+  result: ManagerCoinSide;
+  net: number;
 }
 
 export interface ManagerCareerPlayerSeed {
@@ -294,7 +308,7 @@ export interface ManagerInboxItem {
 export interface ManagerLedgerEntry {
   id: string;
   date: string;
-  category: "starting-balance" | "entry" | "travel" | "prize" | "sticker" | "withdrawal" | "payroll" | "scouting" | "signing" | "transfer" | "release" | "development";
+  category: "starting-balance" | "entry" | "travel" | "prize" | "sticker" | "withdrawal" | "payroll" | "scouting" | "signing" | "transfer" | "release" | "development" | "casino";
   description: string;
   amount: number;
   eventId?: string;
@@ -302,6 +316,9 @@ export interface ManagerLedgerEntry {
 
 export interface ManagerCareerState {
   version: number;
+  status: ManagerCareerStatus;
+  endedOn?: string;
+  endReason?: string;
   seed: string;
   date: string;
   season: number;
@@ -321,6 +338,7 @@ export interface ManagerCareerState {
   playerDynamics: ManagerPlayerDynamics[];
   trainingPlans: ManagerTrainingPlan[];
   performanceCamps: ManagerPerformanceCamp[];
+  casinoVisits: ManagerCasinoVisit[];
   boardObjective: ManagerBoardObjective;
   market: ManagerMarketState;
   inbox: ManagerInboxItem[];
@@ -800,13 +818,29 @@ export function managerPotentialCoinResult(
   return stableHash(`${state.seed}:${state.date}:potential-lab:${player.id}:${attempts + 1}`) % 2 === 0 ? "heads" : "tails";
 }
 
+export function managerPotentialLabCost(
+  state: Pick<ManagerCareerState, "trainingPlans" | "date">,
+  player: ManagerCareerPlayerSeed,
+) {
+  const potential = managerTrainingPlan(state, player).potentialOvr;
+  if (potential < 70) return 25_000;
+  if (potential < 75) return 40_000;
+  if (potential < 80) return 60_000;
+  if (potential < 85) return 85_000;
+  if (potential < 90) return 120_000;
+  if (potential < 95) return 160_000;
+  if (potential < 100) return MANAGER_POTENTIAL_LAB_ELITE_COST;
+  return Math.min(500_000, 250_000 + Math.max(0, potential - 100) * 25_000);
+}
+
 export function resolveManagerPotentialInvestment(
   state: ManagerCareerState,
   player: ManagerCareerPlayerSeed,
   choice: ManagerCoinSide,
   result: ManagerCoinSide,
 ): ManagerCareerState {
-  if (state.cash < MANAGER_POTENTIAL_LAB_COST) return state;
+  const cost = managerPotentialLabCost(state, player);
+  if (state.status !== "active" || state.cash < cost) return state;
   const contract = state.contracts.find((item) => item.playerId === player.id && item.status !== "expired");
   if (!contract) return state;
   const current = managerTrainingPlan(state, player);
@@ -817,7 +851,7 @@ export function resolveManagerPotentialInvestment(
   const transactionId = `${state.seed}:${state.date}:potential-lab:${player.id}:${attempts}`;
   return {
     ...state,
-    cash: state.cash - MANAGER_POTENTIAL_LAB_COST,
+    cash: state.cash - cost,
     trainingPlans: [
       ...state.trainingPlans.filter((plan) => plan.playerId !== player.id),
       {
@@ -850,7 +884,96 @@ export function resolveManagerPotentialInvestment(
         date: state.date,
         category: "development",
         description: `Potential Lab: ${player.handle} called ${choice} (${won ? "won" : "lost"})`,
-        amount: -MANAGER_POTENTIAL_LAB_COST,
+        amount: -cost,
+      },
+    ],
+  };
+}
+
+export function managerCasinoCoinResult(
+  state: Pick<ManagerCareerState, "seed" | "date" | "casinoVisits">,
+  player: Pick<ManagerCareerPlayerSeed, "id">,
+  stake: ManagerCasinoStake,
+): ManagerCoinSide {
+  return stableHash(`${state.seed}:${state.date}:casino:${player.id}:${stake}:${state.casinoVisits.length + 1}`) % 2 === 0
+    ? "heads"
+    : "tails";
+}
+
+export function managerCasinoVisitAllowed(
+  state: Pick<ManagerCareerState, "status" | "activeEventId" | "cash" | "date" | "casinoVisits" | "contracts">,
+  player: Pick<ManagerCareerPlayerSeed, "id">,
+  stake: ManagerCasinoStake,
+) {
+  const reasons: string[] = [];
+  if (state.status !== "active") reasons.push("The manager career has ended");
+  if (state.activeEventId) reasons.push("Casino nights are unavailable during an active tournament");
+  if (!MANAGER_CASINO_STAKES.includes(stake)) reasons.push("Choose a listed table stake");
+  if (state.cash < stake) reasons.push(`Requires $${stake.toLocaleString()} available cash`);
+  if (state.casinoVisits.some((visit) => visit.date === state.date)) reasons.push("The club has already used tonight's casino visit");
+  if (!state.contracts.some((contract) => contract.playerId === player.id && contract.status !== "expired")) {
+    reasons.push("Choose a contracted player");
+  }
+  return { allowed: reasons.length === 0, reasons };
+}
+
+export function resolveManagerCasinoVisit(
+  state: ManagerCareerState,
+  player: ManagerCareerPlayerSeed,
+  stake: ManagerCasinoStake,
+  choice: ManagerCoinSide,
+  result: ManagerCoinSide,
+): ManagerCareerState {
+  const eligibility = managerCasinoVisitAllowed(state, player, stake);
+  if (!eligibility.allowed) return state;
+  const won = choice === result;
+  const net = won ? stake : -stake;
+  const visitNumber = state.casinoVisits.length + 1;
+  const id = `${state.seed}:${state.date}:casino:${visitNumber}`;
+  return {
+    ...state,
+    cash: state.cash + net,
+    casinoVisits: [
+      ...state.casinoVisits,
+      {
+        id,
+        playerId: player.id,
+        playerHandle: player.handle,
+        date: state.date,
+        stake,
+        choice,
+        result,
+        net,
+      },
+    ],
+    playerDynamics: state.playerDynamics.map((item) => item.playerId === player.id
+      ? {
+          ...item,
+          morale: clampScore(item.morale + (won ? 6 : -5)),
+          form: clampScore(item.form + (won ? 2 : -2)),
+          lastUpdatedOn: state.date,
+        }
+      : item),
+    inbox: [
+      {
+        id: `${id}:result`,
+        kind: "finance",
+        createdOn: state.date,
+        title: won ? `${player.handle} wins at casino night` : `${player.handle} loses at casino night`,
+        body: `${player.handle} called ${choice}; the coin landed ${result}. The club ${won ? "won" : "lost"} $${stake.toLocaleString()}.`,
+        mandatory: false,
+        read: false,
+      },
+      ...state.inbox,
+    ],
+    ledger: [
+      ...state.ledger,
+      {
+        id,
+        date: state.date,
+        category: "casino",
+        description: `Casino night: ${player.handle} called ${choice}`,
+        amount: net,
       },
     ],
   };
@@ -868,6 +991,7 @@ export function managerPerformanceCampEligibility(
   const startsOn = addDays(state.date, 1);
   const endsOn = addDays(state.date, program.durationDays);
   const reasons: string[] = [];
+  if (state.status !== "active") reasons.push("The manager career has ended");
   if (state.activeEventId) reasons.push("An event is currently in progress");
   if (managerActivePerformanceCamp(state)) reasons.push("Another performance camp is already active");
   if (state.cash < program.cost) reasons.push(`The program requires $${program.cost.toLocaleString()} in available cash`);
@@ -1161,7 +1285,7 @@ export function managerFinancialStatus(
   const monthlyPayroll = managerMonthlyPayroll(state);
   const runwayMonths = monthlyPayroll > 0 ? state.cash / monthlyPayroll : Number.POSITIVE_INFINITY;
   const pressure: ManagerFinancialPressure = runwayMonths < 2 ? "critical" : runwayMonths < 4 ? "watch" : "healthy";
-  return { monthlyPayroll, runwayMonths, pressure };
+  return { monthlyPayroll, runwayMonths, pressure, inDebt: state.cash < 0 };
 }
 
 export function managerMoraleLabel(morale: number) {
@@ -1333,6 +1457,7 @@ export function createManagerCareer(seed: string, start: ManagerCareerStart = {}
   const reputation = inheritedOrganization ? Math.round(reputationForRank(vrsRank)) : 48;
   const state: ManagerCareerState = {
     version: MANAGER_CAREER_VERSION,
+    status: "active",
     seed,
     date: MANAGER_START_DATE,
     season: 1,
@@ -1350,6 +1475,7 @@ export function createManagerCareer(seed: string, start: ManagerCareerStart = {}
     playerDynamics: createPlayerDynamics(seed, contracts),
     trainingPlans: createManagerTrainingPlans(start.players ?? [], MANAGER_START_DATE),
     performanceCamps: [],
+    casinoVisits: [],
     boardObjective: createBoardObjective(seed, vrsRank, 1),
     market: createManagerMarketState(),
     inbox: [],
@@ -1544,6 +1670,9 @@ export function normalizeManagerCareer(
     ...base,
     ...saved,
     version: MANAGER_CAREER_VERSION,
+    status: saved.status ?? "active",
+    endedOn: saved.endedOn,
+    endReason: saved.endReason,
     season: normalizedSeason,
     date: normalizedDate,
     organizationId: saved.organizationId ?? base.organizationId,
@@ -1558,6 +1687,7 @@ export function normalizeManagerCareer(
     playerDynamics,
     trainingPlans,
     performanceCamps: saved.performanceCamps ?? [],
+    casinoVisits: saved.casinoVisits ?? [],
     boardObjective: saved.boardObjective ?? createBoardObjective(base.seed, saved.vrsRank ?? base.vrsRank, saved.season ?? base.season),
     market: {
       ...base.market,
@@ -2562,6 +2692,7 @@ export function managerEventEligibility(
   const totalCost = event.entryFee + event.travelCost;
   const schedule = managerEventSchedule(event, state.season);
   const existing = state.registrations.find((registration) => registration.eventId === event.id);
+  if (state.status !== "active") reasons.push("The manager career has ended");
   if (existing && existing.status !== "withdrawn") reasons.push("Already registered");
   if (state.completedEventIds.includes(event.id)) reasons.push("Event already completed");
   if (state.date > schedule.registrationDeadline) reasons.push("Registration deadline passed");
@@ -2925,6 +3056,7 @@ export function completeManagerEvent(
 }
 
 export function advanceManagerDate(state: ManagerCareerState, nextDate: string): ManagerCareerState {
+  if (state.status !== "active") return state;
   const activeRegistration = state.registrations.find((registration) => (
     registration.eventId === state.activeEventId && registration.status === "active"
   ));
@@ -3030,12 +3162,37 @@ export function advanceManagerDate(state: ManagerCareerState, nextDate: string):
 }
 
 export function startNextManagerSeason(state: ManagerCareerState): ManagerCareerState {
-  if (state.activeEventId || nextManagerCheckpoint(state)) return state;
+  if (state.status !== "active" || state.activeEventId || nextManagerCheckpoint(state)) return state;
   const nextSeason = state.season + 1;
   const nextDate = managerSeasonStartDate(nextSeason);
   if (nextDate <= state.date) return state;
   const resolved = resolveManagerTradeTimeline(state, nextDate);
   const payroll = settlePayroll(resolved, nextDate);
+  if (payroll.cash < 0) {
+    const endReason = `${resolved.organizationName} closed Season ${resolved.season} with ${Math.abs(payroll.cash).toLocaleString()} in unpaid obligations.`;
+    return {
+      ...resolved,
+      status: "bankrupt",
+      endedOn: nextDate,
+      endReason,
+      date: nextDate,
+      cash: payroll.cash,
+      boardConfidence: 0,
+      ledger: payroll.ledger,
+      inbox: [
+        {
+          id: `${resolved.seed}:${nextDate}:insolvency`,
+          kind: "finance",
+          createdOn: nextDate,
+          title: "Season-end insolvency closes the club",
+          body: `${endReason} The board allowed operations through the season, but will not authorize another competition cycle.`,
+          mandatory: true,
+          read: false,
+        },
+        ...resolved.inbox,
+      ],
+    };
+  }
   const contracts = resolved.contracts.map((contract): ManagerPlayerContract => {
     if (contract.status === "expired") return contract;
     const majorCyclesRemaining = Math.max(0, contract.majorCyclesRemaining - 1);
@@ -3094,6 +3251,7 @@ export function startNextManagerSeason(state: ManagerCareerState): ManagerCareer
 }
 
 export function nextManagerCheckpoint(state: ManagerCareerState) {
+  if (state.status !== "active") return undefined;
   const dates = managerEvents.flatMap((event) => {
     if (state.completedEventIds.includes(event.id)) return [];
     const registration = state.registrations.find((item) => item.eventId === event.id);
