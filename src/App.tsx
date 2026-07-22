@@ -11,6 +11,7 @@ import {
   Coins,
   Award,
   Ban,
+  Bomb,
   CheckCircle2,
   Clock3,
   Crosshair,
@@ -22,6 +23,7 @@ import {
   FastForward,
   FileSearch,
   Flame,
+  Footprints,
   Gauge,
   LayoutDashboard,
   Mail,
@@ -29,14 +31,17 @@ import {
   Pause,
   Play,
   Plus,
+  Radio,
   RefreshCcw,
   Save,
   Search,
   Settings2,
   Shield,
+  ShieldCheck,
   SkipForward,
   SlidersHorizontal,
   Sparkles,
+  Skull,
   Swords,
   Target,
   TrendingDown,
@@ -303,6 +308,8 @@ import flashIcon from "./assets/utility/flash.svg";
 import smokeIcon from "./assets/utility/smoke.svg";
 import molotovIcon from "./assets/utility/molotov.svg";
 import heIcon from "./assets/utility/he.svg";
+import ctFactionIcon from "./assets/factions/ct.png";
+import tFactionIcon from "./assets/factions/t.png";
 
 const weaponIcons: Record<string, string> = {
   "AK-47": ak47Icon,
@@ -3538,19 +3545,20 @@ function App() {
           </div>
         </div>
         <nav className="stage-nav" aria-label="Progress">
-          {navigationStages.map((stage) => (
+          {navigationStages.map((stage, index) => (
             <span key={stage.id} className={stage.active ? "active" : ""} aria-current={stage.active ? "step" : undefined}>
-              {stage.label}
+              <i>{String(index + 1).padStart(2, "0")}</i>
+              <b>{stage.label}</b>
             </span>
           ))}
         </nav>
         <div className="top-actions">
-          <button className="icon-button" disabled={!hasSavableRun} onClick={saveCurrentRun} title="Save current run">
+          <button className="icon-button top-utility-button" disabled={!hasSavableRun} onClick={saveCurrentRun} title="Save current run">
             <Save size={18} />
             <span>{activeSaveId ? "Quick Save" : "Save Run"}</span>
           </button>
           <button
-            className="icon-button"
+            className="icon-button top-utility-button"
             disabled={runKind === "spectator" ? !hasEventOverview || screen === "overview" : !hasSaveUniverse || (mode === "manager" ? screen === "manager-home" : screen === "universe")}
             onClick={runKind === "spectator" ? openEventOverview : openSaveUniverse}
             title={runKind === "spectator" ? "Major overview" : mode === "manager" ? "Manager headquarters" : "Save universe"}
@@ -3560,33 +3568,33 @@ function App() {
           </button>
           {mode === "manager" && managerCareer && (
             <>
-              <button className="icon-button manager-top-link" disabled={screen === "manager-calendar"} onClick={() => pushScreen("manager-calendar")} title="Tournament calendar">
+              <button className="icon-button manager-top-link top-utility-button" disabled={screen === "manager-calendar"} onClick={() => pushScreen("manager-calendar")} title="Tournament calendar">
                 <CalendarDays size={18} />
                 <span>Calendar</span>
               </button>
-              <button className="icon-button manager-top-link" disabled={screen === "manager-roster"} onClick={() => pushScreen("manager-roster")} title="Roster and contracts">
+              <button className="icon-button manager-top-link top-utility-button" disabled={screen === "manager-roster"} onClick={() => pushScreen("manager-roster")} title="Roster and contracts">
                 <Users size={18} />
                 <span>Roster</span>
               </button>
-              <button className="icon-button manager-top-link" disabled={screen === "manager-market"} onClick={() => pushScreen("manager-market")} title="Scouting and recruitment">
+              <button className="icon-button manager-top-link top-utility-button" disabled={screen === "manager-market"} onClick={() => pushScreen("manager-market")} title="Scouting and recruitment">
                 <BriefcaseBusiness size={18} />
                 <span>Market</span>
               </button>
             </>
           )}
-          <button className="icon-button" onClick={() => setScreen("teams")} title="Team database">
+          <button className="icon-button top-utility-button" onClick={() => setScreen("teams")} title="Team database">
             <Database size={18} />
             <span>Team Lab</span>
           </button>
-          <button className="icon-button" onClick={() => pushScreen("balance-lab")} title="Explain team strength, OVR & round probability">
+          <button className="icon-button top-utility-button" onClick={() => pushScreen("balance-lab")} title="Explain team strength, OVR & round probability">
             <Sparkles size={18} />
             <span>Balance Lab</span>
           </button>
-          <button className="icon-button" onClick={() => pushScreen("vault")} title="All-time records from every saved match">
+          <button className="icon-button top-utility-button" onClick={() => pushScreen("vault")} title="All-time records from every saved match">
             <Trophy size={18} />
             <span>Vault</span>
           </button>
-          <button className="icon-button" onClick={() => setShowSettings(true)} title="Customize">
+          <button className="icon-button top-utility-button" onClick={() => setShowSettings(true)} title="Customize">
             <Settings2 size={18} />
             <span>Customize</span>
           </button>
@@ -4792,9 +4800,15 @@ function App() {
                 <em>Map {(series?.currentMapIndex ?? 0) + 1}</em>
                 <strong>{mapName(match.map)}</strong>
               </div>
-              <b className={match.side === "CT" ? "ct-team" : "t-team"}>{match.you}</b>
-              <span>:</span>
-              <b className={match.side === "CT" ? "t-team" : "ct-team"}>{match.opponent}</b>
+              <span className="live-score-value">
+                <FactionBadge side={match.side} compact label={false} />
+                <b className={match.side === "CT" ? "ct-team" : "t-team"}>{match.you}</b>
+              </span>
+              <span className="live-score-divider">:</span>
+              <span className="live-score-value right">
+                <b className={match.side === "CT" ? "t-team" : "ct-team"}>{match.opponent}</b>
+                <FactionBadge side={match.side === "CT" ? "T" : "CT"} compact label={false} />
+              </span>
               <small>{series ? `${seriesMapScore(series)} / ` : ""}{match.running ? "live" : "paused"} / round {Math.min(match.round, 30)} / {match.side}</small>
             </div>
             <TeamPlate team={opponent} align="right" />
@@ -4837,6 +4851,7 @@ function App() {
                         return (
                           <div className="feed-line start-line" key={`${feed.round}-${index}`}>
                             <span className="feed-round-badge">R{feed.round}</span>
+                            <Crosshair className="feed-event-icon neutral" size={15} aria-hidden="true" />
                             <span className="feed-message">{feed.reason || "Round started"}</span>
                           </div>
                         );
@@ -4848,6 +4863,7 @@ function App() {
                         return (
                           <div className={`feed-line round-over-line ${winnerSide.toLowerCase()}`} key={`${feed.round}-${index}`}>
                             <span className="feed-round-badge">R{feed.round}</span>
+                            {winnerSide !== "neutral" && <FactionBadge side={winnerSide} compact label={false} />}
                             <span className="feed-message">
                               Round over - Winner: <span className={isCTWinner ? "ct-team" : "t-team"}><b>{winnerSide}</b></span> (
                               <span className="t-team"><b>{feed.tScore}</b></span> - <span className="ct-team"><b>{feed.ctScore}</b></span>) - {feed.reason}
@@ -4861,8 +4877,9 @@ function App() {
                         return (
                           <div className="feed-line plant-line" key={`${feed.round}-${index}`}>
                             <span className="feed-round-badge">R{feed.round}</span>
+                            <Bomb className="feed-event-icon t" size={16} aria-hidden="true" />
                             <span className="feed-message">
-                              💣 <b className="t-team">{feed.killer}</b> planted the bomb on <b>{plantSite}</b> (<span className="t-team">{feed.tAlive}</span>on<span className="ct-team">{feed.ctAlive}</span>)
+                              <b className="t-team">{feed.killer}</b> planted the bomb on <b>{plantSite}</b> (<span className="t-team">{feed.tAlive}</span>on<span className="ct-team">{feed.ctAlive}</span>)
                             </span>
                           </div>
                         );
@@ -4872,8 +4889,9 @@ function App() {
                         return (
                           <div className="feed-line defuse-line" key={`${feed.round}-${index}`}>
                             <span className="feed-round-badge">R{feed.round}</span>
+                            <ShieldCheck className="feed-event-icon ct" size={16} aria-hidden="true" />
                             <span className="feed-message">
-                              ⚙️ <b className="ct-team">{feed.killer}</b> defused the bomb
+                              <b className="ct-team">{feed.killer}</b> defused the bomb
                             </span>
                           </div>
                         );
@@ -4883,8 +4901,9 @@ function App() {
                         return (
                           <div className="feed-line explode-line" key={`${feed.round}-${index}`}>
                             <span className="feed-round-badge">R{feed.round}</span>
+                            <Flame className="feed-event-icon t" size={16} aria-hidden="true" />
                             <span className="feed-message">
-                              💥 The bomb exploded
+                              The bomb exploded
                             </span>
                           </div>
                         );
@@ -4908,8 +4927,9 @@ function App() {
                       const assistantSide = feed.assistant ? killerSide : null;
 
                       return (
-                        <div className="feed-line kill-line" key={`${feed.round}-${index}`}>
+                        <div className={`feed-line kill-line ${killerSide.toLowerCase()}`} key={`${feed.round}-${index}`}>
                           <span className="feed-round-badge">R{feed.round}</span>
+                          {killerSide !== "neutral" && <FactionBadge side={killerSide} compact label={false} />}
                           <span className="feed-killer-name">
                             <b className={`${killerSide.toLowerCase()}-team`}>{feed.killer}</b>
                             {feed.assistant && (
@@ -4928,7 +4948,7 @@ function App() {
                             {feed.flashAssist && (
                               <img className="util-feed-icon flash-assist" src={utilityIcons.flash} alt="flash assist" title="Flash assist" />
                             )}
-                            {feed.isHeadshot && <span className="hs-icon" title="Headshot">💀</span>}
+                            {feed.isHeadshot && <Skull className="hs-icon" size={14} aria-label="Headshot" />}
                           </div>
                           <span className={`${victimSide.toLowerCase()}-team`}><b>{feed.victim}</b></span>
                           {feed.first && <span className="first-badge">first</span>}
@@ -4952,8 +4972,8 @@ function App() {
                 <span>Round call</span>
               </div>
               <div className="econ-row">
-                <span>{yourTeam.tag}: {match.economy} {match.yourMoney && `($${totalYourMoney.toLocaleString()})`}</span>
-                <span>{opponent.tag}: {match.opponentEconomy} {match.opponentMoney && `($${totalOpponentMoney.toLocaleString()})`}</span>
+                <span><FactionBadge side={match.side} compact label={false} /> {yourTeam.tag}: {match.economy} {match.yourMoney && `($${totalYourMoney.toLocaleString()})`}</span>
+                <span><FactionBadge side={match.side === "CT" ? "T" : "CT"} compact label={false} /> {opponent.tag}: {match.opponentEconomy} {match.opponentMoney && `($${totalOpponentMoney.toLocaleString()})`}</span>
               </div>
               <RoundReadPanel
                 read={buildRoundRead(match, yourTeam, opponent, settings, totalYourMoney, totalOpponentMoney)}
@@ -5780,6 +5800,31 @@ function StatCell({ value }: { value: number }) {
 
 function formatSignedWhole(value: number) {
   return `${value > 0 ? "+" : ""}${value}`;
+}
+
+function FactionBadge({ side, compact = false, label = true }: { side: "CT" | "T"; compact?: boolean; label?: boolean }) {
+  const name = side === "CT" ? "Counter-Terrorist" : "Terrorist";
+  return (
+    <span className={`faction-badge ${side.toLowerCase()}${compact ? " compact" : ""}`} title={name}>
+      <img src={side === "CT" ? ctFactionIcon : tFactionIcon} alt="" aria-hidden="true" />
+      {label && <b>{side}</b>}
+    </span>
+  );
+}
+
+function PlayerRoleGlyph({ role, size = 14 }: { role: Role | "Flex"; size?: number }) {
+  const icon = role === "IGL"
+    ? <Radio size={size} />
+    : role === "AWP"
+      ? <Crosshair size={size} />
+      : role === "Entry"
+        ? <Swords size={size} />
+        : role === "Support"
+          ? <Shield size={size} />
+          : role === "Lurker"
+            ? <Footprints size={size} />
+            : <Users size={size} />;
+  return <i className={`player-role-glyph role-${role.toLowerCase()}`} title={role}>{icon}</i>;
 }
 
 function TeamLogo({ team, small = false }: { team: Pick<Roster | FieldTeam, "tag" | "name" | "accent" | "logo">; small?: boolean }) {
@@ -8085,14 +8130,14 @@ function MatchStatsPanel({
         <div className="stats-filter-strip" aria-label="Stats filters">
           <button className="stats-filter muted">HLTV-style</button>
           <span>Side</span>
-          <button className={sideFilter === "both" ? "stats-filter active" : "stats-filter muted"} onClick={() => setSideFilter("both")}>
-            Both
+          <button aria-label="Show both sides" className={sideFilter === "both" ? "stats-filter active" : "stats-filter muted"} onClick={() => setSideFilter("both")}>
+            <Swords size={15} /> <span>Both</span>
           </button>
-          <button className={sideFilter === "T" ? "stats-filter active" : "stats-filter muted"} onClick={() => setSideFilter("T")}>
-            Terrorist
+          <button aria-label="Show Terrorist-side stats" className={sideFilter === "T" ? "stats-filter active" : "stats-filter muted"} onClick={() => setSideFilter("T")}>
+            <FactionBadge side="T" compact label={false} /> <span>T side</span>
           </button>
-          <button className={sideFilter === "CT" ? "stats-filter active" : "stats-filter muted"} onClick={() => setSideFilter("CT")}>
-            Counter-Terrorist
+          <button aria-label="Show Counter-Terrorist-side stats" className={sideFilter === "CT" ? "stats-filter active" : "stats-filter muted"} onClick={() => setSideFilter("CT")}>
+            <FactionBadge side="CT" compact label={false} /> <span>CT side</span>
           </button>
         </div>
       </div>
@@ -10667,7 +10712,7 @@ function ManagerRosterPage({
             <div className="manager-depth-slots">
               {depthChart.map(({ role, player }) => (
                 <div className={player ? "filled" : "vacant"} key={role}>
-                  <span><small>{role}</small>{player ? <strong>{player.handle}</strong> : <strong>Vacant</strong>}</span>
+                  <span><small className="manager-role-label"><PlayerRoleGlyph role={role} size={12} /> {role}</small>{player ? <strong>{player.handle}</strong> : <strong>Vacant</strong>}</span>
                   {player ? (
                     <>
                       {playerPhoto(player.handle) ? <img src={playerPhoto(player.handle)} alt={player.handle} loading="lazy" /> : <Avatar label={player.handle} accent={team.accent} />}
@@ -10694,7 +10739,7 @@ function ManagerRosterPage({
                 return (
                   <button className={`manager-lineup-card ${selectedForLineup ? "selected" : ""}`} disabled={disabled} onClick={() => toggleLineupPlayer(player.id)} key={player.id}>
                     <span className="manager-lineup-card-photo">{playerPhoto(player.handle) ? <img src={playerPhoto(player.handle)} alt={player.handle} loading="lazy" /> : <Avatar label={player.handle} accent={team.accent} />}<i>{selectedForLineup ? <CheckCircle2 size={15} /> : <Plus size={15} />}</i></span>
-                    <span className="manager-lineup-card-name"><small>{selectedForLineup ? "Starting five" : "Reserve"}</small><strong><Flag country={player.country} /> {player.handle}</strong><em>{player.role} / age {player.age ?? "-"}</em></span>
+                    <span className="manager-lineup-card-name"><small>{selectedForLineup ? "Starting five" : "Reserve"}</small><strong><Flag country={player.country} /> {player.handle}</strong><em className="manager-role-label"><PlayerRoleGlyph role={player.role} size={11} /> {player.role} / age {player.age ?? "-"}</em></span>
                     <span className="manager-lineup-card-rating"><b>{player.ovr}</b><small>OVR</small><em>{plan.potentialOvr} POT</em></span>
                   </button>
                 );
@@ -11522,7 +11567,7 @@ function ManagerHomePage({
                 return (
                   <button key={player.id} onClick={() => onOpenPlayer(player, team)}>
                     {photo ? <img src={photo} alt={player.handle} loading="lazy" /> : <Avatar label={player.handle} accent={team.accent} />}
-                    <span><strong><Flag country={player.country} /> {player.handle}</strong><small>{player.role} / age {player.age ?? "-"}</small></span>
+                    <span><strong><Flag country={player.country} /> {player.handle}</strong><small className="manager-role-label"><PlayerRoleGlyph role={player.role} size={11} /> {player.role} / age {player.age ?? "-"}</small></span>
                     <b>{player.ovr}</b>
                     <em>{contract ? `${fmtMoney(contract.monthlySalary)}/mo` : player.style}</em>
                   </button>
