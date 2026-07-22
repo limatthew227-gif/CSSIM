@@ -38,6 +38,12 @@ test("playerValue is convex in OVR (each tier up is worth more than the last)", 
   assert.ok(v90 - v80 > v80 - v70, "convex — upgrades near the top cost more");
 });
 
+test("a young proven superstar commands a multi-million transfer value", () => {
+  const superstar = { ...mk("superstar", "Entry", 99), age: 19, potential: 99, hltvRating: 1.45 };
+  assert.ok(playerValue(superstar) >= 2_000_000);
+  assert.ok(playerValue(superstar) > playerValue(mk("elite", "Entry", 90)) * 2.5);
+});
+
 test("transferDelta is signed: pay for an upgrade, bank the surplus on a downgrade", () => {
   const star = mk("star", "AWP", 90);
   const role = mk("role", "AWP", 75);

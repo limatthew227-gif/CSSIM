@@ -26,6 +26,12 @@ export interface CircuitProgress {
   seasonComplete: boolean;
 }
 
+interface VrsRankable {
+  id: string;
+  rank?: number;
+  vrsPoints?: number;
+}
+
 const placements: Record<PlacementTier, number> = {
   swiss: 0,
   top8: 1,
@@ -178,13 +184,38 @@ export function advanceCircuit(
   };
 }
 
-export function circuitWorldRank(points: number) {
-  return Math.max(1, 32 - Math.floor(Math.max(0, points) / 9));
+// Historical rosters and current teams share one mixed-era VRS table. Points are authoritative; the
+// source rank is only a deterministic tie-breaker when two snapshots carry the same point total.
+export function rankRostersByVrs<T extends VrsRankable>(rosters: readonly T[]): T[] {
+  const ranked = rosters
+    .filter((roster) => Number.isFinite(roster.vrsPoints))
+    .slice()
+    .sort(
+      (a, b) =>
+        (b.vrsPoints ?? 0) - (a.vrsPoints ?? 0) ||
+        (a.rank ?? Number.MAX_SAFE_INTEGER) - (b.rank ?? Number.MAX_SAFE_INTEGER) ||
+        a.id.localeCompare(b.id),
+    );
+  const rankById = new Map(ranked.map((roster, index) => [roster.id, index + 1]));
+  return rosters.map((roster) => {
+    const rank = rankById.get(roster.id);
+    return rank == null ? { ...roster, rank: undefined } : { ...roster, rank };
+  });
+}
+
+export function circuitWorldRank(points: number, rosters: readonly VrsRankable[] = []) {
+  const ranked = rosters.filter((roster) => Number.isFinite(roster.vrsPoints));
+  if (!ranked.length) return Math.max(1, 32 - Math.floor(Math.max(0, points) / 9));
+  const user = { id: "user", vrsPoints: Math.max(0, points) };
+  const table = [...ranked, user].sort(
+    (a, b) => (b.vrsPoints ?? 0) - (a.vrsPoints ?? 0) || a.id.localeCompare(b.id),
+  );
+  return table.findIndex((roster) => roster.id === user.id) + 1;
 }
 
 export function circuitFieldLabel(event: CircuitEvent) {
-  if (event.rankMax >= 90) return `HLTV #${event.rankMin}+ and unranked`;
-  return `HLTV #${event.rankMin}-${event.rankMax}`;
+  if (event.rankMax >= 90) return `VRS #${event.rankMin}+ and unranked`;
+  return `VRS #${event.rankMin}-${event.rankMax}`;
 }
 
 export function circuitQualificationLabel(event: CircuitEvent) {

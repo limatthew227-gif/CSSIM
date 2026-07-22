@@ -43,6 +43,7 @@ export interface FieldTeam {
   players: Player[];
   coach?: Coach;
   rank?: number;
+  vrsPoints?: number;
   trophies?: string[]; // notable titles this roster has won (for the team profile)
 }
 
@@ -209,6 +210,7 @@ export function toFieldTeam(roster: Roster): FieldTeam {
     logo: roster.logo,
     players: roster.players,
     rank: roster.rank,
+    vrsPoints: roster.vrsPoints,
     trophies: roster.trophies,
   };
 }

@@ -362,6 +362,7 @@ export function makeHltvRoster(team: HltvTeamSeed): Roster {
     tagline: `${rankingLabel}${pointsCopy}. OVR is opposition, role, sample-size, recent-form, and team-context adjusted.${team.note ? ` ${team.note}` : ""}`,
     mapPool: maps,
     rank: team.rank,
+    vrsPoints: team.points,
     trophies: team.trophies,
     players: team.players.map((player, index) => {
       const stats = { ...statsFromHltv(player, team), ...player.statOverrides };

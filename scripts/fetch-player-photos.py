@@ -11,8 +11,8 @@ Writes /tmp/photo-map.json (handle -> saved filename) and prints a coverage repo
 
 Prereq — generate the player list this reads (id/handle/team for every roster entry):
   node --import tsx --import ./scripts/register-stub.mjs -e '\
-    import {hltvTop20Rosters} from "./src/hltvTop20.ts"; import {writeFileSync} from "node:fs"; \
-    const rows=[]; hltvTop20Rosters.forEach(r=>r.players.forEach(p=>rows.push({id:p.id,handle:p.handle,real:p.realName,team:r.name,country:p.country}))); \
+    import {hltvTop20Rosters} from "./src/hltvTop20.ts"; import {hltvRanked27To50Rosters} from "./src/hltvRanked27To50.ts"; import {writeFileSync} from "node:fs"; \
+    const rows=[]; [...hltvTop20Rosters,...hltvRanked27To50Rosters].forEach(r=>r.players.forEach(p=>rows.push({id:p.id,handle:p.handle,real:p.realName,team:r.name,country:p.country}))); \
     writeFileSync("/tmp/players.json", JSON.stringify(rows));'
 Then: python3 scripts/fetch-player-photos.py   (LIMIT=N env to test on the first N handles)
 """
@@ -25,6 +25,11 @@ LIMIT = int(os.environ.get("LIMIT", "0"))  # 0 = all
 CTX = ssl.create_default_context()
 CTX.check_hostname = False
 CTX.verify_mode = ssl.CERT_NONE  # python framework install lacks CA bundle; these are public images
+PAGE_TITLE_OVERRIDES = {
+    "Lucky": "Lucky (French player)",
+    "Sonic": "Sonic (South African player)",
+    "z4KR": "Z4kr",
+}
 
 def api_get(params):
     params = {**params, "format": "json"}
@@ -47,15 +52,16 @@ handles = list(by_handle.keys())
 if LIMIT:
     handles = handles[:LIMIT]
 
-# normalized handle title -> handle (MediaWiki capitalises first letter; we match case-insensitively)
-hnorm = {norm_title(h): h for h in handles}
+# normalized page title -> handle (MediaWiki capitalises first letter; we match case-insensitively)
+page_titles = {h: PAGE_TITLE_OVERRIDES.get(h, h) for h in handles}
+hnorm = {norm_title(title): h for h, title in page_titles.items()}
 
 # --- Step 1: wikitext -> infobox image filename ---
 handle_image = {}  # handle -> "File:..."
 for i in range(0, len(handles), 40):
     batch = handles[i:i + 40]
     d = api_get({"action": "query", "prop": "revisions", "rvprop": "content",
-                 "rvslots": "main", "titles": "|".join(batch), "redirects": 1})
+                 "rvslots": "main", "titles": "|".join(page_titles[h] for h in batch), "redirects": 1})
     q = d.get("query", {})
     # map returned/redirected titles back to our handle
     alias = {}

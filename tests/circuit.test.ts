@@ -15,6 +15,7 @@ import {
   normalizeCircuitEventId,
   pickCircuitRosters,
   qualifiesForNextEvent,
+  rankRostersByVrs,
 } from "../src/circuit";
 import type { Roster } from "../src/gameData";
 
@@ -30,7 +31,7 @@ test("MRQ only selects rank 27+ and unranked teams when the pool can fill it", (
   assert.equal(field.length, 16);
   assert.ok(field.every((team) => isCircuitEligible(team, event)));
   assert.ok(field.every((team) => team.rank == null || team.rank >= 27));
-  assert.equal(circuitFieldLabel(event), "HLTV #27+ and unranked");
+  assert.equal(circuitFieldLabel(event), "VRS #27+ and unranked");
   assert.equal(circuitQualificationLabel(event), "Top 8 to Stage 1");
 });
 
@@ -110,4 +111,36 @@ test("Higher-tier events award more points and prize money", () => {
   assert.ok(circuitPointsAward(stage3, "top4") > circuitPointsAward(mrq, "top4"));
   assert.ok(circuitPrize(stage3, "champion") > circuitPrize(mrq, "champion"));
   assert.ok(circuitWorldRank(180) < circuitWorldRank(20));
+});
+
+test("mixed-era VRS points produce one unique ranking table", () => {
+  const ranked = rankRostersByVrs([
+    { ...roster("current-one", 1), vrsPoints: 991 },
+    { ...roster("historical-one", 1), vrsPoints: 930 },
+    { ...roster("current-two", 2), vrsPoints: 712 },
+    { ...roster("historical-two", 2), vrsPoints: 850 },
+  ]);
+
+  assert.deepEqual(
+    ranked.slice().sort((a, b) => (a.rank ?? 99) - (b.rank ?? 99)).map((team) => [team.id, team.rank]),
+    [
+      ["current-one", 1],
+      ["historical-one", 2],
+      ["historical-two", 3],
+      ["current-two", 4],
+    ],
+  );
+  assert.equal(new Set(ranked.map((team) => team.rank)).size, ranked.length);
+});
+
+test("the user team is ranked against the same VRS point table", () => {
+  const field = rankRostersByVrs([
+    { ...roster("one", 1), vrsPoints: 900 },
+    { ...roster("two", 2), vrsPoints: 500 },
+    { ...roster("three", 3), vrsPoints: 100 },
+  ]);
+
+  assert.equal(circuitWorldRank(950, field), 1);
+  assert.equal(circuitWorldRank(700, field), 2);
+  assert.equal(circuitWorldRank(100, field), 4, "equal points still receive a unique deterministic rank");
 });

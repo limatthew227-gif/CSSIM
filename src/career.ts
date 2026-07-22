@@ -20,11 +20,18 @@ const PRIZES: Record<PlacementTier, number> = {
   swiss: 12000,
 };
 
-// A player's transfer value in dollars — convex in OVR so a top star costs far more than a role player
-// (each OVR point near the top is worth more than one near the bottom).
-export function playerValue(player: Player): number {
-  const above = Math.max(0, player.ovr - 50) / 10;
-  return Math.round(Math.pow(above, 2.4) * 8000);
+export type TransferValuationPlayer = Pick<Player, "ovr"> & Partial<Pick<Player, "age" | "potential" | "hltvRating">>;
+
+// Transfer value is deliberately steep at the elite end. A solid tier-two starter can still be
+// attainable, while a young, proven superstar costs several times more than a merely good player.
+export function playerValue(player: TransferValuationPlayer): number {
+  const quality = Math.max(0, player.ovr - 55);
+  const base = 20_000 + quality * quality * 400;
+  const elitePremium = Math.pow(Math.max(0, player.ovr - 84), 2) * 6_500;
+  const provenStarPremium = Math.max(0, (player.hltvRating ?? 1.18) - 1.22) * 1_800_000;
+  const upside = Math.max(0, (player.potential ?? player.ovr) - player.ovr) * 8_000;
+  const ageMultiplier = (player.age ?? 24) <= 21 ? 1.12 : (player.age ?? 24) >= 30 ? 0.88 : 1;
+  return Math.max(25_000, Math.round((base + elitePremium + provenStarPremium + upside) * ageMultiplier / 5_000) * 5_000);
 }
 
 // Signed cost of swapping `outgoing` (your same-role player) for `candidate`:

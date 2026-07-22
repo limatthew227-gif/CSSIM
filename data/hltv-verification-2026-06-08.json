@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-06-15T05:58:53.400Z",
+  "generatedAt": "2026-06-20T19:47:05.404Z",
   "rankingDate": "2026-06-08",
   "sources": {
     "gigobyteHLTV": "https://github.com/gigobyte/HLTV",
@@ -8,24 +8,25 @@
     "renderedFallback": "https://r.jina.ai/http://r.jina.ai/http://"
   },
   "notes": [
-    "gigobyte/HLTV getTeamRanking was attempted but blocked during this run: Access denied | www.hltv.org used Cloudflare to restrict access",
+    "Ranking position/points come from gigobyte/HLTV getTeamRanking.",
     "Lineups, coaches, and current-team-period ratings come from rendered HLTV team pages using a BeautifulSoup-style markdown parse inspired by jparedesDS/hltv-scraper.",
     "HLTV stats/player filter pages returned Cloudflare verification in direct bot requests, so this report does not claim to verify top5/top10/top20 player-filter splits.",
     "The local dataset intentionally includes Natus Vincere 2018 as a historical extra and excludes it from the 2026 top-20 comparison."
   ],
-  "packageRankingError": "Access denied | www.hltv.org used Cloudflare to restrict access",
   "summary": {
     "remoteTopTeams": 20,
     "local2026Teams": 20,
     "historicalExtras": [
-      "Natus Vincere 2018"
+      "Natus Vincere 2018",
+      "Astralis 2018",
+      "Luminosity 2016"
     ],
     "missingTeams": [],
     "extraTeams": [],
     "rankMismatchCount": 0,
-    "playerMismatchCount": 2,
+    "playerMismatchCount": 4,
     "coachMismatchCount": 0,
-    "ratingWarningCount": 0
+    "ratingWarningCount": 1
   },
   "comparisons": [
     {
@@ -57,35 +58,35 @@
           "handle": "apEX",
           "id": 7322,
           "slug": "apex",
-          "mapsPlayed": 1440,
+          "mapsPlayed": 1443,
           "teamPeriodRating3": 1
         },
         {
           "handle": "ZywOo",
           "id": 11893,
           "slug": "zywoo",
-          "mapsPlayed": 1443,
+          "mapsPlayed": 1446,
           "teamPeriodRating3": 1.32
         },
         {
           "handle": "flameZ",
           "id": 16693,
           "slug": "flamez",
-          "mapsPlayed": 502,
+          "mapsPlayed": 505,
           "teamPeriodRating3": 1.14
         },
         {
           "handle": "mezii",
           "id": 18462,
           "slug": "mezii",
-          "mapsPlayed": 449,
-          "teamPeriodRating3": 1.06
+          "mapsPlayed": 452,
+          "teamPeriodRating3": 1.05
         },
         {
           "handle": "ropz",
           "id": 11816,
           "slug": "ropz",
-          "mapsPlayed": 296,
+          "mapsPlayed": 299,
           "teamPeriodRating3": 1.15
         }
       ],
@@ -122,9 +123,9 @@
         },
         {
           "handle": "mezii",
-          "teamPeriodRating3": 1.06,
+          "teamPeriodRating3": 1.05,
           "localHltvRating": 1.06,
-          "difference": 0
+          "difference": 0.01
         },
         {
           "handle": "ropz",
@@ -163,35 +164,35 @@
           "handle": "b1t",
           "id": 18987,
           "slug": "b1t",
-          "mapsPlayed": 871,
+          "mapsPlayed": 874,
           "teamPeriodRating3": 1.12
         },
         {
           "handle": "Aleksib",
           "id": 9816,
           "slug": "aleksib",
-          "mapsPlayed": 508,
+          "mapsPlayed": 511,
           "teamPeriodRating3": 0.93
         },
         {
           "handle": "iM",
           "id": 14759,
           "slug": "im",
-          "mapsPlayed": 508,
+          "mapsPlayed": 511,
           "teamPeriodRating3": 1.1
         },
         {
           "handle": "w0nderful",
           "id": 20127,
           "slug": "w0nderful",
-          "mapsPlayed": 460,
+          "mapsPlayed": 463,
           "teamPeriodRating3": 1.11
         },
         {
           "handle": "makazze",
           "id": 22673,
           "slug": "makazze",
-          "mapsPlayed": 201,
+          "mapsPlayed": 204,
           "teamPeriodRating3": 1.12
         }
       ],
@@ -257,50 +258,8 @@
         "zont1x",
         "donk"
       ],
-      "remoteTeamPagePlayers": [
-        "magixx",
-        "donk",
-        "zont1x",
-        "sh1ro",
-        "tN1R"
-      ],
-      "remoteTeamPagePlayerDetails": [
-        {
-          "handle": "magixx",
-          "id": 18317,
-          "slug": "magixx",
-          "mapsPlayed": 1128,
-          "teamPeriodRating3": 1.05
-        },
-        {
-          "handle": "donk",
-          "id": 21167,
-          "slug": "donk",
-          "mapsPlayed": 513,
-          "teamPeriodRating3": 1.4
-        },
-        {
-          "handle": "zont1x",
-          "id": 20423,
-          "slug": "zont1x",
-          "mapsPlayed": 483,
-          "teamPeriodRating3": 1.09
-        },
-        {
-          "handle": "sh1ro",
-          "id": 16920,
-          "slug": "sh1ro",
-          "mapsPlayed": 398,
-          "teamPeriodRating3": 1.19
-        },
-        {
-          "handle": "tN1R",
-          "id": 19808,
-          "slug": "tn1r",
-          "mapsPlayed": 113,
-          "teamPeriodRating3": 1.03
-        }
-      ],
+      "remoteTeamPagePlayers": [],
+      "remoteTeamPagePlayerDetails": [],
       "localPlayers": [
         "sh1ro",
         "magixx",
@@ -313,38 +272,7 @@
       "remoteCoach": "hally",
       "localCoach": "hally",
       "coachMatches": true,
-      "ratingChecks": [
-        {
-          "handle": "magixx",
-          "teamPeriodRating3": 1.05,
-          "localHltvRating": 1.01,
-          "difference": -0.04
-        },
-        {
-          "handle": "donk",
-          "teamPeriodRating3": 1.4,
-          "localHltvRating": 1.4,
-          "difference": 0
-        },
-        {
-          "handle": "zont1x",
-          "teamPeriodRating3": 1.09,
-          "localHltvRating": 1.03,
-          "difference": -0.06
-        },
-        {
-          "handle": "sh1ro",
-          "teamPeriodRating3": 1.19,
-          "localHltvRating": 1.18,
-          "difference": -0.01
-        },
-        {
-          "handle": "tN1R",
-          "teamPeriodRating3": 1.03,
-          "localHltvRating": 1.09,
-          "difference": 0.06
-        }
-      ]
+      "ratingChecks": []
     },
     {
       "rank": 4,
@@ -363,50 +291,8 @@
         "m0NESY",
         "kyousuke"
       ],
-      "remoteTeamPagePlayers": [
-        "NiKo",
-        "TeSeS",
-        "m0NESY",
-        "kyousuke",
-        "karrigan"
-      ],
-      "remoteTeamPagePlayerDetails": [
-        {
-          "handle": "NiKo",
-          "id": 3741,
-          "slug": "niko",
-          "mapsPlayed": 297,
-          "teamPeriodRating3": 1.13
-        },
-        {
-          "handle": "TeSeS",
-          "id": 12018,
-          "slug": "teses",
-          "mapsPlayed": 297,
-          "teamPeriodRating3": 1.03
-        },
-        {
-          "handle": "m0NESY",
-          "id": 19230,
-          "slug": "m0nesy",
-          "mapsPlayed": 221,
-          "teamPeriodRating3": 1.26
-        },
-        {
-          "handle": "kyousuke",
-          "id": 24177,
-          "slug": "kyousuke",
-          "mapsPlayed": 162,
-          "teamPeriodRating3": 1.16
-        },
-        {
-          "handle": "karrigan",
-          "id": 429,
-          "slug": "karrigan",
-          "mapsPlayed": 41,
-          "teamPeriodRating3": 0.72
-        }
-      ],
+      "remoteTeamPagePlayers": [],
+      "remoteTeamPagePlayerDetails": [],
       "localPlayers": [
         "karrigan",
         "NiKo",
@@ -419,38 +305,7 @@
       "remoteCoach": "zonic",
       "localCoach": "zonic",
       "coachMatches": true,
-      "ratingChecks": [
-        {
-          "handle": "NiKo",
-          "teamPeriodRating3": 1.13,
-          "localHltvRating": 1.13,
-          "difference": 0
-        },
-        {
-          "handle": "TeSeS",
-          "teamPeriodRating3": 1.03,
-          "localHltvRating": 1.03,
-          "difference": 0
-        },
-        {
-          "handle": "m0NESY",
-          "teamPeriodRating3": 1.26,
-          "localHltvRating": 1.26,
-          "difference": 0
-        },
-        {
-          "handle": "kyousuke",
-          "teamPeriodRating3": 1.16,
-          "localHltvRating": 1.16,
-          "difference": 0
-        },
-        {
-          "handle": "karrigan",
-          "teamPeriodRating3": 0.72,
-          "localHltvRating": 0.72,
-          "difference": 0
-        }
-      ]
+      "ratingChecks": []
     },
     {
       "rank": 5,
@@ -514,36 +369,36 @@
           "handle": "MAJ3R",
           "id": 150,
           "slug": "maj3r",
-          "mapsPlayed": 245,
+          "mapsPlayed": 249,
           "teamPeriodRating3": 0.89
         },
         {
           "handle": "Wicadia",
           "id": 21243,
           "slug": "wicadia",
-          "mapsPlayed": 245,
+          "mapsPlayed": 249,
           "teamPeriodRating3": 1.13
         },
         {
           "handle": "woxic",
           "id": 8574,
           "slug": "woxic",
-          "mapsPlayed": 245,
+          "mapsPlayed": 249,
           "teamPeriodRating3": 1.05
         },
         {
           "handle": "XANTARES",
           "id": 7938,
           "slug": "xantares",
-          "mapsPlayed": 239,
+          "mapsPlayed": 243,
           "teamPeriodRating3": 1.15
         },
         {
           "handle": "soulfly",
           "id": 20968,
           "slug": "soulfly",
-          "mapsPlayed": 107,
-          "teamPeriodRating3": 1.02
+          "mapsPlayed": 111,
+          "teamPeriodRating3": 1.01
         }
       ],
       "localPlayers": [
@@ -585,9 +440,9 @@
         },
         {
           "handle": "soulfly",
-          "teamPeriodRating3": 1.02,
+          "teamPeriodRating3": 1.01,
           "localHltvRating": 1.01,
-          "difference": -0.01
+          "difference": 0
         }
       ]
     },
@@ -706,7 +561,6 @@
         "dumau",
         "latto",
         "saadzin",
-        "n1ssim",
         "arT"
       ],
       "remoteTeamPagePlayerDetails": [
@@ -732,13 +586,6 @@
           "teamPeriodRating3": 1.09
         },
         {
-          "handle": "n1ssim",
-          "id": 19686,
-          "slug": "n1ssim",
-          "mapsPlayed": 354,
-          "teamPeriodRating3": 1.02
-        },
-        {
           "handle": "arT",
           "id": 12521,
           "slug": "art",
@@ -754,7 +601,9 @@
         "saadzin"
       ],
       "missingLocalPlayers": [],
-      "extraLocalPlayers": [],
+      "extraLocalPlayers": [
+        "n1ssim"
+      ],
       "remoteCoach": "adrrr",
       "localCoach": "adrrr",
       "coachMatches": true,
@@ -775,12 +624,6 @@
           "handle": "saadzin",
           "teamPeriodRating3": 1.09,
           "localHltvRating": 1.09,
-          "difference": 0
-        },
-        {
-          "handle": "n1ssim",
-          "teamPeriodRating3": 1.02,
-          "localHltvRating": 1.02,
           "difference": 0
         },
         {
@@ -808,50 +651,8 @@
         "910",
         "cobrazera"
       ],
-      "remoteTeamPagePlayers": [
-        "bLitz",
-        "Techno",
-        "910",
-        "mzinho",
-        "cobrazera"
-      ],
-      "remoteTeamPagePlayerDetails": [
-        {
-          "handle": "bLitz",
-          "id": 20194,
-          "slug": "blitz",
-          "mapsPlayed": 599,
-          "teamPeriodRating3": 1.08
-        },
-        {
-          "handle": "Techno",
-          "id": 20275,
-          "slug": "techno",
-          "mapsPlayed": 599,
-          "teamPeriodRating3": 1.02
-        },
-        {
-          "handle": "910",
-          "id": 21809,
-          "slug": "910",
-          "mapsPlayed": 570,
-          "teamPeriodRating3": 1.12
-        },
-        {
-          "handle": "mzinho",
-          "id": 21001,
-          "slug": "mzinho",
-          "mapsPlayed": 570,
-          "teamPeriodRating3": 1.05
-        },
-        {
-          "handle": "cobrazera",
-          "id": 23402,
-          "slug": "cobrazera",
-          "mapsPlayed": 94,
-          "teamPeriodRating3": 1.02
-        }
-      ],
+      "remoteTeamPagePlayers": [],
+      "remoteTeamPagePlayerDetails": [],
       "localPlayers": [
         "bLitz",
         "Techno",
@@ -864,38 +665,7 @@
       "remoteCoach": "maaRaa",
       "localCoach": "maaRaa",
       "coachMatches": true,
-      "ratingChecks": [
-        {
-          "handle": "bLitz",
-          "teamPeriodRating3": 1.08,
-          "localHltvRating": 1.08,
-          "difference": 0
-        },
-        {
-          "handle": "Techno",
-          "teamPeriodRating3": 1.02,
-          "localHltvRating": 1.02,
-          "difference": 0
-        },
-        {
-          "handle": "910",
-          "teamPeriodRating3": 1.12,
-          "localHltvRating": 1.12,
-          "difference": 0
-        },
-        {
-          "handle": "mzinho",
-          "teamPeriodRating3": 1.05,
-          "localHltvRating": 1.05,
-          "difference": 0
-        },
-        {
-          "handle": "cobrazera",
-          "teamPeriodRating3": 1.02,
-          "localHltvRating": 1.02,
-          "difference": 0
-        }
-      ]
+      "ratingChecks": []
     },
     {
       "rank": 10,
@@ -915,33 +685,19 @@
         "zweih"
       ],
       "remoteTeamPagePlayers": [
-        "BELCHONOKK",
         "Jame",
-        "nota",
         "xiELO",
-        "zweih"
+        "zweih",
+        "HObbit",
+        "slaxejezzz"
       ],
       "remoteTeamPagePlayerDetails": [
-        {
-          "handle": "BELCHONOKK",
-          "id": 19235,
-          "slug": "belchonokk",
-          "mapsPlayed": 598,
-          "teamPeriodRating3": 1.07
-        },
         {
           "handle": "Jame",
           "id": 13776,
           "slug": "jame",
           "mapsPlayed": 447,
           "teamPeriodRating3": 1.13
-        },
-        {
-          "handle": "nota",
-          "id": 22929,
-          "slug": "nota",
-          "mapsPlayed": 447,
-          "teamPeriodRating3": 1.04
         },
         {
           "handle": "xiELO",
@@ -956,6 +712,18 @@
           "slug": "zweih",
           "mapsPlayed": 108,
           "teamPeriodRating3": 1.07
+        },
+        {
+          "handle": "HObbit",
+          "id": 8528,
+          "slug": "hobbit",
+          "mapsPlayed": 0
+        },
+        {
+          "handle": "slaxejezzz",
+          "id": 24807,
+          "slug": "slaxejezzz",
+          "mapsPlayed": 0
         }
       ],
       "localPlayers": [
@@ -965,28 +733,22 @@
         "nota",
         "zweih"
       ],
-      "missingLocalPlayers": [],
-      "extraLocalPlayers": [],
+      "missingLocalPlayers": [
+        "hobbit",
+        "slaxejezzz"
+      ],
+      "extraLocalPlayers": [
+        "belchonokk",
+        "nota"
+      ],
       "remoteCoach": "dastan",
       "localCoach": "dastan",
       "coachMatches": true,
       "ratingChecks": [
         {
-          "handle": "BELCHONOKK",
-          "teamPeriodRating3": 1.07,
-          "localHltvRating": 1.07,
-          "difference": 0
-        },
-        {
           "handle": "Jame",
           "teamPeriodRating3": 1.13,
           "localHltvRating": 1.13,
-          "difference": 0
-        },
-        {
-          "handle": "nota",
-          "teamPeriodRating3": 1.04,
-          "localHltvRating": 1.04,
           "difference": 0
         },
         {
@@ -1000,6 +762,12 @@
           "teamPeriodRating3": 1.07,
           "localHltvRating": 1.08,
           "difference": 0.01
+        },
+        {
+          "handle": "HObbit"
+        },
+        {
+          "handle": "slaxejezzz"
         }
       ]
     },
@@ -1020,8 +788,50 @@
         "PR",
         "hypex"
       ],
-      "remoteTeamPagePlayers": [],
-      "remoteTeamPagePlayerDetails": [],
+      "remoteTeamPagePlayers": [
+        "Tauson",
+        "PR",
+        "REZ",
+        "hypex",
+        "Snax"
+      ],
+      "remoteTeamPagePlayerDetails": [
+        {
+          "handle": "Tauson",
+          "id": 20301,
+          "slug": "tauson",
+          "mapsPlayed": 333,
+          "teamPeriodRating3": 1.03
+        },
+        {
+          "handle": "PR",
+          "id": 22279,
+          "slug": "pr",
+          "mapsPlayed": 271,
+          "teamPeriodRating3": 1.1
+        },
+        {
+          "handle": "REZ",
+          "id": 9278,
+          "slug": "rez",
+          "mapsPlayed": 282,
+          "teamPeriodRating3": 1.12
+        },
+        {
+          "handle": "hypex",
+          "id": 23766,
+          "slug": "hypex",
+          "mapsPlayed": 146,
+          "teamPeriodRating3": 1.02
+        },
+        {
+          "handle": "Snax",
+          "id": 2553,
+          "slug": "snax",
+          "mapsPlayed": 100,
+          "teamPeriodRating3": 0.89
+        }
+      ],
       "localPlayers": [
         "Snax",
         "REZ",
@@ -1034,7 +844,38 @@
       "remoteCoach": "imd",
       "localCoach": "imd",
       "coachMatches": true,
-      "ratingChecks": []
+      "ratingChecks": [
+        {
+          "handle": "Tauson",
+          "teamPeriodRating3": 1.03,
+          "localHltvRating": 1.03,
+          "difference": 0
+        },
+        {
+          "handle": "PR",
+          "teamPeriodRating3": 1.1,
+          "localHltvRating": 1.1,
+          "difference": 0
+        },
+        {
+          "handle": "REZ",
+          "teamPeriodRating3": 1.12,
+          "localHltvRating": 1.12,
+          "difference": 0
+        },
+        {
+          "handle": "hypex",
+          "teamPeriodRating3": 1.02,
+          "localHltvRating": 1.02,
+          "difference": 0
+        },
+        {
+          "handle": "Snax",
+          "teamPeriodRating3": 0.89,
+          "localHltvRating": 0.89,
+          "difference": 0
+        }
+      ]
     },
     {
       "rank": 12,
@@ -1053,8 +894,50 @@
         "Staehr",
         "ryu"
       ],
-      "remoteTeamPagePlayers": [],
-      "remoteTeamPagePlayerDetails": [],
+      "remoteTeamPagePlayers": [
+        "Staehr",
+        "jabbi",
+        "HooXi",
+        "phzy",
+        "ryu"
+      ],
+      "remoteTeamPagePlayerDetails": [
+        {
+          "handle": "Staehr",
+          "id": 20304,
+          "slug": "staehr",
+          "mapsPlayed": 506,
+          "teamPeriodRating3": 1.08
+        },
+        {
+          "handle": "jabbi",
+          "id": 17956,
+          "slug": "jabbi",
+          "mapsPlayed": 447,
+          "teamPeriodRating3": 1.06
+        },
+        {
+          "handle": "HooXi",
+          "id": 10096,
+          "slug": "hooxi",
+          "mapsPlayed": 198,
+          "teamPeriodRating3": 0.89
+        },
+        {
+          "handle": "phzy",
+          "id": 16726,
+          "slug": "phzy",
+          "mapsPlayed": 98,
+          "teamPeriodRating3": 1.07
+        },
+        {
+          "handle": "ryu",
+          "id": 21217,
+          "slug": "ryu",
+          "mapsPlayed": 98,
+          "teamPeriodRating3": 1.01
+        }
+      ],
       "localPlayers": [
         "HooXi",
         "phzy",
@@ -1064,10 +947,39 @@
       ],
       "missingLocalPlayers": [],
       "extraLocalPlayers": [],
-      "remoteCoach": "ruggah",
       "localCoach": "ruggah",
-      "coachMatches": true,
-      "ratingChecks": []
+      "ratingChecks": [
+        {
+          "handle": "Staehr",
+          "teamPeriodRating3": 1.08,
+          "localHltvRating": 1.1,
+          "difference": 0.02
+        },
+        {
+          "handle": "jabbi",
+          "teamPeriodRating3": 1.06,
+          "localHltvRating": 1.08,
+          "difference": 0.02
+        },
+        {
+          "handle": "HooXi",
+          "teamPeriodRating3": 0.89,
+          "localHltvRating": 0.88,
+          "difference": -0.01
+        },
+        {
+          "handle": "phzy",
+          "teamPeriodRating3": 1.07,
+          "localHltvRating": 1.05,
+          "difference": -0.02
+        },
+        {
+          "handle": "ryu",
+          "teamPeriodRating3": 1.01,
+          "localHltvRating": 1.01,
+          "difference": 0
+        }
+      ]
     },
     {
       "rank": 13,
@@ -1098,36 +1010,36 @@
           "handle": "huNter-",
           "id": 3972,
           "slug": "hunter",
-          "mapsPlayed": 1189,
+          "mapsPlayed": 1195,
           "teamPeriodRating3": 1.1
         },
         {
           "handle": "HeavyGod",
           "id": 20447,
           "slug": "heavygod",
-          "mapsPlayed": 297,
+          "mapsPlayed": 303,
           "teamPeriodRating3": 1.15
         },
         {
           "handle": "MATYS",
           "id": 21062,
           "slug": "matys",
-          "mapsPlayed": 209,
+          "mapsPlayed": 215,
           "teamPeriodRating3": 1.09
         },
         {
           "handle": "SunPayus",
           "id": 19164,
           "slug": "sunpayus",
-          "mapsPlayed": 209,
+          "mapsPlayed": 215,
           "teamPeriodRating3": 1.05
         },
         {
           "handle": "NertZ",
           "id": 9436,
           "slug": "nertz",
-          "mapsPlayed": 74,
-          "teamPeriodRating3": 1.09
+          "mapsPlayed": 80,
+          "teamPeriodRating3": 1.07
         }
       ],
       "localPlayers": [
@@ -1152,8 +1064,8 @@
         {
           "handle": "HeavyGod",
           "teamPeriodRating3": 1.15,
-          "localHltvRating": 1.08,
-          "difference": -0.07
+          "localHltvRating": 1.16,
+          "difference": 0.01
         },
         {
           "handle": "MATYS",
@@ -1169,9 +1081,9 @@
         },
         {
           "handle": "NertZ",
-          "teamPeriodRating3": 1.09,
+          "teamPeriodRating3": 1.07,
           "localHltvRating": 1.15,
-          "difference": 0.06
+          "difference": 0.08
         }
       ]
     },
@@ -1204,35 +1116,35 @@
           "handle": "cmtry",
           "id": 22674,
           "slug": "cmtry",
-          "mapsPlayed": 237,
+          "mapsPlayed": 239,
           "teamPeriodRating3": 1.03
         },
         {
           "handle": "dem0n",
           "id": 20584,
           "slug": "dem0n",
-          "mapsPlayed": 237,
+          "mapsPlayed": 239,
           "teamPeriodRating3": 1.11
         },
         {
           "handle": "dziugss",
           "id": 23553,
           "slug": "dziugss",
-          "mapsPlayed": 236,
+          "mapsPlayed": 238,
           "teamPeriodRating3": 1.11
         },
         {
           "handle": "Krabeni",
           "id": 22203,
           "slug": "krabeni",
-          "mapsPlayed": 237,
+          "mapsPlayed": 239,
           "teamPeriodRating3": 1.04
         },
         {
           "handle": "lauNX",
           "id": 20761,
           "slug": "launx",
-          "mapsPlayed": 212,
+          "mapsPlayed": 214,
           "teamPeriodRating3": 1.1
         }
       ],
@@ -1298,50 +1210,8 @@
         "esenthial",
         "s1zzi"
       ],
-      "remoteTeamPagePlayers": [
-        "npl",
-        "esenthial",
-        "alex666",
-        "kensizor",
-        "s1zzi"
-      ],
-      "remoteTeamPagePlayerDetails": [
-        {
-          "handle": "npl",
-          "id": 21708,
-          "slug": "npl",
-          "mapsPlayed": 774,
-          "teamPeriodRating3": 1.16
-        },
-        {
-          "handle": "esenthial",
-          "id": 23643,
-          "slug": "esenthial",
-          "mapsPlayed": 647,
-          "teamPeriodRating3": 0.98
-        },
-        {
-          "handle": "alex666",
-          "id": 20112,
-          "slug": "alex666",
-          "mapsPlayed": 590,
-          "teamPeriodRating3": 1.04
-        },
-        {
-          "handle": "kensizor",
-          "id": 22842,
-          "slug": "kensizor",
-          "mapsPlayed": 326,
-          "teamPeriodRating3": 1.03
-        },
-        {
-          "handle": "s1zzi",
-          "id": 25619,
-          "slug": "s1zzi",
-          "mapsPlayed": 107,
-          "teamPeriodRating3": 0.99
-        }
-      ],
+      "remoteTeamPagePlayers": [],
+      "remoteTeamPagePlayerDetails": [],
       "localPlayers": [
         "alex666",
         "npl",
@@ -1354,38 +1224,7 @@
       "remoteCoach": "maddened",
       "localCoach": "maddened",
       "coachMatches": true,
-      "ratingChecks": [
-        {
-          "handle": "npl",
-          "teamPeriodRating3": 1.16,
-          "localHltvRating": 1.16,
-          "difference": 0
-        },
-        {
-          "handle": "esenthial",
-          "teamPeriodRating3": 0.98,
-          "localHltvRating": 0.98,
-          "difference": 0
-        },
-        {
-          "handle": "alex666",
-          "teamPeriodRating3": 1.04,
-          "localHltvRating": 1.04,
-          "difference": 0
-        },
-        {
-          "handle": "kensizor",
-          "teamPeriodRating3": 1.03,
-          "localHltvRating": 1.03,
-          "difference": 0
-        },
-        {
-          "handle": "s1zzi",
-          "teamPeriodRating3": 0.99,
-          "localHltvRating": 0.99,
-          "difference": 0
-        }
-      ]
+      "ratingChecks": []
     },
     {
       "rank": 16,
@@ -1517,29 +1356,29 @@
           "handle": "Magnojez",
           "id": 21667,
           "slug": "magnojez",
-          "mapsPlayed": 603,
+          "mapsPlayed": 607,
           "teamPeriodRating3": 1.16
         },
         {
           "handle": "Boombl4",
           "id": 11840,
           "slug": "boombl4",
-          "mapsPlayed": 413,
+          "mapsPlayed": 417,
           "teamPeriodRating3": 0.98
         },
         {
           "handle": "d1Ledez",
           "id": 20357,
           "slug": "d1ledez",
-          "mapsPlayed": 239,
-          "teamPeriodRating3": 1.1
+          "mapsPlayed": 243,
+          "teamPeriodRating3": 1.09
         },
         {
           "handle": "zorte",
           "id": 15662,
           "slug": "zorte",
-          "mapsPlayed": 35,
-          "teamPeriodRating3": 0.95
+          "mapsPlayed": 39,
+          "teamPeriodRating3": 0.96
         }
       ],
       "localPlayers": [
@@ -1575,15 +1414,15 @@
         },
         {
           "handle": "d1Ledez",
-          "teamPeriodRating3": 1.1,
+          "teamPeriodRating3": 1.09,
           "localHltvRating": 1.1,
-          "difference": 0
+          "difference": 0.01
         },
         {
           "handle": "zorte",
-          "teamPeriodRating3": 0.95,
+          "teamPeriodRating3": 0.96,
           "localHltvRating": 0.98,
-          "difference": 0.03
+          "difference": 0.02
         }
       ]
     },
@@ -1743,8 +1582,50 @@
         "venomzera",
         "kl1m"
       ],
-      "remoteTeamPagePlayers": [],
-      "remoteTeamPagePlayerDetails": [],
+      "remoteTeamPagePlayers": [
+        "brnz4n",
+        "insani",
+        "kl1m",
+        "LNZ",
+        "venomzera"
+      ],
+      "remoteTeamPagePlayerDetails": [
+        {
+          "handle": "brnz4n",
+          "id": 20987,
+          "slug": "brnz4n",
+          "mapsPlayed": 792,
+          "teamPeriodRating3": 1.08
+        },
+        {
+          "handle": "insani",
+          "id": 21037,
+          "slug": "insani",
+          "mapsPlayed": 736,
+          "teamPeriodRating3": 1.2
+        },
+        {
+          "handle": "kl1m",
+          "id": 23192,
+          "slug": "kl1m",
+          "mapsPlayed": 159,
+          "teamPeriodRating3": 1.23
+        },
+        {
+          "handle": "LNZ",
+          "id": 19310,
+          "slug": "lnz",
+          "mapsPlayed": 111,
+          "teamPeriodRating3": 1.02
+        },
+        {
+          "handle": "venomzera",
+          "id": 21288,
+          "slug": "venomzera",
+          "mapsPlayed": 111,
+          "teamPeriodRating3": 1.06
+        }
+      ],
       "localPlayers": [
         "LNZ",
         "brnz4n",
@@ -1757,7 +1638,38 @@
       "remoteCoach": "LETN1",
       "localCoach": "LETN1",
       "coachMatches": true,
-      "ratingChecks": []
+      "ratingChecks": [
+        {
+          "handle": "brnz4n",
+          "teamPeriodRating3": 1.08,
+          "localHltvRating": 1.08,
+          "difference": 0
+        },
+        {
+          "handle": "insani",
+          "teamPeriodRating3": 1.2,
+          "localHltvRating": 1.2,
+          "difference": 0
+        },
+        {
+          "handle": "kl1m",
+          "teamPeriodRating3": 1.23,
+          "localHltvRating": 1.23,
+          "difference": 0
+        },
+        {
+          "handle": "LNZ",
+          "teamPeriodRating3": 1.02,
+          "localHltvRating": 1.02,
+          "difference": 0
+        },
+        {
+          "handle": "venomzera",
+          "teamPeriodRating3": 1.06,
+          "localHltvRating": 1.06,
+          "difference": 0
+        }
+      ]
     }
   ],
   "rankMismatches": [],
@@ -1857,6 +1769,204 @@
       ]
     },
     {
+      "rank": 8,
+      "name": "Legacy",
+      "hltvId": 12468,
+      "points": 297,
+      "localFound": true,
+      "localRank": 8,
+      "localPoints": 297,
+      "rankMatches": true,
+      "pointsMatch": true,
+      "remoteRankingPlayers": [
+        "arT",
+        "dumau",
+        "latto",
+        "n1ssim",
+        "saadzin"
+      ],
+      "remoteTeamPagePlayers": [
+        "dumau",
+        "latto",
+        "saadzin",
+        "arT"
+      ],
+      "remoteTeamPagePlayerDetails": [
+        {
+          "handle": "dumau",
+          "id": 15698,
+          "slug": "dumau",
+          "mapsPlayed": 609,
+          "teamPeriodRating3": 1.19
+        },
+        {
+          "handle": "latto",
+          "id": 19045,
+          "slug": "latto",
+          "mapsPlayed": 609,
+          "teamPeriodRating3": 1.18
+        },
+        {
+          "handle": "saadzin",
+          "id": 22965,
+          "slug": "saadzin",
+          "mapsPlayed": 500,
+          "teamPeriodRating3": 1.09
+        },
+        {
+          "handle": "arT",
+          "id": 12521,
+          "slug": "art",
+          "mapsPlayed": 105,
+          "teamPeriodRating3": 0.97
+        }
+      ],
+      "localPlayers": [
+        "arT",
+        "dumau",
+        "latto",
+        "n1ssim",
+        "saadzin"
+      ],
+      "missingLocalPlayers": [],
+      "extraLocalPlayers": [
+        "n1ssim"
+      ],
+      "remoteCoach": "adrrr",
+      "localCoach": "adrrr",
+      "coachMatches": true,
+      "ratingChecks": [
+        {
+          "handle": "dumau",
+          "teamPeriodRating3": 1.19,
+          "localHltvRating": 1.19,
+          "difference": 0
+        },
+        {
+          "handle": "latto",
+          "teamPeriodRating3": 1.18,
+          "localHltvRating": 1.18,
+          "difference": 0
+        },
+        {
+          "handle": "saadzin",
+          "teamPeriodRating3": 1.09,
+          "localHltvRating": 1.09,
+          "difference": 0
+        },
+        {
+          "handle": "arT",
+          "teamPeriodRating3": 0.97,
+          "localHltvRating": 0.98,
+          "difference": 0.01
+        }
+      ]
+    },
+    {
+      "rank": 10,
+      "name": "PARIVISION",
+      "hltvId": 12467,
+      "points": 259,
+      "localFound": true,
+      "localRank": 10,
+      "localPoints": 259,
+      "rankMatches": true,
+      "pointsMatch": true,
+      "remoteRankingPlayers": [
+        "Jame",
+        "BELCHONOKK",
+        "xiELO",
+        "nota",
+        "zweih"
+      ],
+      "remoteTeamPagePlayers": [
+        "Jame",
+        "xiELO",
+        "zweih",
+        "HObbit",
+        "slaxejezzz"
+      ],
+      "remoteTeamPagePlayerDetails": [
+        {
+          "handle": "Jame",
+          "id": 13776,
+          "slug": "jame",
+          "mapsPlayed": 447,
+          "teamPeriodRating3": 1.13
+        },
+        {
+          "handle": "xiELO",
+          "id": 22471,
+          "slug": "xielo",
+          "mapsPlayed": 252,
+          "teamPeriodRating3": 1.06
+        },
+        {
+          "handle": "zweih",
+          "id": 23685,
+          "slug": "zweih",
+          "mapsPlayed": 108,
+          "teamPeriodRating3": 1.07
+        },
+        {
+          "handle": "HObbit",
+          "id": 8528,
+          "slug": "hobbit",
+          "mapsPlayed": 0
+        },
+        {
+          "handle": "slaxejezzz",
+          "id": 24807,
+          "slug": "slaxejezzz",
+          "mapsPlayed": 0
+        }
+      ],
+      "localPlayers": [
+        "Jame",
+        "BELCHONOKK",
+        "xiELO",
+        "nota",
+        "zweih"
+      ],
+      "missingLocalPlayers": [
+        "hobbit",
+        "slaxejezzz"
+      ],
+      "extraLocalPlayers": [
+        "belchonokk",
+        "nota"
+      ],
+      "remoteCoach": "dastan",
+      "localCoach": "dastan",
+      "coachMatches": true,
+      "ratingChecks": [
+        {
+          "handle": "Jame",
+          "teamPeriodRating3": 1.13,
+          "localHltvRating": 1.13,
+          "difference": 0
+        },
+        {
+          "handle": "xiELO",
+          "teamPeriodRating3": 1.06,
+          "localHltvRating": 1.06,
+          "difference": 0
+        },
+        {
+          "handle": "zweih",
+          "teamPeriodRating3": 1.07,
+          "localHltvRating": 1.08,
+          "difference": 0.01
+        },
+        {
+          "handle": "HObbit"
+        },
+        {
+          "handle": "slaxejezzz"
+        }
+      ]
+    },
+    {
       "rank": 16,
       "name": "FaZe",
       "hltvId": 6667,
@@ -1952,5 +2062,13 @@
     }
   ],
   "coachMismatches": [],
-  "ratingWarnings": []
+  "ratingWarnings": [
+    {
+      "team": "G2",
+      "handle": "NertZ",
+      "teamPeriodRating3": 1.07,
+      "localHltvRating": 1.15,
+      "difference": 0.08
+    }
+  ]
 }
