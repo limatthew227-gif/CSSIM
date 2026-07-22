@@ -4802,11 +4802,11 @@ function App() {
               </div>
               <span className="live-score-value">
                 <FactionBadge side={match.side} compact label={false} />
-                <b className={match.side === "CT" ? "ct-team" : "t-team"}>{match.you}</b>
+                <AnimatedLiveScore value={match.you} className={match.side === "CT" ? "ct-team" : "t-team"} />
               </span>
               <span className="live-score-divider">:</span>
               <span className="live-score-value right">
-                <b className={match.side === "CT" ? "t-team" : "ct-team"}>{match.opponent}</b>
+                <AnimatedLiveScore value={match.opponent} className={match.side === "CT" ? "t-team" : "ct-team"} />
                 <FactionBadge side={match.side === "CT" ? "T" : "CT"} compact label={false} />
               </span>
               <small>{series ? `${seriesMapScore(series)} / ` : ""}{match.running ? "live" : "paused"} / round {Math.min(match.round, 30)} / {match.side}</small>
@@ -5800,6 +5800,23 @@ function StatCell({ value }: { value: number }) {
 
 function formatSignedWhole(value: number) {
   return `${value > 0 ? "+" : ""}${value}`;
+}
+
+function AnimatedLiveScore({ value, className }: { value: number; className: string }) {
+  const previousValue = useRef(value);
+  const [revision, setRevision] = useState(0);
+
+  useEffect(() => {
+    if (previousValue.current === value) return;
+    previousValue.current = value;
+    setRevision((current) => current + 1);
+  }, [value]);
+
+  return (
+    <b className={className} aria-live="polite" aria-atomic="true">
+      <span key={revision} className={revision > 0 ? "live-score-tick" : undefined}>{value}</span>
+    </b>
+  );
 }
 
 function FactionBadge({ side, compact = false, label = true }: { side: "CT" | "T"; compact?: boolean; label?: boolean }) {
