@@ -1340,7 +1340,11 @@ function App() {
   const strength = strengthBreakdown.total;
   const opponentStrength = opponentStrengthBreakdown.total;
   const paperEdge = strength - opponentStrength;
-  const resultMapResults = match && series ? [...series.mapResults, mapResultFromState(match.map, match, series.left, series.right)] : [];
+  const resultMapResults = match
+    ? series
+      ? [...series.mapResults, mapResultFromState(match.map, match, series.left, series.right)]
+      : [mapResultFromState(match.map, match, yourTeam, opponent)]
+    : [];
   const resultMaps = resultMapResults.length ? resultMapResults.map((item) => item.map) : match ? [match.map] : [];
   const totalYourMoney = match?.yourMoney ? Object.values(match.yourMoney).reduce((sum, val) => sum + val, 0) : 0;
   const totalOpponentMoney = match?.opponentMoney ? Object.values(match.opponentMoney).reduce((sum, val) => sum + val, 0) : 0;
@@ -4776,14 +4780,14 @@ function App() {
           </section>
           <section className="score-hero live-scoreboard">
             <img
-              className="live-scoreboard-map-art"
+              className="scoreboard-map-art"
               src={mapArtImages[match.map]}
               alt=""
               aria-hidden="true"
             />
             <TeamPlate team={yourTeam} />
             <div className="score">
-              <div className="live-map-identity">
+              <div className="score-map-identity">
                 <Crosshair size={12} />
                 <em>Map {(series?.currentMapIndex ?? 0) + 1}</em>
                 <strong>{mapName(match.map)}</strong>
@@ -5020,12 +5024,23 @@ function App() {
       {screen === "result" && match && (
         <main className="layout result-layout">
           <section className="score-hero result">
+            <img
+              className="scoreboard-map-art"
+              src={mapArtImages[match.map]}
+              alt=""
+              aria-hidden="true"
+            />
             <TeamPlate team={yourTeam} />
             <div className="score">
+              <div className="score-map-identity">
+                <Crosshair size={12} />
+                <em>Final</em>
+                <strong>{mapName(match.map)}</strong>
+              </div>
               <b className={match.side === "CT" ? "t-team" : "ct-team"}>{match.you}</b>
               <span>:</span>
               <b className={match.side === "CT" ? "ct-team" : "t-team"}>{match.opponent}</b>
-              <small>{series ? `${seriesMapScoreAfterCurrent(series, match)} / ` : ""}{mapName(match.map)} final</small>
+              <small>{series ? `${seriesMapScoreAfterCurrent(series, match)} / ` : ""}match complete</small>
             </div>
             <TeamPlate team={opponent} align="right" />
           </section>
@@ -5036,6 +5051,7 @@ function App() {
               {series && !seriesIsDone({ ...series, mapResults: [...series.mapResults, mapResultFromState(match.map, match, yourTeam, opponent)] }) ? "Next map" : "Continue"}
             </button>
           </div>
+          <ResultMapArtwork maps={resultMapResults} left={yourTeam} right={opponent} />
           <MatchStatsPanel
             maps={resultMaps}
             mapResults={resultMapResults}
@@ -13892,6 +13908,40 @@ function TeamStageMatches({ team, games, onOpenSeries }: { team: FieldTeam; game
   );
 }
 
+function ResultMapArtwork({ maps, left, right }: { maps: SeriesMapResult[]; left: FieldTeam; right: FieldTeam }) {
+  return (
+    <section className={`result-map-artwork${maps.length === 1 ? " single" : ""}`} aria-label="Map results">
+      {maps.map((map, index) => {
+        const winner = map.winnerId === left.id ? left : right;
+        return (
+          <article className="result-map-art-card" key={`${map.map}-${index}`}>
+            <img src={mapArtImages[map.map]} alt="" aria-hidden="true" />
+            <div className="result-map-art-head">
+              <span>Map {index + 1}</span>
+              <strong>{mapName(map.map)}</strong>
+            </div>
+            <div className="result-map-scoreline">
+              <span className={map.winnerId === left.id ? "winner" : ""}>
+                <small>{left.tag}</small>
+                <b>{map.leftScore}</b>
+              </span>
+              <em>:</em>
+              <span className={map.winnerId === right.id ? "winner" : ""}>
+                <b>{map.rightScore}</b>
+                <small>{right.tag}</small>
+              </span>
+            </div>
+            <div className="result-map-winner">
+              <Trophy size={13} />
+              <span>{winner.name}</span>
+            </div>
+          </article>
+        );
+      })}
+    </section>
+  );
+}
+
 function RunResultsPage({
   results,
   eventName,
@@ -13952,8 +14002,10 @@ function RunResultsPage({
               </div>
               <div className="series-map-pills">
                 {result.maps.map((map, index) => (
-                  <span key={`${result.id}-${map.map}-${index}`}>
-                    {mapName(map.map)} {map.leftScore}:{map.rightScore}
+                  <span className="series-map-pill-art" key={`${result.id}-${map.map}-${index}`}>
+                    <img src={mapArtImages[map.map]} alt="" aria-hidden="true" />
+                    <b>{mapName(map.map)}</b>
+                    {map.leftScore}:{map.rightScore}
                   </span>
                 ))}
               </div>
@@ -14049,15 +14101,7 @@ function SeriesDetailPage({
         </button>
       </section>
 
-      <section className="series-map-summary">
-        {result.maps.map((map, index) => (
-          <span key={`${result.id}-detail-${map.map}-${index}`}>
-            <b>{mapName(map.map)}</b>
-            {map.leftScore}:{map.rightScore}
-            {map.eventLog && <small>{map.eventLog.events.length} events</small>}
-          </span>
-        ))}
-      </section>
+      <ResultMapArtwork maps={result.maps} left={result.left} right={result.right} />
 
       <MatchStatsPanel
         maps={result.maps.map((map) => map.map)}

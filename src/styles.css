@@ -2948,13 +2948,24 @@ button.outcome-team:hover {
 }
 
 .result-layout .score-hero.result {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
   grid-template-columns: minmax(0, 1fr) 160px minmax(0, 1fr);
-  min-height: 92px;
+  min-height: 112px;
   margin-bottom: 10px;
   padding: 10px 14px;
+  background: #181c22;
+}
+
+.result-layout .score-hero.result::before {
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  content: "";
   background:
-    linear-gradient(90deg, rgba(101, 167, 255, 0.1), transparent 44%, rgba(236, 106, 106, 0.11)),
-    #181c22;
+    linear-gradient(90deg, rgba(16, 20, 25, 0.97), rgba(16, 20, 25, 0.62) 36%, rgba(16, 20, 25, 0.62) 64%, rgba(16, 20, 25, 0.97)),
+    linear-gradient(180deg, rgba(8, 10, 13, 0.08), rgba(8, 10, 13, 0.64));
 }
 
 .result-layout .team-plate {
@@ -4476,15 +4487,13 @@ button.full-table-row {
   font-style: normal;
 }
 
-.series-map-pills,
-.series-map-summary {
+.series-map-pills {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
 }
 
-.series-map-pills span,
-.series-map-summary span {
+.series-map-pills span {
   padding: 7px 9px;
   border: 1px solid var(--line);
   border-radius: 5px;
@@ -4493,17 +4502,35 @@ button.full-table-row {
   font-weight: 900;
 }
 
-.series-map-summary b {
-  margin-right: 6px;
-  color: var(--text);
+.series-map-pill-art {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  min-width: 118px;
+  color: #f4f7fb !important;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.95);
 }
 
-.series-map-summary small {
-  margin-left: 7px;
-  color: var(--muted);
-  font-size: 10px;
-  font-weight: 850;
-  text-transform: uppercase;
+.series-map-pill-art::before {
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  content: "";
+  background: linear-gradient(90deg, rgba(10, 13, 17, 0.9), rgba(10, 13, 17, 0.48));
+}
+
+.series-map-pill-art img {
+  position: absolute;
+  z-index: -2;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.series-map-pill-art b {
+  margin-right: 6px;
+  color: #fff;
 }
 
 .series-result-card small {
@@ -4579,13 +4606,148 @@ button.full-table-row {
   text-transform: uppercase;
 }
 
-.series-map-summary {
-  justify-content: center;
-  padding: 4px 0;
-}
-
 .series-detail-page {
   gap: 10px;
+}
+
+.result-map-artwork {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 8px;
+  width: min(1040px, 100%);
+  margin: 0 auto 10px;
+}
+
+.result-map-art-card {
+  position: relative;
+  isolation: isolate;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  gap: 8px;
+  min-height: 154px;
+  overflow: hidden;
+  padding: 12px;
+  border: 1px solid color-mix(in srgb, var(--line), white 8%);
+  border-radius: var(--radius);
+  color: #f4f7fb;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.24);
+}
+
+.result-map-art-card::before {
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  content: "";
+  background:
+    linear-gradient(180deg, rgba(9, 12, 16, 0.42), rgba(9, 12, 16, 0.74)),
+    linear-gradient(90deg, rgba(101, 167, 255, 0.1), transparent 48%, rgba(236, 106, 106, 0.12));
+}
+
+.result-map-art-card > img {
+  position: absolute;
+  z-index: -2;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+  filter: saturate(0.9) contrast(1.08);
+}
+
+.result-map-art-head,
+.result-map-scoreline,
+.result-map-winner,
+.result-map-scoreline > span {
+  display: flex;
+  align-items: center;
+}
+
+.result-map-art-head {
+  justify-content: space-between;
+  gap: 8px;
+  text-shadow: 0 1px 5px rgba(0, 0, 0, 0.95);
+}
+
+.result-map-art-head span,
+.result-map-winner {
+  font-size: 10px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.result-map-art-head span {
+  color: #c4cdd8;
+}
+
+.result-map-art-head strong {
+  font-size: 16px;
+  text-transform: uppercase;
+}
+
+.result-map-scoreline {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  gap: 12px;
+  align-self: center;
+  justify-items: center;
+  text-shadow: 0 2px 7px rgba(0, 0, 0, 0.95);
+}
+
+.result-map-scoreline > span {
+  gap: 7px;
+  color: #d5dce5;
+}
+
+.result-map-scoreline > span:first-child {
+  justify-self: end;
+}
+
+.result-map-scoreline > span:last-child {
+  justify-self: start;
+}
+
+.result-map-scoreline small {
+  font-size: 11px;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.result-map-scoreline b {
+  font-size: 38px;
+  line-height: 1;
+}
+
+.result-map-scoreline .winner b {
+  color: var(--green);
+}
+
+.result-map-scoreline em {
+  color: #a7b0bd;
+  font-size: 24px;
+  font-style: normal;
+  font-weight: 900;
+}
+
+.result-map-winner {
+  justify-self: center;
+  gap: 5px;
+  max-width: 100%;
+  padding: 4px 7px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 5px;
+  background: rgba(10, 13, 17, 0.7);
+  color: #eef2f7;
+}
+
+.result-map-winner svg {
+  flex: 0 0 auto;
+  color: var(--gold);
+}
+
+.result-map-winner span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .series-detail-page .fullscreen-head {
@@ -4642,16 +4804,6 @@ button.full-table-row {
 
 .series-detail-page .series-detail-score small {
   font-size: 10px;
-}
-
-.series-detail-page .series-map-summary {
-  gap: 6px;
-  padding: 0;
-}
-
-.series-detail-page .series-map-summary span {
-  padding: 5px 8px;
-  font-size: 12px;
 }
 
 .series-detail-page .match-stats-page {
@@ -5861,7 +6013,7 @@ button.team-stats-row {
     linear-gradient(180deg, rgba(8, 10, 13, 0.18), rgba(8, 10, 13, 0.56));
 }
 
-.live-scoreboard-map-art {
+.scoreboard-map-art {
   position: absolute;
   z-index: -2;
   inset: 0;
@@ -5920,7 +6072,7 @@ button.team-stats-row {
   gap: 7px;
 }
 
-.live-map-identity {
+.score-map-identity {
   grid-column: 1 / -1;
   display: flex;
   align-items: center;
@@ -5931,11 +6083,11 @@ button.team-stats-row {
   text-shadow: 0 1px 5px rgba(0, 0, 0, 0.9);
 }
 
-.live-map-identity svg {
+.score-map-identity svg {
   color: var(--gold);
 }
 
-.live-map-identity em {
+.score-map-identity em {
   color: #c1cad5;
   font-size: 9px;
   font-style: normal;
@@ -5943,7 +6095,7 @@ button.team-stats-row {
   text-transform: uppercase;
 }
 
-.live-map-identity strong {
+.score-map-identity strong {
   font-size: 12px;
   text-transform: uppercase;
 }
@@ -8325,6 +8477,24 @@ input[type="range"] {
     background:
       linear-gradient(180deg, rgba(16, 20, 25, 0.72), rgba(16, 20, 25, 0.9)),
       linear-gradient(90deg, rgba(101, 167, 255, 0.12), transparent 48%, rgba(236, 106, 106, 0.12));
+  }
+
+  .result-layout .score-hero.result {
+    grid-template-columns: 1fr;
+    min-height: 0;
+    padding: 12px 10px;
+  }
+
+  .result-layout .score-hero.result::before {
+    background: linear-gradient(180deg, rgba(16, 20, 25, 0.72), rgba(16, 20, 25, 0.92));
+  }
+
+  .result-map-artwork {
+    grid-template-columns: 1fr;
+  }
+
+  .result-map-art-card {
+    min-height: 142px;
   }
 
   .live-scoreboard .team-logo {
