@@ -19917,22 +19917,16 @@ input[type="range"] {
 
 @keyframes live-score-tick {
   0% {
-    opacity: 0.58;
-    filter: brightness(1.45);
     text-shadow: 0 0 0 currentColor;
     transform: translateY(5px) scale(0.94);
   }
 
   46% {
-    opacity: 1;
-    filter: brightness(1.18);
     text-shadow: 0 0 12px currentColor;
     transform: translateY(-1px) scale(1.06);
   }
 
   100% {
-    opacity: 1;
-    filter: none;
     text-shadow: none;
     transform: none;
   }
