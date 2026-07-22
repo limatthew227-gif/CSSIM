@@ -132,6 +132,7 @@ import {
   firstCircuitEventId,
   nextCircuitEvent,
   normalizeCircuitEventId,
+  pickCircuitDirectInvites,
   pickCircuitRosters,
   rankRostersByVrs,
   type CircuitEvent,
@@ -15058,15 +15059,18 @@ function buildSwissField(rosterPool: Roster[]) {
 }
 
 function buildCircuitField(rosterPool: Roster[], event: CircuitEvent) {
-  return pickCircuitRosters(rosterPool, event, SWISS_OPPONENT_COUNT).map(toTournamentTeam);
+  const rosters = event.id === "mrq"
+    ? pickCircuitRosters(rosterPool, event, SWISS_OPPONENT_COUNT)
+    : pickCircuitDirectInvites(rosterPool, event, SWISS_OPPONENT_COUNT);
+  return rosters.map(toTournamentTeam);
 }
 
 function buildManagerMajorField(rosterPool: Roster[], event: CircuitEvent, controlledOrganizationId?: string) {
-  return pickCircuitRosters(
-    rosterPool.filter((roster) => roster.id !== controlledOrganizationId),
-    event,
-    SWISS_OPPONENT_COUNT,
-  ).map(toTournamentTeam);
+  const available = rosterPool.filter((roster) => roster.id !== controlledOrganizationId);
+  const rosters = event.id === "mrq"
+    ? pickCircuitRosters(available, event, SWISS_OPPONENT_COUNT)
+    : pickCircuitDirectInvites(available, event, SWISS_OPPONENT_COUNT);
+  return rosters.map(toTournamentTeam);
 }
 
 function buildManagerField(rosterPool: Roster[], event: ManagerEvent, controlledOrganizationId?: string) {
@@ -15221,7 +15225,7 @@ function buildNextCircuitField(
   const carried = qualifiers.filter((team) => !userParticipating || team.id !== "user");
   const excluded = circuitParticipantIds(previousField, carried, teamsFromResults(priorResults));
   const inviteCount = Math.max(0, targetSize - carried.length);
-  const invites = pickCircuitRosters(rosterPool, event, inviteCount, Math.random, excluded).map(toTournamentTeam);
+  const invites = pickCircuitDirectInvites(rosterPool, event, inviteCount, excluded).map(toTournamentTeam);
   return composeCircuitField(carried, invites, targetSize);
 }
 
@@ -15253,7 +15257,7 @@ function repairUnplayedCircuitField(
 
   const retained = field.filter((team) => !invalidIds.has(team.id));
   const excluded = circuitParticipantIds(priorTeams, field);
-  const replacements = pickCircuitRosters(rosterPool, event, invalidIds.size, Math.random, excluded).map(toTournamentTeam);
+  const replacements = pickCircuitDirectInvites(rosterPool, event, invalidIds.size, excluded).map(toTournamentTeam);
   if (replacements.length !== invalidIds.size) return field;
   return composeCircuitField(retained, replacements, field.length);
 }

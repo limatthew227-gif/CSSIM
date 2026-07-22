@@ -248,6 +248,29 @@ export function pickCircuitRosters(
   return [...eligible, ...fallback].slice(0, count);
 }
 
+export function pickCircuitDirectInvites(
+  rosters: Roster[],
+  event: CircuitEvent,
+  count: number,
+  excludedIds: Iterable<string> = [],
+) {
+  const excluded = new Set(excludedIds);
+  const available = rosters.filter((roster) => !excluded.has(roster.id));
+  const eligible = available
+    .filter((roster) => isCircuitEligible(roster, event))
+    .sort(compareCircuitInvitePriority);
+  if (eligible.length >= count) return eligible.slice(0, count);
+
+  const selected = new Set(eligible.map((roster) => roster.id));
+  const fallback = available
+    .filter((roster) => !selected.has(roster.id))
+    .sort((a, b) => (
+      distanceFromBand(a.rank ?? 99, event) - distanceFromBand(b.rank ?? 99, event)
+      || compareCircuitInvitePriority(a, b)
+    ));
+  return [...eligible, ...fallback].slice(0, count);
+}
+
 export function circuitParticipantIds<T extends { id: string }>(...groups: Iterable<T>[]) {
   const ids = new Set<string>();
   groups.forEach((group) => {
@@ -278,4 +301,10 @@ function distanceFromBand(rank: number, event: CircuitEvent) {
   if (rank < event.rankMin) return event.rankMin - rank;
   if (rank > event.rankMax) return rank - event.rankMax;
   return 0;
+}
+
+function compareCircuitInvitePriority(a: Roster, b: Roster) {
+  return (a.rank ?? 99) - (b.rank ?? 99)
+    || (b.vrsPoints ?? 0) - (a.vrsPoints ?? 0)
+    || a.id.localeCompare(b.id);
 }

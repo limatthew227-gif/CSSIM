@@ -13,6 +13,7 @@ import {
   composeCircuitField,
   isCircuitEligible,
   normalizeCircuitEventId,
+  pickCircuitDirectInvites,
   pickCircuitRosters,
   qualifiesForNextEvent,
   rankRostersByVrs,
@@ -46,6 +47,20 @@ test("direct invites never recycle a team from any earlier Major stage", () => {
   assert.equal(invites.length, 8);
   assert.ok(invites.every((team) => !priorParticipants.has(team.id)));
   assert.ok(!invites.some((team) => team.id === "team-30"), "an MRQ elimination cannot return at Stage 2");
+});
+
+test("Major direct invites are always accepted in VRS order", () => {
+  const event = circuitEventById("stage-3");
+  const pool = Array.from({ length: 30 }, (_, index) => ({
+    ...roster(`team-${index + 1}`, index + 1),
+    vrsPoints: 2_000 - index * 20,
+  }));
+  const invites = pickCircuitDirectInvites(pool, event, 8, ["team-3"]);
+
+  assert.deepEqual(
+    invites.map((team) => team.id),
+    ["team-1", "team-2", "team-4", "team-5", "team-6", "team-7", "team-8", "team-9"],
+  );
 });
 
 test("the next stage preserves qualifiers before filling direct-invite slots", () => {
