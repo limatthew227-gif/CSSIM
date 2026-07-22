@@ -4612,10 +4612,31 @@ button.full-table-row {
 
 .result-map-artwork {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
   width: min(1040px, 100%);
   margin: 0 auto 10px;
+}
+
+.result-map-artwork.map-count-1 {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.result-map-artwork.map-count-2,
+.result-map-artwork.map-count-4 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.result-map-artwork.map-count-5 {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+
+.result-map-artwork.map-count-5 .result-map-art-card {
+  grid-column: span 2;
+}
+
+.result-map-artwork.map-count-5 .result-map-art-card:nth-child(4) {
+  grid-column: 2 / span 2;
 }
 
 .result-map-art-card {
@@ -4742,6 +4763,15 @@ button.full-table-row {
 .result-map-winner svg {
   flex: 0 0 auto;
   color: var(--gold);
+}
+
+.result-map-winner .team-logo.small {
+  flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
+  padding: 3px;
+  border-radius: 5px;
+  font-size: 8px;
 }
 
 .result-map-winner span {
@@ -8489,8 +8519,17 @@ input[type="range"] {
     background: linear-gradient(180deg, rgba(16, 20, 25, 0.72), rgba(16, 20, 25, 0.92));
   }
 
-  .result-map-artwork {
+  .result-map-artwork,
+  .result-map-artwork.map-count-1,
+  .result-map-artwork.map-count-2,
+  .result-map-artwork.map-count-4,
+  .result-map-artwork.map-count-5 {
     grid-template-columns: 1fr;
+  }
+
+  .result-map-artwork.map-count-5 .result-map-art-card,
+  .result-map-artwork.map-count-5 .result-map-art-card:nth-child(4) {
+    grid-column: auto;
   }
 
   .result-map-art-card {

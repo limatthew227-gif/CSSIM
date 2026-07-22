@@ -13909,8 +13909,9 @@ function TeamStageMatches({ team, games, onOpenSeries }: { team: FieldTeam; game
 }
 
 function ResultMapArtwork({ maps, left, right }: { maps: SeriesMapResult[]; left: FieldTeam; right: FieldTeam }) {
+  const mapCount = Math.min(Math.max(maps.length, 1), 5);
   return (
-    <section className={`result-map-artwork${maps.length === 1 ? " single" : ""}`} aria-label="Map results">
+    <section className={`result-map-artwork map-count-${mapCount}`} aria-label="Map results">
       {maps.map((map, index) => {
         const winner = map.winnerId === left.id ? left : right;
         return (
@@ -13932,8 +13933,9 @@ function ResultMapArtwork({ maps, left, right }: { maps: SeriesMapResult[]; left
               </span>
             </div>
             <div className="result-map-winner">
-              <Trophy size={13} />
+              <TeamLogo team={winner} small />
               <span>{winner.name}</span>
+              <Trophy size={13} />
             </div>
           </article>
         );
