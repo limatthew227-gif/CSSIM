@@ -4640,10 +4640,12 @@ function App() {
             availableEventIds: overviewAvailableEventIds,
             season: managerArchivedEvent?.season ?? (mode === "manager" ? managerCareer?.season ?? 1 : circuitSeason),
             points: mode === "manager" ? managerCareer?.vrsPoints ?? 0 : circuitPoints,
+            worldRank: mode === "manager" ? managerAuthoritativeVrsRank : undefined,
           } : undefined}
           manager={mode === "manager" && (managerArchivedDefinition || managerActiveEvent) ? {
             event: managerArchivedDefinition ?? managerActiveEvent!,
             stage: managerArchivedEvent?.majorStage ? overviewCircuitEvent : managerMajorActive ? overviewCircuitEvent : undefined,
+            vrsStandings: managerVrsStandings,
           } : undefined}
           onSelectCircuitEvent={setOverviewEventId}
           onBack={goBackScreen}
@@ -12840,11 +12842,13 @@ interface EventOverviewCircuit {
   availableEventIds: CircuitEventId[];
   season: number;
   points: number;
+  worldRank?: number;
 }
 
 interface EventOverviewManager {
   event: ManagerEvent;
   stage?: CircuitEvent;
+  vrsStandings: ManagerVrsStanding[];
 }
 
 interface EventPlacementRow {
@@ -12901,6 +12905,17 @@ function EventOverviewPage({
   const hasPlayoffs = manager?.stage?.hasPlayoffs ?? manager?.event.hasPlayoffs ?? circuit?.event.hasPlayoffs ?? true;
   const reviewingPastStage = Boolean(circuit && circuit.event.id !== circuit.currentEvent.id);
   const showCurrentCircuitRank = Boolean(circuit && !reviewingPastStage);
+  const managerVrsByTeamId = new Map(manager?.vrsStandings.map((standing) => [standing.team.id, standing]) ?? []);
+  const worldRankFor = (team: FieldTeam) => {
+    if (manager) return managerVrsByTeamId.get(team.id)?.rank;
+    return team.id === "user" && showCurrentCircuitRank && circuit
+      ? circuitWorldRank(circuit.points, builtInHltvRosters)
+      : currentVrsRank(team);
+  };
+  const vrsPointsFor = (team: FieldTeam) => {
+    if (manager) return managerVrsByTeamId.get(team.id)?.points;
+    return team.id === "user" && showCurrentCircuitRank && circuit ? circuit.points : currentVrsPoints(team);
+  };
   const finalResult = [...results].reverse().find((result) => result.stage === "final");
   const championId = winner?.id ?? finalResult?.winnerId;
   const prizeForTier = (tier: PlacementTier) => {
@@ -12913,15 +12928,9 @@ function EventOverviewPage({
     : circuit && !hasPlayoffs
       ? nextCircuitEvent(circuit.event).shortName
       : undefined;
-  const placements = buildEventPlacements(teams, records, results, hasPlayoffs, prizeForTier, advanceTarget);
+  const placements = buildEventPlacements(teams, records, results, hasPlayoffs, prizeForTier, advanceTarget, worldRankFor);
   const placementGroups = groupEventPlacements(placements);
   const placementByTeam = new Map(placements.map((entry) => [entry.team.id, entry]));
-  const worldRankFor = (team: FieldTeam) =>
-    team.id === "user" && showCurrentCircuitRank && circuit
-      ? circuitWorldRank(circuit.points, builtInHltvRosters)
-      : currentVrsRank(team);
-  const vrsPointsFor = (team: FieldTeam) =>
-    team.id === "user" && showCurrentCircuitRank && circuit ? circuit.points : currentVrsPoints(team);
   const playerLeaders = useMemo(() => buildOverviewPlayerLeaders(results, championId), [championId, results]);
   const vrsRows = teams
     .map((team) => ({
@@ -13188,7 +13197,7 @@ function EventStageRoute({ circuit, onSelect }: { circuit: EventOverviewCircuit;
       })}
       <div className="event-stage-rank">
         <small>Current world rank</small>
-        <b>#{circuitWorldRank(circuit.points, builtInHltvRosters)}</b>
+        <b>#{circuit.worldRank ?? circuitWorldRank(circuit.points, builtInHltvRosters)}</b>
         <span>{circuit.points} points</span>
       </div>
     </section>
@@ -13267,6 +13276,7 @@ function buildEventPlacements(
   hasPlayoffs: boolean,
   prizeForTier: (tier: PlacementTier) => number,
   advanceTarget?: string,
+  worldRankFor: (team: FieldTeam) => number | undefined = currentVrsRank,
 ): EventPlacementRow[] {
   const playoffLoser = (stage: PlayoffRound, teamId: string) =>
     results.some((result) => result.stage === stage && result.winnerId !== teamId && (result.left.id === teamId || result.right.id === teamId));
@@ -13313,7 +13323,7 @@ function buildEventPlacements(
       }
       return { team, record: teamRecord, label: "Live", detail: "In contention", order: 8, tone: "live" };
     })
-    .sort((a, b) => a.order - b.order || (currentVrsRank(a.team) ?? 999) - (currentVrsRank(b.team) ?? 999) || a.team.name.localeCompare(b.team.name));
+    .sort((a, b) => a.order - b.order || (worldRankFor(a.team) ?? 999) - (worldRankFor(b.team) ?? 999) || a.team.name.localeCompare(b.team.name));
 }
 
 function groupEventPlacements(placements: EventPlacementRow[]) {
