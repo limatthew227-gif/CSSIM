@@ -17770,7 +17770,7 @@ button.manager-trophy-slot:focus-visible .manager-trophy-object {
 }
 
 .manager-calendar-row {
-  min-height: 83px;
+  min-height: 108px;
   padding: 9px 13px;
   border-top: 1px solid var(--line);
 }
@@ -17839,6 +17839,38 @@ button.manager-trophy-slot:focus-visible .manager-trophy-object {
   white-space: normal;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
+}
+
+.manager-calendar-format {
+  align-content: center;
+}
+
+.manager-format-stages {
+  display: grid;
+  gap: 3px;
+  margin-top: 5px;
+  padding-left: 7px;
+  border-left: 2px solid #426b60;
+}
+
+.manager-format-stages > span {
+  display: grid;
+  grid-template-columns: minmax(66px, auto) minmax(0, 1fr);
+  gap: 6px;
+  align-items: baseline;
+  min-width: 0;
+}
+
+.manager-format-stages b {
+  overflow: hidden;
+  color: #d5e4df;
+  font-size: 8px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.manager-format-stages small {
+  font-size: 7px;
 }
 
 .manager-calendar-row em.eligible {
@@ -19117,10 +19149,14 @@ button.manager-trophy-slot:focus-visible .manager-trophy-object {
   }
 
   .manager-calendar-event-name,
-  .manager-calendar-row > div:nth-child(2),
+  .manager-calendar-format,
   .manager-calendar-stakes,
   .manager-calendar-actions {
     grid-column: 1 / -1;
+  }
+
+  .manager-format-stages > span {
+    grid-template-columns: 88px minmax(0, 1fr);
   }
 
   .manager-calendar-actions {

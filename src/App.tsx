@@ -1422,6 +1422,8 @@ function App() {
       : playoffBestOf(playoffRound)
     : managerRoundRobinActive
       ? managerActiveEvent?.groupBestOf ?? 3
+      : mode === "manager" && managerActiveEvent && !managerActiveEvent.majorCycle
+        ? managerActiveEvent.groupBestOf
       : swissBestOf(record);
   const currentSeriesLabel = phase === "playoffs"
     ? `${tournamentName} / ${playoffRoundLabel(playoffRound)}`
@@ -2401,7 +2403,16 @@ function App() {
     };
     const outsideResults = swissPairs
       .filter((pair) => !pair.active)
-      .map((pair) => simulateSwissSeries(pair, roundNumber, settings, difficulty, swissRecords));
+      .map((pair) => simulateSwissSeries(
+        pair,
+        roundNumber,
+        settings,
+        difficulty,
+        swissRecords,
+        mode === "manager" && managerActiveEvent && !managerActiveEvent.majorCycle
+          ? managerActiveEvent.groupBestOf
+          : undefined,
+      ));
     const roundResults = [playedResult, ...outsideResults];
     const pickemScore = outsideResults.reduce((sum, result) => sum + (pickems[result.pairId] === result.winnerId ? 1 : 0), 0);
     const nextSwissRecords = applyResultsToSwissRecords(swissRecords, roundResults);
@@ -12076,7 +12087,7 @@ function ManagerCompactEventRow({
     <div className="manager-compact-event">
       <span className={`manager-tier-mark ${event.tier}`}><Trophy size={17} /></span>
       <span>
-        <small>{event.tier} / {majorProjection ? `VRS #${vrsRank} -> ${majorProjection.label}` : `VRS #${event.rankMin}-#${event.rankMax}`}</small>
+        <small>{event.classification} / {majorProjection ? `VRS #${vrsRank} -> ${majorProjection.label}` : `VRS #${event.rankMin}-#${event.rankMax}`}</small>
         <strong>{managerEventName(event, season)}</strong>
         <em>{majorProjection ? `Projected ${majorProjection.label} entry / ${managerFormatDate(majorProjection.startsOn)}` : event.formatLabel}</em>
       </span>
@@ -12150,9 +12161,21 @@ function ManagerCalendarPage({
             <div className={`manager-calendar-row ${registration?.status ?? ""}`} key={event.id}>
               <div className="manager-calendar-event-name">
                 <span className={`manager-tier-mark ${event.tier}`}><Trophy size={18} /></span>
-                <span><small>{event.tier} / {event.entryType} / {event.environment}</small><strong>{managerEventName(event, career.season)}</strong><em>{event.description}</em></span>
+                <span><small>{event.classification} / {event.entryType} / {event.environment}</small><strong>{managerEventName(event, career.season)}</strong><em>{event.description}</em></span>
               </div>
-              <div><small>{event.location} / {event.capacity}-team field</small><strong>{managerFormatDate(startsOn)} - {managerFormatDate(schedule.endsOn)}</strong><em>{majorProjection ? `${majorProjection.label} projected / recalculated at launch` : event.formatLabel}</em></div>
+              <div className="manager-calendar-format">
+                <small>{event.location} / {event.capacity}-team field</small>
+                <strong>{managerFormatDate(startsOn)} - {managerFormatDate(schedule.endsOn)}</strong>
+                <em>{majorProjection ? `${majorProjection.label} projected / recalculated at launch` : event.formatLabel}</em>
+                <div className="manager-format-stages" aria-label={`${event.shortName} stages`}>
+                  {event.formatStages.map((stage) => (
+                    <span key={`${event.id}:${stage.label}`}>
+                      <b>{stage.label}</b>
+                      <small>{stage.teams} teams / {stage.series}</small>
+                    </span>
+                  ))}
+                </div>
+              </div>
               <div><small>Roster lock {managerFormatDate(schedule.rosterLockOn)}</small><strong>{majorProjection ? `VRS #${career.vrsRank} -> ${majorProjection.label}` : `VRS #${event.rankMin}-#${event.rankMax}`}</strong><em className={check.eligible || registration ? "eligible" : "ineligible"}>{registration ? event.majorCycle && registration.status === "confirmed" ? "VRS assigned" : registration.status : check.eligible ? "Eligible now" : check.reasons[0]}</em></div>
               <div className="manager-calendar-stakes"><small>{event.majorCycle ? "Valve funded / $0 commitment" : `${fmtMoney(event.entryFee + event.travelCost)} committed`}</small><strong>{event.majorCycle ? `${fmtMoney(event.prizePool)} overall Major purse` : `${fmtMoney(event.prizePool)} cash pool`}</strong><em>{majorProjection ? managerMajorStageStakes(majorProjection.stage) : event.stakesLabel}</em></div>
               <div className="manager-calendar-actions">
@@ -13084,7 +13107,7 @@ function EventOverviewPage({
       <section className="event-overview-hero">
         <div className="event-overview-titlebar">
           <div>
-            <span className="event-kicker">{manager ? `Manager season ${circuit?.season ?? 1} / ${manager.stage?.shortName ?? manager.event.tier}` : circuit ? `Season ${circuit.season} / ${reviewingPastStage ? "Stage archive" : "Major circuit"}` : "Tournament hub"}</span>
+            <span className="event-kicker">{manager ? `Manager season ${circuit?.season ?? 1} / ${manager.stage?.shortName ?? manager.event.classification}` : circuit ? `Season ${circuit.season} / ${reviewingPastStage ? "Stage archive" : "Major circuit"}` : "Tournament hub"}</span>
             <h1>{name}</h1>
             <p>{eventDescription}</p>
           </div>

@@ -300,6 +300,26 @@ test("Manager calendar carries Swiss, round-robin, and direct knockout formats",
   assert.equal(managerEventById("fall-global-major-2026")?.format, "swiss");
 });
 
+test("Manager seasons carry a dense S-tier and A-tier circuit with varied fields", () => {
+  assert.equal(managerEvents.length, 12);
+  assert.equal(managerEvents.filter((event) => event.classification === "S-Tier").length, 5);
+  assert.equal(managerEvents.filter((event) => event.classification === "A-Tier").length, 4);
+  assert.deepEqual(new Set(managerEvents.map((event) => event.format)), new Set(["single-elimination", "swiss", "round-robin"]));
+  assert.deepEqual(new Set(managerEvents.map((event) => event.capacity)), new Set([8, 16, 32]));
+  assert.ok(managerEvents.every((event) => event.formatStages.length >= 1));
+});
+
+test("Manager event operations are ordered and the calendar includes real scheduling choices", () => {
+  managerEvents.forEach((event) => {
+    assert.ok(event.registrationDeadline <= event.rosterLockOn, `${event.name} registration precedes lock`);
+    assert.ok(event.rosterLockOn < event.startsOn, `${event.name} lock precedes start`);
+    assert.ok(event.startsOn <= event.endsOn, `${event.name} start precedes finish`);
+  });
+  const bounty = managerEventById("summer-bounty-finals-2026")!;
+  const challenger = managerEventById("global-challenger-2026")!;
+  assert.equal(bounty.endsOn, challenger.startsOn);
+});
+
 test("the Manager calendar exposes one VRS-seeded Major cycle", () => {
   assert.equal(managerEventById("fall-mrq-2026"), undefined);
   assert.equal(managerEventById("fall-major-stage-1-2026"), undefined);
