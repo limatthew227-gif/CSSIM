@@ -5286,6 +5286,38 @@ button.full-table-row {
   gap: 8px;
 }
 
+.series-map-summary {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+  width: min(1040px, 100%);
+  margin: -4px auto 10px;
+}
+
+.series-map-summary > span {
+  padding: 6px 9px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: #11161d;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.series-map-summary b {
+  margin-right: 6px;
+  color: var(--text);
+}
+
+.series-map-summary small {
+  margin-left: 7px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
 .series-map-pills span {
   padding: 7px 9px;
   border: 1px solid var(--line);

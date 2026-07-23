@@ -4187,6 +4187,7 @@ function App() {
               season={mode === "manager" ? managerCareer?.season ?? 1 : circuitSeason}
               points={mode === "manager" ? managerCareer?.vrsPoints ?? 0 : circuitPoints}
               history={careerHistory}
+              worldRank={mode === "manager" ? managerAuthoritativeVrsRank : undefined}
             />
           )}
           <section className="swiss-round-panel">
@@ -5222,6 +5223,7 @@ function App() {
             </button>
           </div>
           <ResultMapArtwork maps={resultMapResults} left={yourTeam} right={opponent} />
+          <SeriesMapScoreSummary maps={resultMapResults} />
           <MatchStatsPanel
             maps={resultMaps}
             mapResults={resultMapResults}
@@ -10481,11 +10483,13 @@ function CircuitProgressStrip({
   season,
   points,
   history,
+  worldRank,
 }: {
   event: CircuitEvent;
   season: number;
   points: number;
   history: CareerHistoryEntry[];
+  worldRank?: number;
 }) {
   const activeIndex = circuitEventIndex(event.id);
   const completed = new Set(
@@ -10502,7 +10506,7 @@ function CircuitProgressStrip({
         <p>{event.description} · {circuitFieldLabel(event)} · {circuitQualificationLabel(event)}</p>
         <div className="circuit-rank">
           <span>World rank</span>
-          <b>#{circuitWorldRank(points, builtInHltvRosters)}</b>
+          <b>#{worldRank ?? circuitWorldRank(points, builtInHltvRosters)}</b>
           <em>{points} pts</em>
         </div>
       </div>
@@ -14436,6 +14440,20 @@ function ResultMapArtwork({ maps, left, right }: { maps: SeriesMapResult[]; left
   );
 }
 
+function SeriesMapScoreSummary({ maps }: { maps: SeriesMapResult[] }) {
+  return (
+    <section className="series-map-summary" aria-label="Map score summary">
+      {maps.map((map, index) => (
+        <span key={`${map.map}-summary-${index}`}>
+          <b>{mapName(map.map)}</b>
+          {map.leftScore}:{map.rightScore}
+          {map.eventLog && <small>{map.eventLog.events.length} events</small>}
+        </span>
+      ))}
+    </section>
+  );
+}
+
 function RunResultsPage({
   results,
   eventName,
@@ -14596,6 +14614,7 @@ function SeriesDetailPage({
       </section>
 
       <ResultMapArtwork maps={result.maps} left={result.left} right={result.right} />
+      <SeriesMapScoreSummary maps={result.maps} />
 
       <MatchStatsPanel
         maps={result.maps.map((map) => map.map)}
