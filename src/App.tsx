@@ -152,6 +152,7 @@ import {
   saveRunSlot,
   writeAutosave,
   readAutosave,
+  readAutosaveBackup,
   clearAutosave,
   type RunSummary,
   type SavedRunSlot,
@@ -1800,6 +1801,17 @@ function App() {
     saveCustomRosters(customRosters);
   }, [customRosters]);
 
+  useEffect(() => {
+    let cancelled = false;
+    void readAutosaveBackup<RunSnapshot>().then((backup) => {
+      if (cancelled || !backup) return;
+      setAutosave((current) => !current || backup.updatedAt > current.updatedAt ? backup : current);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   // Rolling autosave so a reload resumes the run/career. Fires only at stable points (screen/phase/
   // results/career changes), NOT during the live round drip, to avoid spamming localStorage.
   useEffect(() => {
@@ -1827,7 +1839,8 @@ function App() {
       "compare",
     ];
     if (transient.includes(screen)) return;
-    writeAutosave(buildRunSnapshot(), buildRunSummary());
+    const saved = writeAutosave(buildRunSnapshot(), buildRunSummary());
+    if (saved) setAutosave(saved);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [screen, phase, record, swissField, matchResults, careerMoney, careerEvent, selected, tournamentOutcome, circuitEventId, circuitSeason, circuitPoints, circuitMajorResults, circuitObserver, circuitOffseasonTarget, autoCoach, managerCareer]);
 
@@ -3368,7 +3381,11 @@ function App() {
       ...result,
       maps: result.maps.map((mapResult) => ({ ...mapResult, eventLog: undefined })),
     }));
-    const slimMatch = match ? { ...match, eventFeed: undefined, roundTimeline: undefined, feed: [], pendingEvents: undefined } : undefined;
+    const matchIsResumable = screen === "match" || screen === "result";
+    const seriesIsResumable = matchIsResumable || screen === "veto";
+    const slimMatch = matchIsResumable && match
+      ? { ...match, eventFeed: undefined, roundTimeline: undefined, feed: [], pendingEvents: undefined }
+      : undefined;
     return {
       settings,
       screen,
@@ -3406,7 +3423,7 @@ function App() {
       playerForm,
       veto,
       match: slimMatch,
-      series,
+      series: seriesIsResumable ? series : undefined,
       speed,
       tactic,
       timeouts,
@@ -3438,13 +3455,29 @@ function App() {
       : mode === "manager"
         ? managerActiveEvent ? managerEventName(managerActiveEvent, managerCareer?.season ?? 1) : "Manager HQ"
         : "Major";
-    const detail = match
-      ? `${eventLabel} / ${phaseLabel} / ${mapName(match.map)} ${match.you}-${match.opponent}`
-      : tournamentOutcome === "champion"
-        ? `${eventLabel} champion`
-        : tournamentOutcome === "eliminated"
-          ? `${eventLabel} eliminated`
-          : `${eventLabel} / ${phaseLabel} / ${matchResults.length} saved series`;
+    const activeMatch = (screen === "match" || screen === "result") ? match : undefined;
+    const managerMenuLabel = mode === "manager" && managerCareer
+      ? screen === "manager-inbox"
+        ? `Inbox / ${managerCareer.inbox.filter((item) => !item.read).length} unread`
+        : screen === "manager-calendar"
+          ? `Calendar / ${managerFormatDate(managerCareer.date)}`
+          : screen === "manager-roster"
+            ? `Roster / ${selected.length} starters`
+            : screen === "manager-market"
+              ? "Recruitment desk"
+              : screen === "manager-home"
+                ? `Manager HQ / ${managerFormatDate(managerCareer.date)}`
+                : undefined
+      : undefined;
+    const detail = activeMatch
+      ? `${eventLabel} / ${phaseLabel} / ${mapName(activeMatch.map)} ${activeMatch.you}-${activeMatch.opponent}`
+      : managerMenuLabel
+        ? managerMenuLabel
+        : tournamentOutcome === "champion"
+          ? `${eventLabel} champion`
+          : tournamentOutcome === "eliminated"
+            ? `${eventLabel} eliminated`
+            : `${eventLabel} / ${phaseLabel} / ${matchResults.length} saved series`;
     return {
       teamName: runKind === "spectator" ? "Spectator run" : teamName,
       mode,

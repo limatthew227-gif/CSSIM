@@ -45,7 +45,8 @@ test("run database: saves, updates, sorts and deletes run slots", () => {
 test("autosave round-trips snapshot + summary, then clears", () => {
   assert.equal(readAutosave(), null, "no autosave to begin with");
 
-  writeAutosave({ careerMoney: 84000, careerEvent: 2, roster: ["a", "b"] }, summary("My Five", "After Major 1"));
+  const written = writeAutosave({ careerMoney: 84000, careerEvent: 2, roster: ["a", "b"] }, summary("My Five", "After Major 1"));
+  assert.ok(written, "successful writes return the in-memory autosave");
   const saved = readAutosave<{ careerMoney: number; careerEvent: number; roster: string[] }>();
   assert.ok(saved, "autosave is read back");
   assert.equal(saved!.snapshot.careerMoney, 84000);
@@ -56,6 +57,29 @@ test("autosave round-trips snapshot + summary, then clears", () => {
 
   clearAutosave();
   assert.equal(readAutosave(), null, "cleared");
+});
+
+test("autosave still returns the newest state when localStorage is full", () => {
+  Object.defineProperty(globalThis, "window", {
+    configurable: true,
+    value: {
+      localStorage: {
+        getItem: () => null,
+        setItem: () => {
+          throw new Error("quota exceeded");
+        },
+        removeItem: () => undefined,
+      },
+    },
+  });
+
+  const written = writeAutosave(
+    { managerCareer: { season: 3, date: "2027-07-20" } },
+    summary("Vitality", "Manager HQ / Jul 20, 2027"),
+  );
+
+  assert.equal(written?.snapshot.managerCareer.season, 3);
+  assert.equal(written?.summary.detail, "Manager HQ / Jul 20, 2027");
 });
 
 function summary(teamName: string, detail: string) {

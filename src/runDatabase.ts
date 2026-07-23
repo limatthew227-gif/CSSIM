@@ -23,6 +23,35 @@ const RUN_DB_KEY = "major-draft-lab-run-db-v1";
 const RUN_DB_VERSION = 1;
 const MAX_RUN_SLOTS = 8;
 const AUTOSAVE_KEY = "major-draft-lab-autosave-v1";
+const RUN_STATE_DB = "cssim-run-state";
+const RUN_STATE_STORE = "state";
+
+let runStateDbPromise: Promise<IDBDatabase> | undefined;
+
+function openRunStateDb() {
+  if (typeof indexedDB === "undefined") return undefined;
+  runStateDbPromise ??= new Promise<IDBDatabase>((resolve, reject) => {
+    const request = indexedDB.open(RUN_STATE_DB, 1);
+    request.onupgradeneeded = () => {
+      if (!request.result.objectStoreNames.contains(RUN_STATE_STORE)) {
+        request.result.createObjectStore(RUN_STATE_STORE);
+      }
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+  return runStateDbPromise;
+}
+
+function persistAutosaveBackup(value: string | null) {
+  const db = openRunStateDb();
+  if (!db) return;
+  void db.then((database) => {
+    const store = database.transaction(RUN_STATE_STORE, "readwrite").objectStore(RUN_STATE_STORE);
+    if (value == null) store.delete(AUTOSAVE_KEY);
+    else store.put(value, AUTOSAVE_KEY);
+  }).catch(() => undefined);
+}
 
 export interface Autosave<TSnapshot = unknown> {
   schemaVersion: number;
@@ -32,15 +61,24 @@ export interface Autosave<TSnapshot = unknown> {
 }
 
 // A single rolling autosave so a reload resumes the career/run where it left off (distinct from the
-// manual save slots). Writes are guarded so a quota failure drops the autosave instead of crashing.
-export function writeAutosave<TSnapshot>(snapshot: TSnapshot, summary: RunSummary): void {
-  if (typeof window === "undefined") return;
+// manual save slots). IndexedDB keeps the latest state durable when localStorage is full.
+export function writeAutosave<TSnapshot>(snapshot: TSnapshot, summary: RunSummary): Autosave<TSnapshot> | null {
+  if (typeof window === "undefined") return null;
+  let payload: Autosave<TSnapshot>;
+  let serialized: string;
   try {
-    const payload: Autosave<TSnapshot> = { schemaVersion: RUN_DB_VERSION, updatedAt: new Date().toISOString(), summary, snapshot };
-    window.localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(payload));
+    payload = { schemaVersion: RUN_DB_VERSION, updatedAt: new Date().toISOString(), summary, snapshot };
+    serialized = JSON.stringify(payload);
   } catch {
-    /* serialization or quota failure — skip this autosave */
+    return null;
   }
+  persistAutosaveBackup(serialized);
+  try {
+    window.localStorage.setItem(AUTOSAVE_KEY, serialized);
+  } catch {
+    // IndexedDB remains the durable copy when localStorage is full.
+  }
+  return payload;
 }
 
 export function readAutosave<TSnapshot>(): Autosave<TSnapshot> | null {
@@ -54,9 +92,29 @@ export function readAutosave<TSnapshot>(): Autosave<TSnapshot> | null {
   }
 }
 
+export async function readAutosaveBackup<TSnapshot>(): Promise<Autosave<TSnapshot> | null> {
+  const db = openRunStateDb();
+  if (!db) return null;
+  try {
+    const database = await db;
+    const stored = await new Promise<string | undefined>((resolve, reject) => {
+      const request = database.transaction(RUN_STATE_STORE, "readonly").objectStore(RUN_STATE_STORE).get(AUTOSAVE_KEY);
+      request.onsuccess = () => resolve(request.result as string | undefined);
+      request.onerror = () => reject(request.error);
+    });
+    if (!stored) return null;
+    const parsed = JSON.parse(stored);
+    if (!parsed || typeof parsed !== "object" || !("snapshot" in parsed)) return null;
+    return parsed as Autosave<TSnapshot>;
+  } catch {
+    return null;
+  }
+}
+
 export function clearAutosave(): void {
   if (typeof window === "undefined") return;
   window.localStorage.removeItem(AUTOSAVE_KEY);
+  persistAutosaveBackup(null);
 }
 
 export function loadRunSlots<TSnapshot = unknown>(): SavedRunSlot<TSnapshot>[] {
