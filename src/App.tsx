@@ -187,6 +187,7 @@ import {
 } from "./matchDatabase";
 import {
   acceptManagerIncomingOffer,
+  advanceManagerEventStage,
   advanceManagerMajorStage,
   acceptManagerTradeCounter,
   advanceManagerDate,
@@ -201,6 +202,7 @@ import {
   managerEventSchedule,
   managerEvents,
   managerEventReadyToLaunch,
+  managerEventStageRules,
   managerEventStartForRank,
   managerFormatDate,
   managerEventEligibility,
@@ -266,6 +268,7 @@ import {
   type ManagerSquadRole,
   type ManagerCareerState,
   type ManagerEvent,
+  type ManagerEventStage,
   type ManagerMajorStage,
   type ManagerCoinSide,
   type ManagerCasinoStake,
@@ -1243,20 +1246,57 @@ function App() {
   const missingRoles = requiredRoles.filter((role) => !selected.some((player) => player.role === role));
   const swissHistory = useMemo(() => buildSwissHistory(matchResults), [matchResults]); // who has played whom in Swiss
   const managerRoundRobinActive = mode === "manager" && phase === "swiss" && managerActiveEvent?.format === "round-robin";
+  const managerDoubleEliminationActive = mode === "manager"
+    && phase === "swiss"
+    && managerActiveEvent?.format === "double-elimination"
+    && managerCareer?.activeEventStage !== "playoffs";
+  const managerDoubleEliminationRules = managerDoubleEliminationActive && managerActiveEvent
+    ? managerEventStageRules(managerActiveEvent, managerCareer?.activeEventStage)
+    : undefined;
+  const recordStageWinTarget = managerDoubleEliminationRules?.winTarget ?? 3;
+  const recordStageLossTarget = managerDoubleEliminationRules?.lossTarget ?? 3;
+  const recordStageQualifiers = managerDoubleEliminationRules?.qualifiers ?? SWISS_FIELD_SIZE / 2;
   const managerRoundRobinRounds = managerRoundRobinActive ? Math.max(1, managerActiveEvent.capacity - 1) : 0;
   const managerRoundRobinRound = record.wins + record.losses + 1;
   const swissPairs = useMemo(
     () => managerRoundRobinActive
       ? buildRoundRobinRoundPairs(yourTeam, swissField, managerRoundRobinRound)
-      : buildSwissPairs(yourTeam, opponent, swissField, record, swissRecords, swissHistory),
-    [managerRoundRobinActive, managerRoundRobinRound, opponent, record, swissField, swissHistory, swissRecords, yourTeam],
+      : buildSwissPairs(
+          yourTeam,
+          opponent,
+          swissField,
+          record,
+          swissRecords,
+          swissHistory,
+          recordStageWinTarget,
+          recordStageLossTarget,
+        ),
+    [
+      managerRoundRobinActive,
+      managerRoundRobinRound,
+      opponent,
+      record,
+      recordStageLossTarget,
+      recordStageWinTarget,
+      swissField,
+      swissHistory,
+      swissRecords,
+      yourTeam,
+    ],
   );
   const swissUserFinished = runKind === "player" && phase === "swiss" && (managerRoundRobinActive
     ? record.wins + record.losses >= managerRoundRobinRounds
-    : record.wins >= 3 || record.losses >= 3);
+    : record.wins >= recordStageWinTarget || record.losses >= recordStageLossTarget);
   const swissStageResolved = phase === "swiss" && (managerRoundRobinActive
     ? record.wins + record.losses >= managerRoundRobinRounds
-    : isSwissStageResolved(swissField, swissRecords, record));
+    : isRecordStageResolved(
+        swissField,
+        swissRecords,
+        record,
+        recordStageWinTarget,
+        recordStageLossTarget,
+        recordStageQualifiers,
+      ));
   const swissCanSim = !managerRoundRobinActive && swissUserFinished && !swissStageResolved;
   const circuitStageOnly = mode === "circuit" && !circuitEvent.hasPlayoffs;
   const circuitStageCleared = circuitStageOnly && record.wins >= 3 && swissStageResolved;
@@ -1264,6 +1304,9 @@ function App() {
   const managerMajorStageOnly = managerMajorActive && Boolean(managerMajorStage && !managerMajorStage.hasPlayoffs);
   const managerMajorStageCleared = managerMajorStageOnly && record.wins >= 3 && swissStageResolved;
   const managerMajorNextStage = managerMajorStage ? nextCircuitEvent(managerMajorStage) : undefined;
+  const managerDoubleEliminationStageCleared = managerDoubleEliminationActive
+    && record.wins >= recordStageWinTarget
+    && swissStageResolved;
   const neutralSwissRun = runKind === "spectator" || circuitObserver;
   const spectatorSwissResolved = neutralSwissRun && phase === "swiss" && isNeutralSwissStageResolved(swissField, swissRecords);
   const spectatorSwissPairs = useMemo(
@@ -1275,9 +1318,28 @@ function App() {
   );
   const swissDisplayPairs = useMemo(
     () => (swissUserFinished
-      ? managerRoundRobinActive ? [] : buildRemainingSwissPairs(swissField, swissRecords, record.wins + record.losses + 1, swissHistory)
+      ? managerRoundRobinActive
+        ? []
+        : buildRemainingSwissPairs(
+            swissField,
+            swissRecords,
+            record.wins + record.losses + 1,
+            swissHistory,
+            recordStageWinTarget,
+            recordStageLossTarget,
+          )
       : swissPairs),
-    [managerRoundRobinActive, record, swissField, swissPairs, swissRecords, swissUserFinished, swissHistory],
+    [
+      managerRoundRobinActive,
+      record,
+      recordStageLossTarget,
+      recordStageWinTarget,
+      swissField,
+      swissPairs,
+      swissRecords,
+      swissUserFinished,
+      swissHistory,
+    ],
   );
   // Swiss round navigation: the live round (the one being picked/played) plus every past round that
   // has saved results, so you can flip back through the clean pick'em list to review any round.
@@ -1427,7 +1489,13 @@ function App() {
   );
   const runDone =
     runKind === "player" &&
-    (tournamentOutcome !== "running" || (phase === "swiss" && !managerRoundRobinActive && record.losses >= 3) || circuitStageCleared || managerMajorStageCleared);
+    (
+      tournamentOutcome !== "running"
+      || (phase === "swiss" && !managerRoundRobinActive && record.losses >= recordStageLossTarget)
+      || circuitStageCleared
+      || managerMajorStageCleared
+      || managerDoubleEliminationStageCleared
+    );
   const overviewDrilldown = navStack[navStack.length - 1] === "overview";
   const managerArchiveDrilldown = Boolean(managerArchivedEvent && (screen === "overview" || navStack.includes("overview")));
   const universeDrilldown = navStack[navStack.length - 1] === "universe";
@@ -1450,6 +1518,8 @@ function App() {
     ? `${tournamentName} / ${playoffRoundLabel(playoffRound)}`
     : managerRoundRobinActive
       ? `${tournamentName} / Round robin matchday ${record.wins + record.losses + 1}`
+      : managerDoubleEliminationActive
+        ? `${tournamentName} / ${managerCareer?.activeEventStage === "stage-1" ? "Stage 1" : "Stage 2 group"} / ${record.losses === 0 ? "Upper bracket" : "Lower bracket"}`
       : `${tournamentName} / Swiss round ${record.wins + record.losses + 1}`;
   const strengthBreakdown = teamStrengthBreakdown(yourTeam, settings);
   const opponentStrengthBreakdown = teamStrengthBreakdown(opponent, settings, difficulty, true);
@@ -1597,10 +1667,17 @@ function App() {
   // retired standalone MRQ bracket. Repair only an untouched event and preserve every played result.
   useEffect(() => {
     if (mode !== "manager" || !managerActiveEvent) return;
+    if (managerActiveEvent.format === "double-elimination" && managerCareer?.activeEventStage === "playoffs") return;
 
+    const activeDoubleEliminationRules = managerEventStageRules(
+      managerActiveEvent,
+      managerCareer?.activeEventStage,
+    );
     const expectedOpponentCount = managerActiveEvent.majorCycle
       ? SWISS_OPPONENT_COUNT
-      : Math.max(1, managerActiveEvent.capacity - 1);
+      : activeDoubleEliminationRules
+        ? activeDoubleEliminationRules.teams - 1
+        : Math.max(1, managerActiveEvent.capacity - 1);
     const currentOpponentIds = new Set(managerEventRosters.map((roster) => roster.id));
     const isManagedOrganization = (team: FieldTeam) => (
       Boolean(managerControlledOrganizationId && team.id === managerControlledOrganizationId)
@@ -1617,7 +1694,15 @@ function App() {
     if (duplicateManagedOrganization) {
       const candidateField = managerActiveEvent.majorCycle && managerMajorStage
         ? buildManagerMajorField(managerEventRosters, managerMajorStage, managerControlledOrganizationId)
-        : buildManagerField(managerEventRosters, managerActiveEvent, managerControlledOrganizationId);
+        : managerActiveEvent.format === "double-elimination" && managerCareer?.activeEventStage
+          ? buildManagerDoubleEliminationField(
+              managerEventRosters,
+              managerActiveEvent,
+              managerCareer.activeEventStage,
+              managerControlledOrganizationId,
+              managerCareer.vrsRank,
+            )
+          : buildManagerField(managerEventRosters, managerActiveEvent, managerControlledOrganizationId);
       const occupiedIds = new Set(swissField.map((team) => team.id));
       const replacement = candidateField.find((team) => !occupiedIds.has(team.id));
       if (replacement) {
@@ -1658,7 +1743,15 @@ function App() {
 
     const repairedField = managerActiveEvent.majorCycle && managerMajorStage
       ? buildManagerMajorField(managerEventRosters, managerMajorStage, managerControlledOrganizationId)
-      : buildManagerField(managerEventRosters, managerActiveEvent, managerControlledOrganizationId);
+      : managerActiveEvent.format === "double-elimination" && managerCareer?.activeEventStage
+        ? buildManagerDoubleEliminationField(
+            managerEventRosters,
+            managerActiveEvent,
+            managerCareer.activeEventStage,
+            managerControlledOrganizationId,
+            managerCareer.vrsRank,
+          )
+        : buildManagerField(managerEventRosters, managerActiveEvent, managerControlledOrganizationId);
     const repairedRecords = initialSwissRecords(repairedField);
 
     if (!managerActiveEvent.majorCycle && managerActiveEvent.format === "single-elimination") {
@@ -1682,7 +1775,14 @@ function App() {
     const active = pairs.find((pair) => pair.active);
     const expectedOpponent = active
       ? active.left.id === "user" ? active.right : active.left
-      : selectOpponentForRecord({ wins: 0, losses: 0 }, repairedField, repairedRecords, []);
+      : selectOpponentForRecord(
+          { wins: 0, losses: 0 },
+          repairedField,
+          repairedRecords,
+          [],
+          activeDoubleEliminationRules?.winTarget,
+          activeDoubleEliminationRules?.lossTarget,
+        );
     setSwissField(repairedField);
     setSwissRecords(repairedRecords);
     if (expectedOpponent) setOpponent(expectedOpponent);
@@ -1697,6 +1797,8 @@ function App() {
     if (["playoffs", "swiss", "veto", "result"].includes(screen)) setScreen("swiss");
   }, [
     managerActiveEvent,
+    managerCareer?.activeEventStage,
+    managerCareer?.vrsRank,
     managerControlledOrganizationId,
     managerControlledOrganizationName,
     managerEventRosters,
@@ -2438,6 +2540,9 @@ function App() {
         mode === "manager" && managerActiveEvent && !managerActiveEvent.majorCycle
           ? managerActiveEvent.groupBestOf
           : undefined,
+        managerDoubleEliminationActive
+          ? `${managerCareer?.activeEventStage === "stage-1" ? "Stage 1" : "Stage 2 group"} double elimination`
+          : undefined,
       ));
     const roundResults = [playedResult, ...outsideResults];
     const pickemScore = outsideResults.reduce((sum, result) => sum + (pickems[result.pairId] === result.winnerId ? 1 : 0), 0);
@@ -2455,9 +2560,24 @@ function App() {
     setSwissRecords(nextSwissRecords);
     setPlayedOpponentIds(nextPlayedOpponentIds);
     setRecord(nextRecord);
-    if (nextRecord.wins >= 3) {
-      if (isSwissStageResolved(swissField, nextSwissRecords, nextRecord)) {
+    if (nextRecord.wins >= recordStageWinTarget) {
+      if (isRecordStageResolved(
+        swissField,
+        nextSwissRecords,
+        nextRecord,
+        recordStageWinTarget,
+        recordStageLossTarget,
+        recordStageQualifiers,
+      )) {
         if ((mode === "circuit" && !circuitEvent.hasPlayoffs) || managerMajorStageOnly) {
+          setScreen("swiss");
+          return;
+        }
+        if (managerDoubleEliminationActive) {
+          if (managerCareer?.activeEventStage === "stage-2") {
+            enterManagerDoubleEliminationPlayoffs(nextSwissRecords);
+            return;
+          }
           setScreen("swiss");
           return;
         }
@@ -2468,14 +2588,32 @@ function App() {
       setScreen("swiss");
       return;
     }
-    if (nextRecord.losses < 3) {
-      setOpponent(selectOpponentForRecord(nextRecord, swissField, nextSwissRecords, nextPlayedOpponentIds));
+    if (nextRecord.losses < recordStageLossTarget) {
+      setOpponent(selectOpponentForRecord(
+        nextRecord,
+        swissField,
+        nextSwissRecords,
+        nextPlayedOpponentIds,
+        recordStageWinTarget,
+        recordStageLossTarget,
+      ));
       setVeto(createVeto());
     } else {
       setTournamentOutcome("eliminated");
       setPlayerFinish("swiss");
-      if (isSwissStageResolved(swissField, nextSwissRecords, nextRecord)) {
+      if (isRecordStageResolved(
+        swissField,
+        nextSwissRecords,
+        nextRecord,
+        recordStageWinTarget,
+        recordStageLossTarget,
+        recordStageQualifiers,
+      )) {
         if ((mode === "circuit" && !circuitEvent.hasPlayoffs) || managerMajorStageOnly) {
+          setScreen("swiss");
+          return;
+        }
+        if (managerDoubleEliminationActive) {
           setScreen("swiss");
           return;
         }
@@ -2499,6 +2637,143 @@ function App() {
     setScreen("playoffs");
   }
 
+  function advanceManagerDoubleEliminationStage() {
+    if (
+      !managerCareer
+      || !managerActiveEvent?.doubleElimination
+      || managerCareer.activeEventStage !== "stage-1"
+      || record.wins < recordStageWinTarget
+      || !swissStageResolved
+    ) return;
+    const qualified = swissField
+      .filter((team) => (swissRecords[team.id]?.wins ?? 0) >= recordStageWinTarget)
+      .sort((left, right) => {
+        const leftRecord = swissRecords[left.id] ?? { wins: 0, losses: 0 };
+        const rightRecord = swissRecords[right.id] ?? { wins: 0, losses: 0 };
+        return rightRecord.wins - leftRecord.wins
+          || leftRecord.losses - rightRecord.losses
+          || teamStrength(right, settings, difficulty) - teamStrength(left, settings, difficulty);
+      })
+      .slice(0, managerActiveEvent.doubleElimination.stageOneAdvances - 1);
+    const nextCareer = advanceManagerEventStage(managerCareer, "stage-2");
+    const nextField = buildManagerDoubleEliminationField(
+      managerEventRosters,
+      managerActiveEvent,
+      "stage-2",
+      managerControlledOrganizationId,
+      managerCareer.vrsRank,
+      qualified,
+    );
+    const nextRecords = initialSwissRecords(nextField);
+    const nextOpponent = selectOpponentForRecord(
+      { wins: 0, losses: 0 },
+      nextField,
+      nextRecords,
+      [],
+      3,
+      2,
+    );
+    commitManagerCareer(nextCareer);
+    setCircuitMajorResults((current) => [
+      ...current,
+      ...tagManagerDoubleEliminationResults(matchResults, managerActiveEvent, "stage-1"),
+    ]);
+    setRecord({ wins: 0, losses: 0 });
+    setSwissField(nextField);
+    setSwissRecords(nextRecords);
+    setOpponent(nextOpponent);
+    setPlayedOpponentIds([]);
+    setMatchResults([]);
+    setSelectedResultId(undefined);
+    setViewedSwissRound(null);
+    setPickems({});
+    setLastPickemDelta(0);
+    setTournamentOutcome("running");
+    setPlayerFinish(null);
+    setSeries(undefined);
+    setMatch(undefined);
+    setVeto(createVeto());
+    setScreen("swiss");
+  }
+
+  function enterManagerDoubleEliminationPlayoffs(nextSwissRecords: Record<string, SwissRecord>) {
+    if (
+      !managerCareer
+      || !managerActiveEvent?.doubleElimination
+      || managerCareer.activeEventStage !== "stage-2"
+      || record.wins < recordStageWinTarget
+    ) return;
+    const recordFor = (team: FieldTeam) => team.id === "user"
+      ? record
+      : nextSwissRecords[team.id] ?? { wins: 0, losses: 0 };
+    const userGroup = [yourTeam, ...swissField]
+      .filter((team) => recordFor(team).wins >= recordStageWinTarget)
+      .sort((left, right) => {
+        const leftRecord = recordFor(left);
+        const rightRecord = recordFor(right);
+        return leftRecord.losses - rightRecord.losses
+          || rightRecord.wins - leftRecord.wins
+          || teamStrength(right, settings, difficulty) - teamStrength(left, settings, difficulty);
+      })
+      .slice(0, managerActiveEvent.doubleElimination.stageTwoAdvancesPerGroup);
+    if (!userGroup.some((team) => team.id === "user")) userGroup[userGroup.length - 1] = yourTeam;
+    if (record.losses === 0) {
+      const userIndex = userGroup.findIndex((team) => team.id === "user");
+      if (userIndex > 0) [userGroup[0], userGroup[userIndex]] = [userGroup[userIndex], userGroup[0]];
+    }
+    const otherGroup = buildManagerDoubleEliminationOtherGroup(
+      managerEventRosters,
+      managerActiveEvent,
+      managerControlledOrganizationId,
+      swissField,
+    );
+    if (userGroup.length < 3 || otherGroup.length < 3) return;
+
+    const quarterfinals = buildCologneQuarterfinalPairs(userGroup, otherGroup, yourTeam);
+    const byeTeams = [userGroup[0], otherGroup[0]];
+    const nextCareer = advanceManagerEventStage(managerCareer, "playoffs");
+    const archivedStage = tagManagerDoubleEliminationResults(matchResults, managerActiveEvent, "stage-2");
+    const playoffField = [...byeTeams, ...quarterfinals.flatMap((pair) => [pair.left, pair.right])]
+      .filter((team, index, teams) => team.id !== "user" && teams.findIndex((candidate) => candidate.id === team.id) === index);
+
+    commitManagerCareer(nextCareer);
+    setCircuitMajorResults((current) => [...current, ...archivedStage]);
+    setSwissField(playoffField);
+    setSwissRecords(initialSwissRecords(playoffField));
+    setPhase("playoffs");
+    setTournamentOutcome("running");
+    setPlayerFinish(null);
+    setTournamentWinner(undefined);
+    setSeries(undefined);
+    setMatch(undefined);
+    setViewedSwissRound(null);
+    setPickems({});
+    setLastPickemDelta(0);
+
+    if (byeTeams.some((team) => team.id === "user")) {
+      const quarterfinalResults = quarterfinals.map((pair) =>
+        simulatePlayoffSeries(pair, "quarterfinal", settings, difficulty, 3));
+      const quarterfinalWinners = quarterfinalResults.map((result) =>
+        result.winnerId === result.left.id ? result.left : result.right);
+      const semifinals = buildCologneSemifinalPairs(byeTeams, quarterfinalWinners, yourTeam);
+      const active = semifinals.find((pair) => pair.active) ?? semifinals[0];
+      setMatchResults(quarterfinalResults);
+      setSelectedResultId(quarterfinalResults[quarterfinalResults.length - 1]?.id);
+      setPlayoffRound("semifinal");
+      setPlayoffPairs(semifinals);
+      setOpponent(active.left.id === "user" ? active.right : active.left);
+    } else {
+      const active = quarterfinals.find((pair) => pair.active) ?? quarterfinals[0];
+      setMatchResults([]);
+      setSelectedResultId(undefined);
+      setPlayoffRound("quarterfinal");
+      setPlayoffPairs(quarterfinals);
+      setOpponent(active.left.id === "user" ? active.right : active.left);
+    }
+    setVeto(createVeto());
+    setScreen("playoffs");
+  }
+
   function enterNeutralPlayoffs(nextSwissRecords: Record<string, SwissRecord>, outcome: TournamentOutcome = "eliminated") {
     const pairs = buildNeutralInitialPlayoffPairs(swissField, nextSwissRecords, settings, difficulty);
     setPhase("playoffs");
@@ -2517,12 +2792,36 @@ function App() {
     const simulatedResults: SwissResult[] = [];
     let nextRound = Math.min(record.wins + record.losses + 1, 5);
 
-    while (nextRound <= 5 && !isSwissStageResolved(swissField, nextSwissRecords, record)) {
+    while (nextRound <= 5 && !isRecordStageResolved(
+      swissField,
+      nextSwissRecords,
+      record,
+      recordStageWinTarget,
+      recordStageLossTarget,
+      recordStageQualifiers,
+    )) {
       // rebuild history each round so the games we just simulated also block rematches
       const history = buildSwissHistory([...matchResults, ...simulatedResults]);
-      const pairs = buildRemainingSwissPairs(swissField, nextSwissRecords, nextRound, history);
+      const pairs = buildRemainingSwissPairs(
+        swissField,
+        nextSwissRecords,
+        nextRound,
+        history,
+        recordStageWinTarget,
+        recordStageLossTarget,
+      );
       if (!pairs.length) break;
-      const roundResults = pairs.map((pair) => simulateSwissSeries(pair, nextRound, settings, difficulty, nextSwissRecords));
+      const roundResults = pairs.map((pair) => simulateSwissSeries(
+        pair,
+        nextRound,
+        settings,
+        difficulty,
+        nextSwissRecords,
+        managerDoubleEliminationActive ? managerActiveEvent?.groupBestOf : undefined,
+        managerDoubleEliminationActive
+          ? `${managerCareer?.activeEventStage === "stage-1" ? "Stage 1" : "Stage 2 group"} double elimination`
+          : undefined,
+      ));
       simulatedResults.push(...roundResults);
       nextSwissRecords = applyResultsToSwissRecords(nextSwissRecords, roundResults);
       nextRound += 1;
@@ -2538,6 +2837,15 @@ function App() {
 
     if (mode === "circuit" && !circuitEvent.hasPlayoffs) {
       setScreen("swiss");
+      return;
+    }
+
+    if (managerDoubleEliminationActive) {
+      if (record.wins >= recordStageWinTarget && managerCareer?.activeEventStage === "stage-2") {
+        enterManagerDoubleEliminationPlayoffs(nextSwissRecords);
+      } else {
+        setScreen("swiss");
+      }
       return;
     }
 
@@ -2598,6 +2906,25 @@ function App() {
     setMatchResults((current) => [...current, ...roundResults]);
     setSelectedResultId(roundResults[roundResults.length - 1]?.id);
 
+    if (
+      managerActiveEvent?.format === "double-elimination"
+      && managerCareer?.activeEventStage === "playoffs"
+      && playoffRound === "quarterfinal"
+    ) {
+      const byeTeams = swissField.slice(0, 2);
+      const pairs = buildCologneSemifinalPairs(byeTeams, winners, yourTeam);
+      const active = pairs.find((pair) => pair.active) ?? pairs[0];
+      if (userInRound && !userWon) {
+        setPlayerFinish("top8");
+        setTournamentOutcome("eliminated");
+      }
+      setPlayoffRound("semifinal");
+      setPlayoffPairs(pairs);
+      setOpponent(active ? (active.right.id === "user" ? active.left : active.right) : opponent);
+      setScreen("playoffs");
+      return;
+    }
+
     if (playoffRound === "final") {
       const winner = winners[0];
       setTournamentWinner(winner);
@@ -2628,6 +2955,27 @@ function App() {
     setSelectedResultId(playedResult.id);
     setSeries(undefined);
     setMatch(undefined);
+
+    if (
+      managerActiveEvent?.format === "double-elimination"
+      && managerCareer?.activeEventStage === "playoffs"
+      && playoffRound === "quarterfinal"
+    ) {
+      const winners = roundResults.map((result) => result.winnerId === result.left.id ? result.left : result.right);
+      const byeTeams = swissField.slice(0, 2);
+      const pairs = buildCologneSemifinalPairs(byeTeams, winners, yourTeam);
+      const active = pairs.find((pair) => pair.active) ?? pairs[0];
+      if (playedResult.winnerId !== "user") {
+        setPlayerFinish("top8");
+        setTournamentOutcome("eliminated");
+      }
+      setPlayoffRound("semifinal");
+      setPlayoffPairs(pairs);
+      setOpponent(active ? (active.right.id === "user" ? active.left : active.right) : opponent);
+      setVeto(createVeto());
+      setScreen("playoffs");
+      return;
+    }
 
     if (playedResult.winnerId !== "user") {
       const winners = roundResults.map((result) => (result.winnerId === result.left.id ? result.left : result.right));
@@ -3265,7 +3613,15 @@ function App() {
       ? simulateManagerMajorEntryRoute(managerEventRosters, majorStage, settings, difficulty)
       : undefined;
     const nextSwissField = majorEntryRoute?.field
-      ?? buildManagerField(managerEventRosters, event, managerControlledOrganizationId);
+      ?? (event.format === "double-elimination" && nextCareer.activeEventStage
+        ? buildManagerDoubleEliminationField(
+            managerEventRosters,
+            event,
+            nextCareer.activeEventStage,
+            managerControlledOrganizationId,
+            nextCareer.vrsRank,
+          )
+        : buildManagerField(managerEventRosters, event, managerControlledOrganizationId));
     const nextSwissRecords = initialSwissRecords(nextSwissField);
     const directPairs = event.format === "single-elimination"
       ? buildPlayoffPairs("quarterfinal", [yourTeam, ...nextSwissField.slice(0, 7)], yourTeam)
@@ -3320,13 +3676,22 @@ function App() {
     });
     const completedResults = event.majorCycle
       ? [...normalizedCircuitArchive, ...tagCircuitResults(matchResults, managerMajorStage ?? circuitEvent)]
-      : matchResults;
+      : event.format === "double-elimination"
+        ? [
+            ...circuitMajorResults,
+            ...tagManagerDoubleEliminationResults(
+              matchResults,
+              event,
+              managerCareer.activeEventStage ?? "playoffs",
+            ),
+          ]
+        : matchResults;
     const playerRatings = Object.fromEntries(
       buildPlayerDatabase(completedResults)
         .filter((row) => row.team.id === yourTeam.id)
         .map((row) => [row.player.id, row.line.rating]),
     );
-    const eventRecord = event.majorCycle
+    const eventRecord = event.majorCycle || event.format === "double-elimination"
       ? userSeriesRecord(completedResults)
       : event.format === "swiss" ? record : userSeriesRecord(matchResults);
     const archivedResults = completedResults.map((result) => ({
@@ -3339,7 +3704,7 @@ function App() {
       : Array.from(new Map([yourTeam, ...swissField].map((team) => [team.id, team])).values());
     const archivedWinner = winnerFromFinal(archivedResults) ?? tournamentWinner ?? (tier === "champion" ? yourTeam : undefined);
     const archive: ManagerEventArchive = {
-      id: `manager:${managerCareer.season}:${event.id}:${managerCareer.activeMajorStage ?? "event"}`,
+      id: `manager:${managerCareer.season}:${event.id}:${managerCareer.activeMajorStage ?? managerCareer.activeEventStage ?? "event"}`,
       eventId: event.id,
       eventName: managerEventName(event, managerCareer.season),
       season: managerCareer.season,
@@ -3387,7 +3752,7 @@ function App() {
       },
     ]);
     setCareerEvent((current) => current + 1);
-    if (event.majorCycle) setCircuitMajorResults([]);
+    if (event.majorCycle || event.format === "double-elimination") setCircuitMajorResults([]);
     setScreen("manager-home");
   }
 
@@ -4307,6 +4672,8 @@ function App() {
                 <span>
                   {managerRoundRobinActive
                     ? `${tournamentName} - Round robin - ${swissUserFinished ? "Complete" : `Matchday ${managerRoundRobinRound} of ${managerRoundRobinRounds}`}`
+                    : managerDoubleEliminationActive
+                      ? `${tournamentName} - ${managerCareer?.activeEventStage === "stage-1" ? "Stage 1" : "Stage 2 group"} - ${record.wins >= recordStageWinTarget ? "Advanced" : record.losses >= recordStageLossTarget ? "Eliminated" : record.losses === 0 ? "Upper bracket" : "Lower bracket"}`
                     : `${tournamentName} - Swiss - ${record.wins >= 3 ? "Qualified" : record.losses >= 3 ? "Eliminated" : `Round ${record.wins + record.losses + 1}`}`}
                 </span>
               </div>
@@ -4336,6 +4703,16 @@ function App() {
                       </button>
                     )}
                   </>
+                ) : managerDoubleEliminationStageCleared && managerCareer?.activeEventStage === "stage-1" ? (
+                  <button className="primary" onClick={advanceManagerDoubleEliminationStage}>
+                    <ArrowRight size={17} />
+                    Advance to Stage 2
+                  </button>
+                ) : managerDoubleEliminationStageCleared && managerCareer?.activeEventStage === "stage-2" ? (
+                  <button className="primary" onClick={() => enterManagerDoubleEliminationPlayoffs(swissRecords)}>
+                    <ArrowRight size={17} />
+                    Build Cologne playoffs
+                  </button>
                 ) : circuitStageCleared ? (
                   <button className="primary" onClick={advanceCircuitStage}>
                     <ArrowRight size={17} />
@@ -4346,7 +4723,7 @@ function App() {
                     <ArrowRight size={17} />
                     Advance to {managerMajorNextStage.shortName}
                   </button>
-                ) : runDone && record.losses >= 3 && swissStageResolved ? (
+                ) : runDone && record.losses >= recordStageLossTarget && swissStageResolved ? (
                   mode === "circuit" ? (
                     <>
                       <button className="primary" onClick={beginCircuitObservation}>
@@ -4364,7 +4741,7 @@ function App() {
                         <ArrowRight size={17} />
                         {mode === "manager" ? "Return to Manager HQ" : careerActive ? `Continue to Major ${careerEvent + 1}` : "Continue career"}
                       </button>
-                      {!managerMajorStageOnly && (
+                      {!managerMajorStageOnly && !managerDoubleEliminationActive && (
                         <button className="secondary" onClick={() => enterNeutralPlayoffs(swissRecords, "eliminated")}>
                           <FastForward size={17} />
                           Continue bracket
@@ -4398,11 +4775,21 @@ function App() {
               </div>
             </div>
             {swissUserFinished && (
-              <div className={managerRoundRobinActive ? "run-status eliminated" : record.wins >= 3 ? "run-status qualified" : "run-status eliminated"}>
-                <strong>{managerRoundRobinActive ? "Group stage complete" : record.wins >= 3 ? "Qualified" : "Eliminated"}</strong>
+              <div className={managerRoundRobinActive ? "run-status eliminated" : record.wins >= recordStageWinTarget ? "run-status qualified" : "run-status eliminated"}>
+                <strong>{managerRoundRobinActive ? "Group stage complete" : record.wins >= recordStageWinTarget ? managerDoubleEliminationActive ? "Advanced" : "Qualified" : "Eliminated"}</strong>
                 <span>
                   {managerRoundRobinActive
                     ? `The round robin finished ${record.wins}-${record.losses}, outside the top four playoff line.`
+                    : managerDoubleEliminationActive
+                      ? record.wins >= recordStageWinTarget
+                        ? swissCanSim
+                          ? `Your place is secure. Sim the remaining bracket series to settle all ${recordStageQualifiers} advancing teams.`
+                          : managerCareer?.activeEventStage === "stage-1"
+                            ? "You survived Stage 1. The direct top-eight invites are waiting in Stage 2."
+                            : record.losses === 0
+                              ? "You won the group and earned a direct semifinal berth."
+                              : "You qualified for the arena quarterfinals."
+                        : "A second bracket loss ends the Cologne run."
                     : record.wins >= 3
                     ? swissCanSim
                       ? circuitStageOnly || managerMajorStageOnly
@@ -4426,9 +4813,11 @@ function App() {
                 <Target size={17} />
                 <span>
                   {swissViewingPast
-                    ? `${managerRoundRobinActive ? "Matchday" : "Swiss round"} ${viewedSwissRound} results - click a series to open the match`
+                    ? `${managerRoundRobinActive ? "Matchday" : managerDoubleEliminationActive ? "Bracket round" : "Swiss round"} ${viewedSwissRound} results - click a series to open the match`
                     : managerRoundRobinActive
                       ? "League fixtures: every team meets once before the top four advance"
+                      : managerDoubleEliminationActive
+                        ? "Double elimination: one loss drops a team to the lower bracket; a second loss ends its stage"
                       : "Pick'Em: bet on the winners of the other series and rack up points"}
                 </span>
                 <b>{pickemScore} pts</b>
@@ -4492,7 +4881,7 @@ function App() {
                     />
                   ))
                 ) : (
-                  <div className="swiss-empty-row">{managerRoundRobinActive ? "Round robin is complete." : "Swiss stage is complete."}</div>
+                  <div className="swiss-empty-row">{managerRoundRobinActive ? "Round robin is complete." : managerDoubleEliminationActive ? "Double-elimination stage is complete." : "Swiss stage is complete."}</div>
                 )}
               </div>
             </div>
@@ -4502,12 +4891,22 @@ function App() {
             <div className="swiss-board-title">
               <div className="section-title">
                 <Target size={18} />
-                <span>{managerRoundRobinActive ? "League standings" : "Swiss stage"}</span>
+                <span>{managerRoundRobinActive ? "League standings" : managerDoubleEliminationActive ? "Double-elimination bracket" : "Swiss stage"}</span>
               </div>
-              <span>{managerRoundRobinActive ? "Top four qualify for the knockout bracket" : "Click an ended series later to inspect match stats"}</span>
+              <span>{managerRoundRobinActive ? "Top four qualify for the knockout bracket" : managerDoubleEliminationActive ? `${recordStageQualifiers} teams advance from this stage` : "Click an ended series later to inspect match stats"}</span>
             </div>
             {managerRoundRobinActive ? (
               <ManagerRoundRobinStandings user={yourTeam} field={swissField} record={record} records={swissRecords} />
+            ) : managerDoubleEliminationActive ? (
+              <ManagerDoubleEliminationBoard
+                user={yourTeam}
+                field={swissField}
+                record={record}
+                records={swissRecords}
+                winTarget={recordStageWinTarget}
+                lossTarget={recordStageLossTarget}
+                onOpenTeam={openTeamDetail}
+              />
             ) : (
               <SwissBoard
                 user={yourTeam}
@@ -4665,7 +5064,7 @@ function App() {
           <section className="swiss-roster-bar">
             <div className="record-pill">
               <strong>{runKind === "spectator" || circuitObserver ? playoffPairs.length : `${record.wins}-${record.losses}`}</strong>
-              <span>{runKind === "spectator" || circuitObserver ? "series this phase" : managerActiveEvent?.format === "round-robin" ? "Group record" : managerActiveEvent?.format === "single-elimination" ? "Knockout run" : "Swiss record"}</span>
+              <span>{runKind === "spectator" || circuitObserver ? "series this phase" : managerActiveEvent?.format === "round-robin" ? "Group record" : managerActiveEvent?.format === "single-elimination" ? "Knockout run" : managerActiveEvent?.format === "double-elimination" ? "Bracket record" : "Swiss record"}</span>
             </div>
             <div className="compact-roster">
               {runKind === "spectator" || circuitObserver
@@ -7361,6 +7760,80 @@ function ManagerRoundRobinStandings({
           <em>{teamRecord.losses}</em>
           <small className={index < 4 ? "qualified" : "outside"}>{index < 4 ? "Playoffs" : "Outside"}</small>
         </div>
+      ))}
+    </div>
+  );
+}
+
+function ManagerDoubleEliminationBoard({
+  user,
+  field,
+  record,
+  records,
+  winTarget,
+  lossTarget,
+  onOpenTeam,
+}: {
+  user: FieldTeam;
+  field: FieldTeam[];
+  record: SwissRecord;
+  records: Record<string, SwissRecord>;
+  winTarget: number;
+  lossTarget: number;
+  onOpenTeam: (team: FieldTeam) => void;
+}) {
+  const rows = [user, ...field].map((team) => ({
+    team,
+    record: team.id === "user" ? record : records[team.id] ?? { wins: 0, losses: 0 },
+  }));
+  const lanes = [
+    {
+      id: "upper",
+      label: "Upper bracket",
+      detail: "Undefeated",
+      rows: rows.filter((row) => row.record.wins < winTarget && row.record.losses === 0),
+    },
+    {
+      id: "lower",
+      label: "Lower bracket",
+      detail: "Next loss eliminates",
+      rows: rows.filter((row) => row.record.wins < winTarget && row.record.losses > 0 && row.record.losses < lossTarget),
+    },
+    {
+      id: "advanced",
+      label: "Advanced",
+      detail: `${winTarget} series wins`,
+      rows: rows.filter((row) => row.record.wins >= winTarget),
+    },
+    {
+      id: "eliminated",
+      label: "Eliminated",
+      detail: `${lossTarget} bracket losses`,
+      rows: rows.filter((row) => row.record.losses >= lossTarget),
+    },
+  ];
+  return (
+    <div className="manager-double-elim-board">
+      {lanes.map((lane) => (
+        <section className={lane.id} key={lane.id}>
+          <header>
+            <span>{lane.id === "upper" ? <ShieldCheck size={16} /> : lane.id === "lower" ? <Swords size={16} /> : lane.id === "advanced" ? <ArrowRight size={16} /> : <Ban size={16} />}</span>
+            <div><strong>{lane.label}</strong><small>{lane.detail}</small></div>
+            <b>{lane.rows.length}</b>
+          </header>
+          <div>
+            {lane.rows
+              .sort((left, right) => right.record.wins - left.record.wins || left.record.losses - right.record.losses || (left.team.rank ?? 99) - (right.team.rank ?? 99))
+              .map(({ team, record: teamRecord }) => (
+                <button className={team.id === "user" ? "user" : ""} key={team.id} onClick={() => onOpenTeam(team)}>
+                  <TeamLogo team={team} small />
+                  <span><strong>{team.name}</strong><small>{teamRecord.losses === 0 ? "Upper path" : `${teamRecord.losses} lower-bracket life used`}</small></span>
+                  <b>{teamRecord.wins}-{teamRecord.losses}</b>
+                </button>
+              ))}
+            {!lane.rows.length && <p>No teams here yet</p>}
+          </div>
+        </section>
       ))}
     </div>
   );
@@ -12205,7 +12678,7 @@ function ManagerCalendarPage({
                 <span><small>{event.classification} / {event.entryType} / {event.environment}</small><strong>{managerEventName(event, career.season)}</strong><em>{event.description}</em></span>
               </div>
               <div className="manager-calendar-format">
-                <small>{event.location} / {event.capacity}-team field</small>
+                <small>{event.location} / {event.doubleElimination ? `${event.doubleElimination.stageOneTeams + event.doubleElimination.directInviteRankMax} invited teams` : `${event.capacity}-team field`}</small>
                 <strong>{managerFormatDate(startsOn)} - {managerFormatDate(schedule.endsOn)}</strong>
                 <em>{majorProjection ? `${majorProjection.label} projected / recalculated at launch` : event.formatLabel}</em>
                 <div className="manager-format-stages" aria-label={`${event.shortName} stages`}>
@@ -12486,7 +12959,7 @@ function ManagerLegacyEventOverviewPage({
         <div><small>Placement</small><b>{managerHonorPlacement(entry)}</b><span>{entry.record.wins}-{entry.record.losses} series record</span></div>
         <div><small>Prize earned</small><b>{fmtMoney(entry.prize)}</b><span>{signedInteger(entry.points ?? 0)} VRS points</span></div>
         <div><small>Venue</small><b>{event?.environment ?? "Archived"}</b><span>{event?.location ?? "Legacy save"}</span></div>
-        <div><small>Format</small><b>{event?.format === "single-elimination" ? "Knockout" : event?.format === "round-robin" ? "Round robin" : "Swiss"}</b><span>{event?.formatLabel ?? "Saved match history"}</span></div>
+        <div><small>Format</small><b>{event?.format === "single-elimination" ? "Knockout" : event?.format === "round-robin" ? "Round robin" : event?.format === "double-elimination" ? "Double elimination" : "Swiss"}</b><span>{event?.formatLabel ?? "Saved match history"}</span></div>
         <div><small>Vault coverage</small><b>{teamMatches.length} maps</b><span>{mapWins}-{teamMatches.length - mapWins} map record</span></div>
       </section>
 
@@ -15300,7 +15773,86 @@ function buildManagerField(rosterPool: Roster[], event: ManagerEvent, controlled
   });
   const eligibleIds = new Set(eligible.map((roster) => roster.id));
   const fallback = available.filter((roster) => !eligibleIds.has(roster.id));
-  return shuffle([...eligible, ...fallback]).slice(0, Math.max(1, event.capacity - 1)).map(toTournamentTeam);
+  const ordered = event.classification === "S-Tier" || event.classification === "Major"
+    ? [...eligible].sort(managerInviteRosterOrder).concat([...fallback].sort(managerInviteRosterOrder))
+    : shuffle([...eligible, ...fallback]);
+  return ordered.slice(0, Math.max(1, event.capacity - 1)).map(toTournamentTeam);
+}
+
+function managerInviteRosterOrder(left: Roster, right: Roster) {
+  return (left.rank ?? 99) - (right.rank ?? 99)
+    || managerRosterVrsPoints(right) - managerRosterVrsPoints(left)
+    || left.id.localeCompare(right.id);
+}
+
+function buildManagerDoubleEliminationField(
+  rosterPool: Roster[],
+  event: ManagerEvent,
+  stage: ManagerEventStage,
+  controlledOrganizationId: string | undefined,
+  managedRank: number,
+  stageOneQualifiers: FieldTeam[] = [],
+) {
+  const route = event.doubleElimination;
+  if (!route || stage === "playoffs") return buildManagerField(rosterPool, event, controlledOrganizationId);
+  const available = rosterPool
+    .filter((roster) => roster.id !== controlledOrganizationId)
+    .sort(managerInviteRosterOrder);
+
+  if (stage === "stage-1") {
+    const eligible = available.filter((roster) => {
+        const rank = roster.rank ?? 99;
+        return rank >= route.stageOneRankMin && rank <= route.stageOneRankMax;
+      });
+    const eligibleIds = new Set(eligible.map((roster) => roster.id));
+    return [...eligible, ...available.filter((roster) => !eligibleIds.has(roster.id))]
+      .slice(0, route.stageOneTeams - 1)
+      .map(toTournamentTeam);
+  }
+
+  const direct = available
+    .filter((roster) => (roster.rank ?? 99) <= route.directInviteRankMax)
+    .map(toTournamentTeam);
+  const qualifiedIds = new Set(stageOneQualifiers.map((team) => team.id));
+  const simulatedQualifiers = available
+    .filter((roster) => {
+      const rank = roster.rank ?? 99;
+      return rank >= route.stageOneRankMin && rank <= route.stageOneRankMax && !qualifiedIds.has(roster.id);
+    })
+    .map(toTournamentTeam);
+  const qualifiers = [...stageOneQualifiers, ...simulatedQualifiers]
+    .filter((team, index, teams) => teams.findIndex((candidate) => candidate.id === team.id) === index)
+    .slice(0, route.stageOneAdvances - (managedRank > route.directInviteRankMax ? 1 : 0));
+  const directSlots = managedRank <= route.directInviteRankMax ? 3 : 4;
+  const group = [
+    ...direct.slice(0, directSlots),
+    ...qualifiers.slice(0, route.stageTwoTeamsPerGroup - 1 - directSlots),
+  ];
+  const groupIds = new Set(group.map((team) => team.id));
+  const fallback = available
+    .filter((roster) => !groupIds.has(roster.id))
+    .map(toTournamentTeam);
+  return [...group, ...fallback].slice(0, route.stageTwoTeamsPerGroup - 1);
+}
+
+function buildManagerDoubleEliminationOtherGroup(
+  rosterPool: Roster[],
+  event: ManagerEvent,
+  controlledOrganizationId: string | undefined,
+  currentGroup: FieldTeam[],
+) {
+  const route = event.doubleElimination;
+  if (!route) return [];
+  const excluded = new Set([controlledOrganizationId, ...currentGroup.map((team) => team.id)].filter(Boolean));
+  const available = rosterPool
+    .filter((roster) => !excluded.has(roster.id))
+    .sort(managerInviteRosterOrder);
+  const direct = available.filter((roster) => (roster.rank ?? 99) <= route.directInviteRankMax);
+  const stageOne = available.filter((roster) => {
+    const rank = roster.rank ?? 99;
+    return rank >= route.stageOneRankMin && rank <= route.stageOneRankMax;
+  });
+  return [...direct.slice(0, 2), ...stageOne.slice(0, 1)].map(toTournamentTeam);
 }
 
 function buildRoundRobinRoundPairs(user: FieldTeam, field: FieldTeam[], round: number): SwissPair[] {
@@ -15340,6 +15892,49 @@ function buildRoundRobinPlayoffPairs(standings: FieldTeam[], user: FieldTeam): S
       right,
       active: left.id === user.id || right.id === user.id,
     }));
+}
+
+function buildCologneQuarterfinalPairs(groupA: FieldTeam[], groupB: FieldTeam[], user: FieldTeam): SwissPair[] {
+  return [
+    [groupA[1], groupB[2]],
+    [groupB[1], groupA[2]],
+  ]
+    .filter((pair): pair is [FieldTeam, FieldTeam] => Boolean(pair[0] && pair[1]))
+    .map(([left, right], index) => ({
+      id: `cologne-quarterfinal-${index}-${left.id}-${right.id}`,
+      left,
+      right,
+      active: left.id === user.id || right.id === user.id,
+    }));
+}
+
+function buildCologneSemifinalPairs(byeTeams: FieldTeam[], quarterfinalWinners: FieldTeam[], user: FieldTeam): SwissPair[] {
+  return [
+    [byeTeams[0], quarterfinalWinners[1]],
+    [byeTeams[1], quarterfinalWinners[0]],
+  ]
+    .filter((pair): pair is [FieldTeam, FieldTeam] => Boolean(pair[0] && pair[1]))
+    .map(([left, right], index) => ({
+      id: `cologne-semifinal-${index}-${left.id}-${right.id}`,
+      left,
+      right,
+      active: left.id === user.id || right.id === user.id,
+    }));
+}
+
+function tagManagerDoubleEliminationResults(
+  results: SwissResult[],
+  event: ManagerEvent,
+  stage: ManagerEventStage,
+) {
+  const eventId: CircuitEventId = stage === "stage-1" ? "stage-1" : stage === "stage-2" ? "stage-2" : "stage-3";
+  const stageLabel = stage === "stage-1" ? "Stage 1" : stage === "stage-2" ? "Stage 2" : "Playoffs";
+  return results.map((result) => ({
+    ...result,
+    id: `${event.id}:${stage}:${result.id}`,
+    eventId,
+    eventName: `${event.name} ${stageLabel}`,
+  }));
 }
 
 function tagCircuitResults(results: SwissResult[], event: CircuitEvent) {
@@ -15680,29 +16275,49 @@ function buildSwissPairs(
   record: SwissRecord,
   records: Record<string, SwissRecord>,
   history: Map<string, Set<string>>,
+  winTarget = 3,
+  lossTarget = 3,
 ): SwissPair[] {
   // the user's match is fixed (opponent already chosen rematch-free); pair everyone else rematch-free.
-  const pool = swissPairPool(field.filter((team) => team.id !== opponent.id), records);
+  const pool = swissPairPool(field.filter((team) => team.id !== opponent.id), records, winTarget, lossTarget);
   const others = pairPoolNoRematch(pool, records, history, (a, b, key) => `${record.wins}-${record.losses}-${key}-${a.id}-${b.id}`);
   return [{ id: `${record.wins}-${record.losses}-user`, left: user, right: opponent, active: true }, ...others];
 }
 
-function buildRemainingSwissPairs(field: FieldTeam[], records: Record<string, SwissRecord>, round: number, history: Map<string, Set<string>>) {
-  const pool = swissPairPool(field, records);
+function buildRemainingSwissPairs(
+  field: FieldTeam[],
+  records: Record<string, SwissRecord>,
+  round: number,
+  history: Map<string, Set<string>>,
+  winTarget = 3,
+  lossTarget = 3,
+) {
+  const pool = swissPairPool(field, records, winTarget, lossTarget);
   return pairPoolNoRematch(pool, records, history, (a, b, key) => `swiss-sim-${round}-${key}-${a.id}-${b.id}`);
 }
 
 function isSwissStageResolved(field: FieldTeam[], records: Record<string, SwissRecord>, userRecord: SwissRecord) {
-  const userQualified = userRecord.wins >= 3 ? 1 : 0;
+  return isRecordStageResolved(field, records, userRecord, 3, 3, SWISS_FIELD_SIZE / 2);
+}
+
+function isRecordStageResolved(
+  field: FieldTeam[],
+  records: Record<string, SwissRecord>,
+  userRecord: SwissRecord,
+  winTarget: number,
+  lossTarget: number,
+  qualifierTarget: number,
+) {
+  const userQualified = userRecord.wins >= winTarget ? 1 : 0;
   const qualifiedTeams = field.filter((team) => {
     const teamRecord = records[team.id] ?? { wins: 0, losses: 0 };
-    return teamRecord.wins >= 3;
+    return teamRecord.wins >= winTarget;
   }).length;
   const liveTeams = field.filter((team) => {
     const teamRecord = records[team.id] ?? { wins: 0, losses: 0 };
-    return teamRecord.wins < 3 && teamRecord.losses < 3;
+    return teamRecord.wins < winTarget && teamRecord.losses < lossTarget;
   }).length;
-  return userQualified + qualifiedTeams >= SWISS_FIELD_SIZE / 2 || liveTeams === 0;
+  return userQualified + qualifiedTeams >= qualifierTarget || liveTeams === 0;
 }
 
 function isNeutralSwissStageResolved(field: FieldTeam[], records: Record<string, SwissRecord>) {
@@ -15727,10 +16342,10 @@ function initialSwissRecords(field: FieldTeam[]) {
   );
 }
 
-function swissPairPool(field: FieldTeam[], records: Record<string, SwissRecord>) {
+function swissPairPool(field: FieldTeam[], records: Record<string, SwissRecord>, winTarget = 3, lossTarget = 3) {
   const active = field.filter((team) => {
     const teamRecord = records[team.id] ?? { wins: 0, losses: 0 };
-    return teamRecord.wins < 3 && teamRecord.losses < 3;
+    return teamRecord.wins < winTarget && teamRecord.losses < lossTarget;
   });
   const order = new Map(active.map((team, index) => [team.id, index]));
   return [...active].sort((a, b) => {
@@ -15745,10 +16360,12 @@ function selectOpponentForRecord(
   field: FieldTeam[],
   records: Record<string, SwissRecord>,
   playedOpponentIds: string[],
+  winTarget = 3,
+  lossTarget = 3,
 ) {
   const active = field.filter((team) => {
     const teamRecord = records[team.id] ?? { wins: 0, losses: 0 };
-    return teamRecord.wins < 3 && teamRecord.losses < 3;
+    return teamRecord.wins < winTarget && teamRecord.losses < lossTarget;
   });
   const sameLane = active.filter((team) => {
     const teamRecord = records[team.id] ?? { wins: 0, losses: 0 };
@@ -15980,9 +16597,18 @@ function simulateSwissSeries(
   difficulty: Difficulty,
   records: Record<string, SwissRecord>,
   bestOfOverride?: number,
+  labelOverride?: string,
 ) {
   const bestOf = bestOfOverride ?? swissPairBestOf(pair, records);
-  const result = simulateSeries(pair, round, "swiss", bestOfOverride ? `Round robin matchday ${round}` : `Swiss round ${round}`, bestOf, settings, difficulty);
+  const result = simulateSeries(
+    pair,
+    round,
+    "swiss",
+    labelOverride ?? (bestOfOverride ? `Round robin matchday ${round}` : `Swiss round ${round}`),
+    bestOf,
+    settings,
+    difficulty,
+  );
   result.laneKey = laneKeyForRecord(records[pair.left.id] ?? { wins: 0, losses: 0 });
   return result;
 }

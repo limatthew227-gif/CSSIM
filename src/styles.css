@@ -18026,6 +18026,156 @@ button.manager-trophy-slot:focus-visible .manager-trophy-object {
   background: #202a27;
 }
 
+.manager-double-elim-board {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.manager-double-elim-board > section {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid #33463f;
+  border-radius: 6px;
+  background: #131d1a;
+}
+
+.manager-double-elim-board > section > header {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  min-height: 52px;
+  padding: 8px 10px;
+  border-bottom: 1px solid #33463f;
+  background: #1c2925;
+}
+
+.manager-double-elim-board > section > header > span {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border-radius: 5px;
+  color: var(--manager-blue);
+  background: color-mix(in srgb, var(--manager-blue), transparent 86%);
+}
+
+.manager-double-elim-board > section.lower > header > span {
+  color: var(--manager-amber);
+  background: color-mix(in srgb, var(--manager-amber), transparent 86%);
+}
+
+.manager-double-elim-board > section.advanced > header > span {
+  color: var(--green);
+  background: color-mix(in srgb, var(--green), transparent 86%);
+}
+
+.manager-double-elim-board > section.eliminated > header > span {
+  color: var(--red);
+  background: color-mix(in srgb, var(--red), transparent 86%);
+}
+
+.manager-double-elim-board header div {
+  display: grid;
+  min-width: 0;
+}
+
+.manager-double-elim-board header strong {
+  font-size: 12px;
+}
+
+.manager-double-elim-board header small {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 9px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.manager-double-elim-board header > b {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.manager-double-elim-board section > div {
+  display: grid;
+}
+
+.manager-double-elim-board section > div > button {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  min-height: 50px;
+  padding: 7px 10px;
+  border: 0;
+  border-bottom: 1px solid #2c3d37;
+  border-radius: 0;
+  color: var(--text);
+  background: transparent;
+  text-align: left;
+}
+
+.manager-double-elim-board section > div > button:last-of-type {
+  border-bottom: 0;
+}
+
+.manager-double-elim-board section > div > button:hover,
+.manager-double-elim-board section > div > button.user {
+  background: color-mix(in srgb, var(--accent), transparent 90%);
+}
+
+.manager-double-elim-board section > div > button.user {
+  box-shadow: inset 3px 0 var(--accent);
+}
+
+.manager-double-elim-board section > div > button > span {
+  display: grid;
+  min-width: 0;
+}
+
+.manager-double-elim-board section > div > button strong,
+.manager-double-elim-board section > div > button small {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.manager-double-elim-board section > div > button strong {
+  font-size: 11px;
+}
+
+.manager-double-elim-board section > div > button small {
+  color: var(--muted);
+  font-size: 8px;
+}
+
+.manager-double-elim-board section > div > button > b {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.manager-double-elim-board section > div > p {
+  margin: 0;
+  padding: 18px 10px;
+  color: var(--muted);
+  font-size: 10px;
+  text-align: center;
+}
+
+@media (max-width: 1100px) {
+  .manager-double-elim-board {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 620px) {
+  .manager-double-elim-board {
+    grid-template-columns: 1fr;
+  }
+}
+
 .manager-command-bar,
 .manager-calendar-head,
 .manager-takeover-head,

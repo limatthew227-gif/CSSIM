@@ -16,8 +16,10 @@ import {
   isCurrentManagerWorldRoster,
   managerEventById,
   managerEventPayoutTotal,
+  managerEventEntryStage,
   managerEventName,
   managerEventSchedule,
+  managerEventStageRules,
   managerEvents,
   managerEventEligibility,
   managerEventReadyToLaunch,
@@ -305,6 +307,7 @@ test("lower-tier CIS contracts stay inside a realistic local salary band", () =>
 test("Manager calendar carries Swiss, round-robin, and direct knockout formats", () => {
   assert.equal(managerEventById("frontier-open-2026")?.format, "single-elimination");
   assert.equal(managerEventById("pro-league-challenger-2026")?.format, "round-robin");
+  assert.equal(managerEventById("cologne-masters-2026")?.format, "double-elimination");
   assert.equal(managerEventById("fall-global-major-2026")?.format, "swiss");
 });
 
@@ -312,9 +315,30 @@ test("Manager seasons carry a dense S-tier and A-tier circuit with varied fields
   assert.equal(managerEvents.length, 12);
   assert.equal(managerEvents.filter((event) => event.classification === "S-Tier").length, 5);
   assert.equal(managerEvents.filter((event) => event.classification === "A-Tier").length, 4);
-  assert.deepEqual(new Set(managerEvents.map((event) => event.format)), new Set(["single-elimination", "swiss", "round-robin"]));
+  assert.deepEqual(new Set(managerEvents.map((event) => event.format)), new Set(["single-elimination", "swiss", "round-robin", "double-elimination"]));
   assert.deepEqual(new Set(managerEvents.map((event) => event.capacity)), new Set([8, 16, 32]));
   assert.ok(managerEvents.every((event) => event.formatStages.length >= 1));
+});
+
+test("IEM Cologne uses VRS-routed double-elimination stages and a six-team playoff", () => {
+  const cologne = managerEventById("cologne-masters-2026")!;
+  assert.equal(cologne.name, "IEM Cologne 2026");
+  assert.equal(managerEventEntryStage(cologne, 8), "stage-2");
+  assert.equal(managerEventEntryStage(cologne, 9), "stage-1");
+  assert.deepEqual(managerEventStageRules(cologne, "stage-1"), {
+    teams: 16,
+    winTarget: 2,
+    lossTarget: 2,
+    qualifiers: 8,
+  });
+  assert.deepEqual(managerEventStageRules(cologne, "stage-2"), {
+    teams: 8,
+    winTarget: 3,
+    lossTarget: 2,
+    qualifiers: 3,
+  });
+  assert.equal(cologne.formatStages[2].teams, 6);
+  assert.match(cologne.formatStages[2].advances, /semifinals/i);
 });
 
 test("Manager event operations are ordered and the calendar includes real scheduling choices", () => {

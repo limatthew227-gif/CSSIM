@@ -11,7 +11,7 @@ import {
   type VrsProfile,
 } from "./vrs";
 
-export const MANAGER_CAREER_VERSION = 22;
+export const MANAGER_CAREER_VERSION = 23;
 const MANAGER_WORLD_VRS_VERSION = 22;
 export const MANAGER_START_DATE = "2026-07-20";
 export const MANAGER_SALARY_MODEL_VERSION = 2;
@@ -28,8 +28,9 @@ export type ManagerContractStatus = "active" | "bench" | "transfer-listed" | "ex
 export type ManagerOfferStatus = "accepted" | "rejected";
 export type ManagerTradeOfferStatus = "pending" | "accepted" | "rejected" | "countered" | "delayed" | "expired" | "withdrawn" | "superseded" | "outbid";
 export type ManagerIncomingOfferStatus = "pending" | "counter-pending" | "accepted" | "declined" | "rejected" | "expired";
-export type ManagerEventFormat = "swiss" | "round-robin" | "single-elimination";
+export type ManagerEventFormat = "swiss" | "round-robin" | "single-elimination" | "double-elimination";
 export type ManagerMajorStage = "mrq" | "stage-1" | "stage-2" | "stage-3";
+export type ManagerEventStage = "stage-1" | "stage-2" | "playoffs";
 export type ManagerBoardObjectiveStatus = "active" | "completed" | "failed";
 export type ManagerFinancialPressure = "healthy" | "watch" | "critical";
 export type ManagerTrainingFocus = "balanced" | "mechanics" | "tactics" | "role" | "recovery";
@@ -357,8 +358,22 @@ export interface ManagerEvent {
   vrsWeight: number;
   hasPlayoffs: boolean;
   majorCycle?: boolean;
+  doubleElimination?: ManagerDoubleEliminationRoute;
   description: string;
   prizes: Record<PlacementTier, number>;
+}
+
+export interface ManagerDoubleEliminationRoute {
+  stageOneRankMin: number;
+  stageOneRankMax: number;
+  stageOneTeams: number;
+  stageOneAdvances: number;
+  directInviteRankMax: number;
+  stageTwoStartsOn: string;
+  playoffsStartsOn: string;
+  stageTwoGroups: number;
+  stageTwoTeamsPerGroup: number;
+  stageTwoAdvancesPerGroup: number;
 }
 
 export interface ManagerEventFormatStage {
@@ -431,6 +446,7 @@ export interface ManagerCareerState {
   boardConfidence: number;
   activeEventId?: string;
   activeMajorStage?: ManagerMajorStage;
+  activeEventStage?: ManagerEventStage;
   registrations: ManagerRegistration[];
   completedEventIds: string[];
   contracts: ManagerPlayerContract[];
@@ -582,8 +598,8 @@ export const managerEvents: ManagerEvent[] = [
   },
   {
     id: "cologne-masters-2026",
-    name: "Cologne Masters 2026",
-    shortName: "Cologne Masters",
+    name: "IEM Cologne 2026",
+    shortName: "IEM Cologne",
     tier: "elite",
     classification: "S-Tier",
     entryType: "vrs",
@@ -595,11 +611,12 @@ export const managerEvents: ManagerEvent[] = [
     rankMin: 1,
     rankMax: 24,
     capacity: 16,
-    format: "swiss",
-    formatLabel: "16-team all-BO3 Swiss / arena playoffs",
+    format: "double-elimination",
+    formatLabel: "VRS #9-24 Stage 1 / two double-elimination groups / six-team playoffs",
     formatStages: [
-      { label: "Group stage", teams: 16, structure: "Swiss system", series: "BO3", advances: "Top 8 to playoffs" },
-      { label: "Arena playoffs", teams: 8, structure: "Single elimination", series: "BO3 / BO5 final", advances: "Winner takes title" },
+      { label: "Stage 1", teams: 16, structure: "Double-elimination bracket", series: "All BO3", advances: "Top 8 to Stage 2" },
+      { label: "Stage 2", teams: 16, structure: "Two double-elimination groups", series: "All BO3", advances: "Top 3 per group to playoffs" },
+      { label: "Arena playoffs", teams: 6, structure: "Single elimination with two semifinal byes", series: "BO3 / BO5 final", advances: "Group winners start in semifinals" },
     ],
     groupBestOf: 3,
     entryFee: 0,
@@ -610,7 +627,19 @@ export const managerEvents: ManagerEvent[] = [
     stakesLabel: "$1,000,000 and maximum non-Major VRS prestige across a two-week arena event.",
     vrsWeight: 2.2,
     hasPlayoffs: true,
-    description: "A flagship arena championship with a long group phase and a full eight-team playoff bracket.",
+    doubleElimination: {
+      stageOneRankMin: 9,
+      stageOneRankMax: 24,
+      stageOneTeams: 16,
+      stageOneAdvances: 8,
+      directInviteRankMax: 8,
+      stageTwoStartsOn: "2026-08-23",
+      playoffsStartsOn: "2026-08-29",
+      stageTwoGroups: 2,
+      stageTwoTeamsPerGroup: 8,
+      stageTwoAdvancesPerGroup: 3,
+    },
+    description: "A flagship arena championship: VRS #9-24 fight through Stage 1 before eight survivors join the direct top-eight invites in two double-elimination groups.",
     prizes: prizeDistribution(1_000_000),
   },
   {
@@ -987,9 +1016,45 @@ export function managerMajorProjection(vrsRank: number, season = 1) {
 }
 
 export function managerEventStartForRank(event: ManagerEvent, vrsRank: number, season = 1) {
-  return event.majorCycle
-    ? managerMajorStageStart(managerMajorEntryStage(vrsRank), season)
-    : managerEventSchedule(event, season).startsOn;
+  if (event.majorCycle) return managerMajorStageStart(managerMajorEntryStage(vrsRank), season);
+  if (event.doubleElimination && vrsRank <= event.doubleElimination.directInviteRankMax) {
+    return shiftManagerSeasonDate(event.doubleElimination.stageTwoStartsOn, season);
+  }
+  return managerEventSchedule(event, season).startsOn;
+}
+
+export function managerEventEntryStage(event: ManagerEvent, vrsRank: number): ManagerEventStage | undefined {
+  const route = event.doubleElimination;
+  if (!route) return undefined;
+  return vrsRank <= route.directInviteRankMax ? "stage-2" : "stage-1";
+}
+
+export function managerEventStageStart(event: ManagerEvent, stage: ManagerEventStage, season = 1) {
+  if (stage === "stage-2" && event.doubleElimination) {
+    return shiftManagerSeasonDate(event.doubleElimination.stageTwoStartsOn, season);
+  }
+  if (stage === "playoffs" && event.doubleElimination) {
+    return shiftManagerSeasonDate(event.doubleElimination.playoffsStartsOn, season);
+  }
+  return managerEventSchedule(event, season).startsOn;
+}
+
+export function managerEventStageRules(event: ManagerEvent, stage?: ManagerEventStage) {
+  const route = event.doubleElimination;
+  if (!route || !stage || stage === "playoffs") return undefined;
+  return stage === "stage-1"
+    ? {
+        teams: route.stageOneTeams,
+        winTarget: 2,
+        lossTarget: 2,
+        qualifiers: route.stageOneAdvances,
+      }
+    : {
+        teams: route.stageTwoTeamsPerGroup,
+        winTarget: 3,
+        lossTarget: 2,
+        qualifiers: route.stageTwoAdvancesPerGroup,
+      };
 }
 
 function inboxId(state: ManagerCareerState, suffix: string) {
@@ -2356,6 +2421,10 @@ export function normalizeManagerCareer(
       ?? legacyActiveMajorStage
       ?? (activeEventId === "fall-global-major-2026" ? managerMajorEntryStage(saved.vrsRank ?? base.vrsRank) : undefined)
     : undefined;
+  const activeEvent = activeEventId ? managerEventById(activeEventId) : undefined;
+  const activeEventStage = activeEventId
+    ? saved.activeEventStage ?? (activeEvent ? managerEventEntryStage(activeEvent, saved.vrsRank ?? base.vrsRank) : undefined)
+    : undefined;
   const tradeRoundCounts = new Map<string, number>();
   const tradeOffers = (saved.market?.tradeOffers ?? []).map((offer) => {
     const round = offer.round ?? (tradeRoundCounts.get(offer.incoming.id) ?? 0) + 1;
@@ -2414,6 +2483,7 @@ export function normalizeManagerCareer(
     ),
     activeEventId,
     activeMajorStage,
+    activeEventStage,
     registrations,
     completedEventIds,
     contracts,
@@ -3937,10 +4007,12 @@ export function launchManagerEvent(state: ManagerCareerState, eventId: string): 
   const registration = state.registrations.find((item) => item.eventId === eventId);
   if (!event || !registration || !managerEventReadyToLaunch(state, eventId)) return state;
   const majorStage = event.majorCycle ? managerMajorEntryStage(state.vrsRank) : undefined;
+  const eventStage = managerEventEntryStage(event, state.vrsRank);
   const launched: ManagerCareerState = {
     ...state,
     activeEventId: eventId,
     activeMajorStage: majorStage,
+    activeEventStage: eventStage,
     registrations: state.registrations.map((item) =>
       item.eventId === eventId ? { ...item, status: "active" } : item,
     ),
@@ -3949,6 +4021,19 @@ export function launchManagerEvent(state: ManagerCareerState, eventId: string): 
   return majorStage
     ? awardManagerMajorStickerRevenue(launched, event, majorStage, state.date)
     : launched;
+}
+
+export function advanceManagerEventStage(
+  state: ManagerCareerState,
+  nextStage: ManagerEventStage,
+): ManagerCareerState {
+  const event = managerEventById(state.activeEventId);
+  if (!event?.doubleElimination || !state.activeEventStage) return state;
+  return {
+    ...state,
+    date: managerEventStageStart(event, nextStage, state.season),
+    activeEventStage: nextStage,
+  };
 }
 
 export function advanceManagerMajorStage(
@@ -4073,6 +4158,7 @@ export function completeManagerEvent(
     boardConfidence: Math.max(0, Math.min(100, worldReady.boardConfidence + boardDelta + (objectiveCompleted ? boardObjective.rewardConfidence : 0))),
     activeEventId: undefined,
     activeMajorStage: undefined,
+    activeEventStage: undefined,
     completedEventIds: Array.from(new Set([...worldReady.completedEventIds, eventId])),
     registrations: worldReady.registrations.map((item) =>
       item.eventId === eventId ? { ...item, status: "completed", placement } : item,
@@ -4142,7 +4228,7 @@ export function advanceManagerDate(state: ManagerCareerState, nextDate: string):
   ));
   if (managerEventById(state.activeEventId) && activeRegistration) return state;
   const unlockedState = state.activeEventId
-    ? { ...state, activeEventId: undefined, activeMajorStage: undefined }
+    ? { ...state, activeEventId: undefined, activeMajorStage: undefined, activeEventStage: undefined }
     : state;
   const expiryDate = nextDate > unlockedState.date ? nextDate : unlockedState.date;
   const expiredRegistrations = unlockedState.registrations.filter((registration) => {
@@ -4298,6 +4384,7 @@ export function startNextManagerSeason(state: ManagerCareerState): ManagerCareer
     cash: payroll.cash,
     activeEventId: undefined,
     activeMajorStage: undefined,
+    activeEventStage: undefined,
     registrations: [automaticManagerMajorRegistration(nextDate, contracts)],
     completedEventIds: [],
     contracts,
