@@ -5,12 +5,14 @@ import {
   calculateVrs,
   createVrsProfile,
   normalizeVrsProfile,
+  vrsPointsForRank,
   vrsRankForPoints,
   type VrsEventEvidence,
   type VrsProfile,
 } from "./vrs";
 
-export const MANAGER_CAREER_VERSION = 18;
+export const MANAGER_CAREER_VERSION = 20;
+const MANAGER_WORLD_VRS_VERSION = 20;
 export const MANAGER_START_DATE = "2026-07-20";
 export const MANAGER_SALARY_MODEL_VERSION = 2;
 export const MANAGER_POTENTIAL_LAB_ELITE_COST = 200_000;
@@ -109,6 +111,50 @@ export interface ManagerCareerPlayerSeed {
   stats?: PlayerStats;
 }
 
+export interface ManagerWorldTeamSeed {
+  id: string;
+  name: string;
+  rank?: number;
+  vrsPoints?: number;
+  strength?: number;
+}
+
+export interface ManagerWorldVrsTeam {
+  id: string;
+  name: string;
+  initialRank: number;
+  strength: number;
+  points: number;
+  rank: number;
+  profile: VrsProfile;
+}
+
+export interface ManagerWorldEventPlacement {
+  teamId: string;
+  teamName: string;
+  placement: PlacementTier;
+  wins: number;
+  losses: number;
+  prizeWon: number;
+  managed: boolean;
+}
+
+export interface ManagerWorldEventResult {
+  id: string;
+  eventId: string;
+  eventName: string;
+  season: number;
+  completedOn: string;
+  classification: ManagerEventClassification;
+  format: ManagerEventFormat;
+  placements: ManagerWorldEventPlacement[];
+}
+
+export interface ManagerWorldVrsState {
+  teams: ManagerWorldVrsTeam[];
+  events: ManagerWorldEventResult[];
+}
+
 export interface ManagerTrainingPlan {
   playerId: string;
   focus: ManagerTrainingFocus;
@@ -142,6 +188,7 @@ export interface ManagerCareerStart {
   vrsRank?: number;
   cash?: number;
   players?: ManagerCareerPlayerSeed[];
+  worldTeams?: ManagerWorldTeamSeed[];
 }
 
 export interface ManagerPlayerContract {
@@ -379,6 +426,7 @@ export interface ManagerCareerState {
   vrsPoints: number;
   vrsRank: number;
   vrsProfile: VrsProfile;
+  worldVrs: ManagerWorldVrsState;
   reputation: number;
   boardConfidence: number;
   activeEventId?: string;
@@ -958,6 +1006,292 @@ function rangesOverlap(leftStart: string, leftEnd: string, rightStart: string, r
 
 function stableHash(value: string) {
   return Math.abs(value.split("").reduce((hash, char) => (hash * 31 + char.charCodeAt(0)) | 0, 17));
+}
+
+function stableUnit(value: string) {
+  return (stableHash(value) % 100_000) / 100_000;
+}
+
+function initialVrsProfile(date: string, rank: number, points?: number): VrsProfile {
+  const profile = createVrsProfile(date, rank);
+  if (!Number.isFinite(points)) return profile;
+  return {
+    ...profile,
+    baselinePoints: Math.max(400, Math.min(2_000, Math.round(points!))),
+  };
+}
+
+function createManagerWorldVrs(
+  start: ManagerCareerStart,
+  date = MANAGER_START_DATE,
+): ManagerWorldVrsState {
+  const organizationName = start.organizationName?.trim().toLowerCase();
+  const seen = new Set<string>();
+  const teams = (start.worldTeams ?? []).flatMap((team, index): ManagerWorldVrsTeam[] => {
+    const identity = team.name.trim().toLowerCase();
+    const controlled = team.id === start.organizationId
+      || Boolean(organizationName && team.name.trim().toLowerCase() === organizationName);
+    if (!team.id || !team.name.trim() || controlled || seen.has(identity)) return [];
+    seen.add(identity);
+    const initialRank = Math.max(1, Math.round(team.rank ?? index + 1));
+    const profile = initialVrsProfile(date, initialRank, team.vrsPoints);
+    return [{
+      id: team.id,
+      name: team.name,
+      initialRank,
+      strength: Math.max(45, Math.min(105, team.strength ?? 58 + (profile.baselinePoints - 400) / 40)),
+      points: calculateVrs(profile, date).points,
+      rank: initialRank,
+      profile,
+    }];
+  });
+  return { teams, events: [] };
+}
+
+function rankManagerVrsAt(state: ManagerCareerState, asOf: string): ManagerCareerState {
+  const managedPoints = calculateVrs(state.vrsProfile, asOf).points;
+  const controlledName = state.organizationName.trim().toLowerCase();
+  const worldTeams = state.worldVrs.teams
+    .filter((team) => (
+      team.id !== state.organizationId
+      && team.name.trim().toLowerCase() !== controlledName
+    ))
+    .map((team) => ({
+      ...team,
+      points: calculateVrs(team.profile, asOf).points,
+    }));
+  if (!worldTeams.length) {
+    return {
+      ...state,
+      vrsPoints: managedPoints,
+      vrsRank: vrsRankForPoints(managedPoints),
+      worldVrs: { ...state.worldVrs, teams: worldTeams },
+    };
+  }
+  const order = [
+    ...worldTeams.map((team) => ({ id: team.id, points: team.points, initialRank: team.initialRank, managed: false })),
+    { id: state.organizationId, points: managedPoints, initialRank: state.boardObjective?.startingRank ?? state.vrsRank, managed: true },
+  ].sort((left, right) => (
+    right.points - left.points
+    || left.initialRank - right.initialRank
+    || left.id.localeCompare(right.id)
+  ));
+  const ranks = new Map(order.map((team, index) => [team.id, index + 1]));
+  return {
+    ...state,
+    vrsPoints: managedPoints,
+    vrsRank: ranks.get(state.organizationId) ?? state.vrsRank,
+    worldVrs: {
+      ...state.worldVrs,
+      teams: worldTeams.map((team) => ({ ...team, rank: ranks.get(team.id) ?? team.rank })),
+    },
+  };
+}
+
+export function managerWorldVrsTeam(
+  state: Pick<ManagerCareerState, "worldVrs"> | undefined,
+  teamId: string,
+  teamName?: string,
+) {
+  const direct = state?.worldVrs.teams.find((team) => team.id === teamId);
+  if (direct || !teamName) return direct;
+  const normalizedName = teamName.trim().toLowerCase();
+  return state?.worldVrs.teams.find((team) => team.name.trim().toLowerCase() === normalizedName);
+}
+
+function managerWorldEventId(state: ManagerCareerState, event: ManagerEvent, season: number) {
+  return `${state.seed}:world:${season}:${event.id}`;
+}
+
+function managerPlacementForIndex(index: number): PlacementTier {
+  if (index === 0) return "champion";
+  if (index === 1) return "runner-up";
+  if (index <= 3) return "top4";
+  if (index <= 7) return "top8";
+  return "swiss";
+}
+
+function managerPlacementIndex(
+  state: ManagerCareerState,
+  event: ManagerEvent,
+  season: number,
+  placement: PlacementTier,
+  fieldSize: number,
+) {
+  if (placement === "champion") return 0;
+  if (placement === "runner-up") return Math.min(1, fieldSize - 1);
+  if (placement === "top4") return Math.min(2 + stableHash(`${state.seed}:${season}:${event.id}:managed-top4`) % 2, fieldSize - 1);
+  if (placement === "top8") return Math.min(4 + stableHash(`${state.seed}:${season}:${event.id}:managed-top8`) % 4, fieldSize - 1);
+  return Math.min(8 + stableHash(`${state.seed}:${season}:${event.id}:managed-swiss`) % Math.max(1, fieldSize - 8), fieldSize - 1);
+}
+
+interface ManagerWorldSimulationOptions {
+  managedPlacement?: PlacementTier;
+  announce?: boolean;
+}
+
+/** Resolve one tournament for the AI circuit and add the same VRS evidence used by the managed club. */
+export function simulateManagerWorldEvent(
+  state: ManagerCareerState,
+  event: ManagerEvent,
+  season = state.season,
+  options: ManagerWorldSimulationOptions = {},
+): ManagerCareerState {
+  const resultId = managerWorldEventId(state, event, season);
+  if (!state.worldVrs.teams.length || state.worldVrs.events.some((result) => result.id === resultId)) {
+    return rankManagerVrsAt(state, managerEventSchedule(event, season).endsOn);
+  }
+  const schedule = managerEventSchedule(event, season);
+  const ranked = rankManagerVrsAt(state, schedule.startsOn);
+  const managed = options.managedPlacement != null;
+  const aiSlots = Math.max(1, event.capacity - (managed ? 1 : 0));
+  const byRank = [...ranked.worldVrs.teams].sort((left, right) => left.rank - right.rank || left.id.localeCompare(right.id));
+  const eligible = byRank.filter((team) => team.rank >= event.rankMin && team.rank <= event.rankMax);
+  const field = [...eligible, ...byRank.filter((team) => !eligible.some((candidate) => candidate.id === team.id))]
+    .slice(0, aiSlots);
+  const scored = field.map((team) => {
+    const pointStrength = Math.max(0, Math.min(1, (team.points - 400) / 1_600));
+    const noise = (stableUnit(`${state.seed}:${season}:${event.id}:${team.id}:form`) - 0.5) * (event.tier === "major" ? 12 : 18);
+    return {
+      id: team.id,
+      name: team.name,
+      points: team.points,
+      strength: team.strength,
+      managed: false,
+      score: team.strength * 0.72 + pointStrength * 25 + noise,
+    };
+  }).sort((left, right) => right.score - left.score || right.points - left.points || left.id.localeCompare(right.id));
+  const entries = [...scored];
+  if (managed) {
+    const index = managerPlacementIndex(ranked, event, season, options.managedPlacement!, Math.min(event.capacity, scored.length + 1));
+    const pointStrength = Math.max(0, Math.min(1, (ranked.vrsPoints - 400) / 1_600));
+    entries.splice(index, 0, {
+      id: ranked.organizationId,
+      name: ranked.organizationName,
+      points: ranked.vrsPoints,
+      strength: 58 + pointStrength * 40,
+      managed: true,
+      score: scored[index]?.score ?? scored[scored.length - 1]?.score ?? 70,
+    });
+  }
+  const fieldSize = entries.length;
+  const records = new Map(entries.map((team) => [team.id, { wins: 0, losses: 0 }]));
+  const evidence = new Map(entries.map((team) => [team.id, [] as VrsEventEvidence["matches"]]));
+  const matchDistance = fieldSize <= 2 ? 1 : fieldSize <= 8 ? 3 : 3;
+  for (let leftIndex = 0; leftIndex < fieldSize; leftIndex += 1) {
+    for (let rightIndex = leftIndex + 1; rightIndex < fieldSize; rightIndex += 1) {
+      const distance = Math.min(rightIndex - leftIndex, fieldSize - (rightIndex - leftIndex));
+      if (distance > matchDistance) continue;
+      const left = entries[leftIndex];
+      const right = entries[rightIndex];
+      const upsetChance = Math.max(0.08, 0.25 - Math.abs(rightIndex - leftIndex) * 0.015);
+      const upset = stableUnit(`${resultId}:${left.id}:${right.id}:result`) < upsetChance;
+      const leftWon = !upset;
+      const winner = records.get(leftWon ? left.id : right.id)!;
+      const loser = records.get(leftWon ? right.id : left.id)!;
+      winner.wins += 1;
+      loser.losses += 1;
+      const matchId = `${resultId}:match:${left.id}:${right.id}`;
+      evidence.get(left.id)!.push({
+        id: matchId,
+        opponentId: right.id,
+        opponentName: right.name,
+        opponentPoints: right.points,
+        won: leftWon,
+      });
+      evidence.get(right.id)!.push({
+        id: matchId,
+        opponentId: left.id,
+        opponentName: left.name,
+        opponentPoints: left.points,
+        won: !leftWon,
+      });
+    }
+  }
+  const placements = entries.map((team, index): ManagerWorldEventPlacement => {
+    const placement = managerPlacementForIndex(index);
+    const record = records.get(team.id)!;
+    return {
+      teamId: team.id,
+      teamName: team.name,
+      placement,
+      wins: record.wins,
+      losses: record.losses,
+      prizeWon: event.prizes[placement],
+      managed: team.managed,
+    };
+  });
+  const placementByTeam = new Map(placements.map((placement) => [placement.teamId, placement]));
+  const updatedTeams = ranked.worldVrs.teams.map((team) => {
+    const result = placementByTeam.get(team.id);
+    if (!result) return team;
+    const eventEvidence: VrsEventEvidence = {
+      id: `${resultId}:${team.id}`,
+      eventId: event.id,
+      eventName: managerEventName(event, season),
+      completedOn: schedule.endsOn,
+      prizePool: event.prizePool,
+      prizeWon: result.prizeWon,
+      lan: event.environment === "LAN",
+      prestige: Math.max(0.1, Math.min(1, event.vrsWeight / 2.6)),
+      matches: evidence.get(team.id) ?? [],
+    };
+    return { ...team, profile: appendVrsEvent(team.profile, eventEvidence) };
+  });
+  const eventResult: ManagerWorldEventResult = {
+    id: resultId,
+    eventId: event.id,
+    eventName: managerEventName(event, season),
+    season,
+    completedOn: schedule.endsOn,
+    classification: event.classification,
+    format: event.format,
+    placements,
+  };
+  const champion = placements[0];
+  const runnerUp = placements[1];
+  const withResult: ManagerCareerState = {
+    ...ranked,
+    worldVrs: {
+      teams: updatedTeams,
+      events: [...ranked.worldVrs.events, eventResult],
+    },
+    inbox: options.announce === false || !champion
+      ? ranked.inbox
+      : [{
+          id: `${resultId}:inbox`,
+          kind: "result",
+          createdOn: schedule.endsOn,
+          title: `${event.shortName}: ${champion.teamName} take the title`,
+          body: `${runnerUp ? `${champion.teamName} defeated ${runnerUp.teamName} in the final. ` : ""}${placements.length} clubs added decaying ${event.classification} evidence to the shared VRS table.`,
+          eventId: event.id,
+          mandatory: false,
+          read: false,
+        }, ...ranked.inbox],
+  };
+  return rankManagerVrsAt(withResult, schedule.endsOn);
+}
+
+export function simulateManagerWorldEventsThrough(
+  state: ManagerCareerState,
+  throughDate: string,
+  managedPlacements: Partial<Record<string, PlacementTier>> = {},
+  silentEventId?: string,
+): ManagerCareerState {
+  if (!state.worldVrs.teams.length) return rankManagerVrsAt(state, throughDate);
+  const elapsed = managerEvents
+    .filter((event) => managerEventSchedule(event, state.season).endsOn <= throughDate)
+    .sort((left, right) => managerEventSchedule(left, state.season).endsOn.localeCompare(managerEventSchedule(right, state.season).endsOn));
+  const resolved = elapsed.reduce((current, event) => {
+    const completedRegistration = current.registrations.find((registration) => (
+      registration.eventId === event.id && registration.status === "completed" && registration.placement
+    ));
+    return simulateManagerWorldEvent(current, event, current.season, {
+      managedPlacement: managedPlacements[event.id] ?? completedRegistration?.placement,
+      announce: event.id !== silentEventId,
+    });
+  }, state);
+  return rankManagerVrsAt(resolved, throughDate);
 }
 
 function clampScore(value: number) {
@@ -1754,7 +2088,8 @@ function registrationPriority(status: ManagerRegistrationStatus) {
 
 export function createManagerCareer(seed: string, start: ManagerCareerStart = {}): ManagerCareerState {
   const vrsRank = start.vrsRank ?? 32;
-  const vrsProfile = createVrsProfile(MANAGER_START_DATE, vrsRank);
+  const vrsProfile = initialVrsProfile(MANAGER_START_DATE, vrsRank, start.vrsPoints);
+  const worldVrs = createManagerWorldVrs(start);
   const organizationCountry = start.organizationCountry ?? "INT";
   const contracts = createManagerContracts(seed, start.players ?? [], { vrsRank, organizationCountry });
   const organizationId = start.organizationId ?? "independent-manager";
@@ -1775,6 +2110,7 @@ export function createManagerCareer(seed: string, start: ManagerCareerStart = {}
     vrsPoints: calculateVrs(vrsProfile, MANAGER_START_DATE).points,
     vrsRank,
     vrsProfile,
+    worldVrs,
     reputation,
     boardConfidence: 68,
     registrations: [automaticManagerMajorRegistration(MANAGER_START_DATE, contracts)],
@@ -1797,7 +2133,7 @@ export function createManagerCareer(seed: string, start: ManagerCareerStart = {}
       },
     ],
   };
-  return {
+  const ready: ManagerCareerState = {
     ...state,
     inbox: [
       {
@@ -1813,6 +2149,40 @@ export function createManagerCareer(seed: string, start: ManagerCareerStart = {}
       },
     ],
   };
+  return worldVrs.teams.length ? rankManagerVrsAt(ready, MANAGER_START_DATE) : ready;
+}
+
+function normalizeManagerWorldVrs(
+  saved: ManagerWorldVrsState | undefined,
+  fallback: ManagerWorldVrsState,
+  date: string,
+) {
+  const fallbackById = new Map(fallback.teams.map((team) => [team.id, team]));
+  const savedTeams = saved?.teams?.length ? saved.teams : fallback.teams;
+  const mergedTeams = [
+    ...savedTeams,
+    ...fallback.teams.filter((team) => !savedTeams.some((savedTeam) => savedTeam.id === team.id)),
+  ];
+  const teams = mergedTeams.map((team, index): ManagerWorldVrsTeam => {
+    const fallbackTeam = fallbackById.get(team.id);
+    const initialRank = Math.max(1, Math.round(team.initialRank ?? fallbackTeam?.initialRank ?? index + 1));
+    const profile = normalizeVrsProfile(
+      team.profile,
+      date,
+      initialRank,
+    );
+    return {
+      id: team.id,
+      name: team.name ?? fallbackTeam?.name ?? team.id,
+      initialRank,
+      strength: Math.max(45, Math.min(105, team.strength ?? fallbackTeam?.strength ?? 70)),
+      points: calculateVrs(profile, date).points,
+      rank: Math.max(1, Math.round(team.rank ?? fallbackTeam?.rank ?? initialRank)),
+      profile,
+    };
+  });
+  const events = [...new Map((saved?.events ?? []).map((event) => [event.id, event])).values()];
+  return { teams, events };
 }
 
 export function normalizeManagerCareer(
@@ -1997,6 +2367,11 @@ export function normalizeManagerCareer(
     vrsPoints: calculateVrs(vrsProfile, normalizedDate).points,
     vrsRank: saved.vrsRank ?? base.vrsRank,
     vrsProfile,
+    worldVrs: normalizeManagerWorldVrs(
+      (saved.version ?? 0) >= MANAGER_WORLD_VRS_VERSION ? saved.worldVrs : undefined,
+      base.worldVrs,
+      normalizedDate,
+    ),
     activeEventId,
     activeMajorStage,
     registrations,
@@ -2024,9 +2399,10 @@ export function normalizeManagerCareer(
     ledger,
   };
   const activeMajor = activeEventId ? managerEventById(activeEventId) : undefined;
-  return (saved.version ?? 0) < MANAGER_CAREER_VERSION && activeMajor?.majorCycle && activeMajorStage
+  const migrated = (saved.version ?? 0) < MANAGER_CAREER_VERSION && activeMajor?.majorCycle && activeMajorStage
     ? awardManagerMajorStickerRevenue(normalized, activeMajor, activeMajorStage, normalizedDate)
     : normalized;
+  return simulateManagerWorldEventsThrough(migrated, normalizedDate);
 }
 
 export function scoutManagerCandidate(
@@ -3560,12 +3936,7 @@ export function advanceManagerMajorStage(
 }
 
 export function recalculateManagerVrs(state: ManagerCareerState, asOf = state.date): ManagerCareerState {
-  const breakdown = calculateVrs(state.vrsProfile, asOf);
-  return {
-    ...state,
-    vrsPoints: breakdown.points,
-    vrsRank: vrsRankForPoints(breakdown.points),
-  };
+  return rankManagerVrsAt(state, asOf);
 }
 
 export function completeManagerEvent(
@@ -3588,6 +3959,12 @@ export function completeManagerEvent(
     : state;
   const working = resolveManagerTradeTimeline(stickerState, completedOn);
   const payroll = settlePayroll(working, completedOn);
+  const worldReady = simulateManagerWorldEventsThrough(
+    working,
+    completedOn,
+    { [eventId]: placement },
+    eventId,
+  );
   const evidence: VrsEventEvidence = {
     id: vrsEvidence?.id ?? `${working.seed}:${working.season}:${eventId}`,
     eventId,
@@ -3599,15 +3976,16 @@ export function completeManagerEvent(
     prestige: Math.max(0.1, Math.min(1, event.vrsWeight / 2.6)),
     matches: vrsEvidence?.matches ?? [],
   };
-  const beforeVrs = calculateVrs(working.vrsProfile, completedOn);
-  const vrsProfile = appendVrsEvent(working.vrsProfile, evidence);
+  const beforeVrs = calculateVrs(worldReady.vrsProfile, completedOn);
+  const vrsProfile = appendVrsEvent(worldReady.vrsProfile, evidence);
   const afterVrs = calculateVrs(vrsProfile, completedOn);
   const points = afterVrs.points - beforeVrs.points;
-  const nextRank = vrsRankForPoints(afterVrs.points);
+  const ranked = recalculateManagerVrs({ ...worldReady, vrsProfile }, completedOn);
+  const nextRank = ranked.vrsRank;
   const usedPlayerIds = new Set(registration.lockedRosterIds);
   const moraleDelta = placement === "champion" ? 7 : placement === "runner-up" ? 5 : placement === "top4" ? 3 : placement === "top8" ? 1 : -4;
-  const contractByPlayer = new Map(working.contracts.map((contract) => [contract.playerId, contract]));
-  const playerDynamics = working.playerDynamics.map((item) => {
+  const contractByPlayer = new Map(worldReady.contracts.map((contract) => [contract.playerId, contract]));
+  const playerDynamics = worldReady.playerDynamics.map((item) => {
     const contract = contractByPlayer.get(item.playerId);
     if (!contract || contract.status === "expired") return item;
     if (usedPlayerIds.has(item.playerId)) {
@@ -3632,27 +4010,27 @@ export function completeManagerEvent(
       lastUpdatedOn: completedOn,
     };
   });
-  const objectiveCompleted = working.boardObjective.status === "active"
+  const objectiveCompleted = worldReady.boardObjective.status === "active"
     && (
-      (working.boardObjective.startingRank > working.boardObjective.targetRank && nextRank <= working.boardObjective.targetRank)
-      || (working.boardObjective.startingRank === 1 && completedOn >= working.boardObjective.deadline && nextRank === 1)
+      (worldReady.boardObjective.startingRank > worldReady.boardObjective.targetRank && nextRank <= worldReady.boardObjective.targetRank)
+      || (worldReady.boardObjective.startingRank === 1 && completedOn >= worldReady.boardObjective.deadline && nextRank === 1)
     );
   const boardObjective = objectiveCompleted
-    ? { ...working.boardObjective, status: "completed" as const }
-    : working.boardObjective;
+    ? { ...worldReady.boardObjective, status: "completed" as const }
+    : worldReady.boardObjective;
   const completedState: ManagerCareerState = {
-    ...working,
+    ...ranked,
     date: completedOn,
     cash: payroll.cash + prize,
     vrsPoints: afterVrs.points,
     vrsRank: nextRank,
     vrsProfile,
-    reputation: Math.max(0, Math.min(100, working.reputation + (placement === "champion" ? 7 : placement === "runner-up" ? 5 : placement === "top4" ? 3 : placement === "top8" ? 1 : -1))),
-    boardConfidence: Math.max(0, Math.min(100, working.boardConfidence + boardDelta + (objectiveCompleted ? boardObjective.rewardConfidence : 0))),
+    reputation: Math.max(0, Math.min(100, worldReady.reputation + (placement === "champion" ? 7 : placement === "runner-up" ? 5 : placement === "top4" ? 3 : placement === "top8" ? 1 : -1))),
+    boardConfidence: Math.max(0, Math.min(100, worldReady.boardConfidence + boardDelta + (objectiveCompleted ? boardObjective.rewardConfidence : 0))),
     activeEventId: undefined,
     activeMajorStage: undefined,
-    completedEventIds: Array.from(new Set([...working.completedEventIds, eventId])),
-    registrations: working.registrations.map((item) =>
+    completedEventIds: Array.from(new Set([...worldReady.completedEventIds, eventId])),
+    registrations: worldReady.registrations.map((item) =>
       item.eventId === eventId ? { ...item, status: "completed", placement } : item,
     ),
     playerDynamics,
@@ -3689,7 +4067,7 @@ export function completeManagerEvent(
           : nextRank > working.vrsRank
             ? `VRS drop: #${working.vrsRank} to #${nextRank}`
             : `VRS position held at #${nextRank}`,
-        body: `${event.shortName} entered the rolling six-month window. The four seed factors and head-to-head record recalculated ${working.organizationName} to ${afterVrs.points} VRS points (${points >= 0 ? "+" : ""}${points}).`,
+        body: `${event.shortName} entered the rolling six-month window. The four seed factors and head-to-head record recalculated ${worldReady.organizationName} to ${afterVrs.points} VRS points (${points >= 0 ? "+" : ""}${points}).`,
         eventId,
         rankBefore: working.vrsRank,
         rankAfter: nextRank,
@@ -3707,7 +4085,7 @@ export function completeManagerEvent(
         mandatory: false,
         read: false,
       },
-      ...working.inbox,
+      ...worldReady.inbox,
     ],
   };
   return resolveDelayedManagerTrades(completedState, eventId, completedOn);
@@ -3794,7 +4172,9 @@ export function advanceManagerDate(state: ManagerCareerState, nextDate: string):
     ],
   };
   const resolvedCamps = resolveManagerPerformanceCamps(advanced, nextDate);
-  const resolvedTrades = recalculateManagerVrs(resolveManagerTradeTimeline(resolvedCamps, nextDate), nextDate);
+  const resolvedTimeline = resolveManagerTradeTimeline(resolvedCamps, nextDate);
+  const resolvedWorld = simulateManagerWorldEventsThrough(resolvedTimeline, nextDate);
+  const resolvedTrades = recalculateManagerVrs(resolvedWorld, nextDate);
   const objective = resolvedTrades.boardObjective;
   if (objective.status !== "active" || nextDate < objective.deadline) return resolvedTrades;
   const completed = resolvedTrades.vrsRank <= objective.targetRank;
@@ -3824,7 +4204,9 @@ export function startNextManagerSeason(state: ManagerCareerState): ManagerCareer
   const nextSeason = state.season + 1;
   const nextDate = managerSeasonStartDate(nextSeason);
   if (nextDate <= state.date) return state;
-  const resolved = recalculateManagerVrs(resolveManagerTradeTimeline(state, nextDate), nextDate);
+  const resolvedTimeline = resolveManagerTradeTimeline(state, nextDate);
+  const resolvedWorld = simulateManagerWorldEventsThrough(resolvedTimeline, nextDate);
+  const resolved = recalculateManagerVrs(resolvedWorld, nextDate);
   const payroll = settlePayroll(resolved, nextDate);
   if (payroll.cash < 0) {
     const endReason = `${resolved.organizationName} closed Season ${resolved.season} with ${Math.abs(payroll.cash).toLocaleString()} in unpaid obligations.`;
@@ -3935,7 +4317,14 @@ export function nextManagerCheckpoint(state: ManagerCareerState) {
   const campDates = state.performanceCamps
     .filter((camp) => camp.status === "active" && camp.endsOn > state.date)
     .map((camp) => camp.endsOn);
-  return [...dates, ...tradeDates, ...incomingOfferDates, ...objectiveDates, ...campDates].sort()[0];
+  const worldEventDates = state.worldVrs.teams.length
+    ? managerEvents.flatMap((event) => {
+        const endsOn = managerEventSchedule(event, state.season).endsOn;
+        const completed = state.worldVrs.events.some((result) => result.id === managerWorldEventId(state, event, state.season));
+        return !completed && endsOn > state.date ? [endsOn] : [];
+      })
+    : [];
+  return [...dates, ...tradeDates, ...incomingOfferDates, ...objectiveDates, ...campDates, ...worldEventDates].sort()[0];
 }
 
 export function managerPlacementLabel(placement: PlacementTier) {

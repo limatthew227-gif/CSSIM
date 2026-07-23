@@ -238,6 +238,7 @@ import {
   managerClubRelationship,
   managerClubRelationshipLabel,
   managerTradeRoundsRemaining,
+  managerWorldVrsTeam,
   resolveManagerOrganization,
   nextManagerCheckpoint,
   normalizeManagerCareer,
@@ -272,6 +273,7 @@ import {
   type ManagerTrainingFocus,
   type ManagerInboxItem,
   type ManagerIncomingOffer,
+  type ManagerWorldTeamSeed,
 } from "./managerCareer";
 import { calculateVrs, vrsPointsForRank, type VrsEventEvidence } from "./vrs";
 import {
@@ -398,6 +400,27 @@ interface ManagerVrsStanding {
 
 function managerRosterVrsPoints(team: Pick<Roster | FieldTeam, "rank">) {
   return vrsPointsForRank(team.rank ?? 64);
+}
+
+function managerWorldTeamSeeds(rosters: Roster[]): ManagerWorldTeamSeed[] {
+  const byOrganization = new Map<string, Roster>();
+  rosters.filter(isCurrentManagerWorldRoster).forEach((roster) => {
+    byOrganization.set(roster.name.trim().toLowerCase(), roster);
+  });
+  const currentWorld = [...byOrganization.values()];
+  const ranked = [...currentWorld].sort((left, right) => (
+    (right.vrsPoints ?? 0) - (left.vrsPoints ?? 0)
+    || (left.rank ?? 64) - (right.rank ?? 64)
+    || left.id.localeCompare(right.id)
+  ));
+  const rankById = new Map(ranked.map((roster, index) => [roster.id, index + 1]));
+  return currentWorld.map((roster) => ({
+    id: roster.id,
+    name: roster.name,
+    rank: rankById.get(roster.id) ?? roster.rank,
+    vrsPoints: vrsPointsForRank(rankById.get(roster.id) ?? roster.rank ?? 64),
+    strength: averageOvr(roster.players),
+  }));
 }
 
 interface TeamFormPlayer {
@@ -1058,36 +1081,28 @@ function App() {
     .trim()
     .toLowerCase();
   const managerWorldRosters = useMemo(
-    () => applyManagerRosterMoves(rosterPool, managerCareer?.market?.rosterMoves ?? []),
-    [managerCareer?.market?.rosterMoves, rosterPool],
+    () => applyManagerRosterMoves(rosterPool, managerCareer?.market?.rosterMoves ?? []).map((roster) => {
+      const standing = managerWorldVrsTeam(managerCareer, roster.id, roster.name);
+      return standing ? { ...roster, rank: standing.rank, vrsPoints: standing.points } : roster;
+    }),
+    [managerCareer, rosterPool],
   );
-  const managerAuthoritativeVrsRank = useMemo(() => {
-    if (!managerCareer) return 64;
-    const controlledName = managerCareer.organizationName.trim().toLowerCase();
-    const rankedWorld = managerWorldRosters.filter((roster) => (
-      isCurrentManagerWorldRoster(roster)
-      && roster.id !== managerControlledOrganizationId
-      && roster.name.trim().toLowerCase() !== controlledName
-    ));
-    return circuitWorldRank(
-      managerCareer.vrsPoints,
-      rankedWorld.map((roster) => ({ ...roster, vrsPoints: managerRosterVrsPoints(roster) })),
-    );
-  }, [managerCareer, managerControlledOrganizationId, managerWorldRosters]);
-  useEffect(() => {
-    if (!managerCareer || managerCareer.vrsRank === managerAuthoritativeVrsRank) return;
-    setManagerCareer((current) => current && current.vrsRank !== managerAuthoritativeVrsRank
-      ? { ...current, vrsRank: managerAuthoritativeVrsRank }
-      : current);
-  }, [managerAuthoritativeVrsRank, managerCareer]);
+  const managerAuthoritativeVrsRank = managerCareer?.vrsRank ?? 64;
   const managerEventRosters = useMemo(() => {
     const currentWorld = managerWorldRosters.filter(isCurrentManagerWorldRoster);
-    const rankedWorld = rankRostersByVrs(currentWorld.map((roster) => {
+    const canonicalWorld = managerCareer?.worldVrs.teams.map((standing) => (
+      currentWorld.find((roster) => roster.id === standing.id)
+      ?? currentWorld.find((roster) => roster.name.trim().toLowerCase() === standing.name.trim().toLowerCase())
+    )).filter((roster): roster is Roster => Boolean(roster)) ?? currentWorld;
+    const rankedWorld = rankRostersByVrs(canonicalWorld.map((roster) => {
       const controlled = roster.id === managerControlledOrganizationId
         || roster.name.trim().toLowerCase() === managerControlledOrganizationName;
+      const standing = managerWorldVrsTeam(managerCareer, roster.id, roster.name);
       return {
         ...roster,
-        vrsPoints: controlled && managerCareer ? managerCareer.vrsPoints : managerRosterVrsPoints(roster),
+        vrsPoints: controlled && managerCareer
+          ? managerCareer.vrsPoints
+          : standing?.points ?? managerRosterVrsPoints(roster),
       };
     }));
     return rankedWorld.filter((roster) => (
@@ -1182,19 +1197,26 @@ function App() {
   const managerVrsStandings = useMemo<ManagerVrsStanding[]>(() => {
     if (!managerCareer) return [];
     const controlledName = managerCareer.organizationName.trim().toLowerCase();
-    const world = managerWorldRosters.filter((roster) => (
+    const currentWorld = managerWorldRosters.filter((roster) => (
       isCurrentManagerWorldRoster(roster)
       && roster.id !== managerControlledOrganizationId
       && roster.name.trim().toLowerCase() !== controlledName
     ));
+    const world = managerCareer.worldVrs.teams.map((standing) => (
+      currentWorld.find((roster) => roster.id === standing.id)
+      ?? currentWorld.find((roster) => roster.name.trim().toLowerCase() === standing.name.trim().toLowerCase())
+    )).filter((roster): roster is Roster => Boolean(roster));
     const baselineOrder = [
-      ...world.map((team) => ({ id: team.id, rank: team.rank ?? 64 })),
+      ...world.map((team) => ({
+        id: team.id,
+        rank: managerWorldVrsTeam(managerCareer, team.id, team.name)?.initialRank ?? team.rank ?? 64,
+      })),
       { id: yourTeam.id, rank: managerCareer.boardObjective.startingRank },
     ].sort((left, right) => left.rank - right.rank || left.id.localeCompare(right.id));
     const baselineRanks = new Map(baselineOrder.map((entry, index) => [entry.id, index + 1]));
     const rows: Array<{ team: Roster | FieldTeam; points: number; baselineRank: number; managed: boolean }> = world.map((team) => ({
       team,
-      points: managerRosterVrsPoints(team),
+      points: managerWorldVrsTeam(managerCareer, team.id, team.name)?.points ?? managerRosterVrsPoints(team),
       baselineRank: baselineRanks.get(team.id) ?? 64,
       managed: false,
     }));
@@ -2067,13 +2089,18 @@ function App() {
   }
 
   function activateManagerOrganization(roster: Roster, players: Player[], nextCoach?: Coach) {
+    const worldTeams = managerWorldTeamSeeds(rosterPool);
+    const organizationSeed = worldTeams.find((team) => (
+      team.id === roster.id || team.name.trim().toLowerCase() === roster.name.trim().toLowerCase()
+    ));
     const nextCareer = createManagerCareer(vaultRunId, {
       organizationId: roster.id,
       organizationName: roster.name,
       organizationCountry: roster.country,
-      vrsPoints: managerRosterVrsPoints(roster),
-      vrsRank: roster.rank ?? Math.min(64, builtInRosterCount + 1),
+      vrsPoints: organizationSeed?.vrsPoints ?? managerRosterVrsPoints(roster),
+      vrsRank: organizationSeed?.rank ?? roster.rank ?? Math.min(64, builtInRosterCount + 1),
       players,
+      worldTeams,
     });
     const idlePool = rosterPool.filter((item) => item.id !== roster.id);
     const idleField = buildSwissField(idlePool.length ? idlePool : rosterPool);
@@ -3005,15 +3032,7 @@ function App() {
   function commitManagerCareer(next: ManagerCareerState) {
     const current = managerCareer;
     if (current?.status === "bankrupt" && next !== current) return;
-    const rankWorld = applyManagerRosterMoves(rosterPool, next.market.rosterMoves).filter((roster) => (
-      isCurrentManagerWorldRoster(roster)
-      && roster.id !== managerControlledOrganizationId
-      && roster.name.trim().toLowerCase() !== next.organizationName.trim().toLowerCase()
-    ));
-    const authoritativeRank = circuitWorldRank(
-      next.vrsPoints,
-      rankWorld.map((roster) => ({ ...roster, vrsPoints: managerRosterVrsPoints(roster) })),
-    );
+    const authoritativeRank = next.vrsRank;
     const pointsChanged = Boolean(current && next.vrsPoints !== current.vrsPoints);
     const rankingTitle = current
       ? authoritativeRank < current.vrsRank
@@ -3572,6 +3591,7 @@ function App() {
       vrsPoints: snapshot.managerCareer?.vrsPoints,
       vrsRank: snapshot.managerCareer?.vrsRank,
       players: loadedSelected,
+      worldTeams: managerWorldTeamSeeds(rosterPool),
     });
     const loadedManagerCareer = normalizedManagerCareer && savedManagerOrganization
       ? {
@@ -10635,27 +10655,36 @@ function ManagerOrganizationSelectPage({
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<ManagerClubFilter>("all");
   const customIds = useMemo(() => new Set(rosters.slice(builtInCount).map((roster) => roster.id)), [rosters, builtInCount]);
+  const previewWorldTeams = useMemo(() => managerWorldTeamSeeds(rosters), [rosters]);
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase();
     return rosters.filter((roster) => {
       const isCustom = customIds.has(roster.id);
+      const worldSeed = previewWorldTeams.find((team) => (
+        team.id === roster.id || team.name.trim().toLowerCase() === roster.name.trim().toLowerCase()
+      ));
+      const rank = worldSeed?.rank ?? roster.rank ?? 99;
       const matchesFilter = filter === "all"
-        || (filter === "elite" && (roster.rank ?? 99) <= 16)
-        || (filter === "challenger" && !isCustom && (roster.rank ?? 99) > 16)
+        || (filter === "elite" && rank <= 16)
+        || (filter === "challenger" && !isCustom && rank > 16)
         || (filter === "custom" && isCustom);
       const matchesQuery = !needle || [roster.name, roster.tag, roster.country, ...roster.players.map((player) => player.handle)]
         .some((value) => value.toLowerCase().includes(needle));
       return matchesFilter && matchesQuery;
     });
-  }, [customIds, filter, query, rosters]);
+  }, [customIds, filter, previewWorldTeams, query, rosters]);
   const inheritedPlayers = useMemo(() => selectedRoster.players.slice(0, 5).map(withCareerMeta), [selectedRoster]);
+  const selectedWorldSeed = previewWorldTeams.find((team) => (
+    team.id === selectedRoster.id || team.name.trim().toLowerCase() === selectedRoster.name.trim().toLowerCase()
+  ));
   const previewCareer = useMemo(() => createManagerCareer(careerSeed, {
     organizationId: selectedRoster.id,
     organizationName: selectedRoster.name,
-    vrsPoints: managerRosterVrsPoints(selectedRoster),
-    vrsRank: selectedRoster.rank ?? Math.min(64, builtInCount + 1),
+    vrsPoints: selectedWorldSeed?.vrsPoints ?? managerRosterVrsPoints(selectedRoster),
+    vrsRank: selectedWorldSeed?.rank ?? selectedRoster.rank ?? Math.min(64, builtInCount + 1),
     players: inheritedPlayers,
-  }), [builtInCount, careerSeed, inheritedPlayers, selectedRoster]);
+    worldTeams: previewWorldTeams,
+  }), [builtInCount, careerSeed, inheritedPlayers, previewWorldTeams, selectedRoster, selectedWorldSeed]);
   const previewCoach = coachForRoster(selectedRoster);
   const monthlyPayroll = managerMonthlyPayroll(previewCareer);
   const contractByPlayer = new Map(previewCareer.contracts.map((contract) => [contract.playerId, contract]));
@@ -10685,15 +10714,21 @@ function ManagerOrganizationSelectPage({
             </div>
           </div>
           <div className="manager-club-list">
-            {filtered.map((roster) => (
-              <button key={roster.id} className={selectedRoster.id === roster.id ? "selected" : ""} onClick={() => onSelect(roster)}>
-                <span className="manager-club-rank">{roster.rank ? `#${roster.rank}` : "NEW"}</span>
-                <TeamLogo team={roster} small />
-                <span className="manager-club-name"><strong>{roster.name}</strong><small><Flag country={roster.country} /> {roster.era} / {roster.year}</small></span>
-                <span className="manager-club-rating"><b>{averageOvr(roster.players).toFixed(1)}</b><small>AVG OVR</small></span>
-                <ArrowRight size={14} />
-              </button>
-            ))}
+            {filtered.map((roster) => {
+              const worldSeed = previewWorldTeams.find((team) => (
+                team.id === roster.id || team.name.trim().toLowerCase() === roster.name.trim().toLowerCase()
+              ));
+              const displayedRank = worldSeed?.rank ?? roster.rank;
+              return (
+                <button key={roster.id} className={selectedRoster.id === roster.id ? "selected" : ""} onClick={() => onSelect(roster)}>
+                  <span className="manager-club-rank">{displayedRank ? `#${displayedRank}` : "NEW"}</span>
+                  <TeamLogo team={roster} small />
+                  <span className="manager-club-name"><strong>{roster.name}</strong><small><Flag country={roster.country} /> {roster.era} / {roster.year}</small></span>
+                  <span className="manager-club-rating"><b>{averageOvr(roster.players).toFixed(1)}</b><small>AVG OVR</small></span>
+                  <ArrowRight size={14} />
+                </button>
+              );
+            })}
             {!filtered.length && <div className="manager-empty-state">No organization matches this view.</div>}
           </div>
         </section>
@@ -10701,10 +10736,10 @@ function ManagerOrganizationSelectPage({
         <section className="manager-takeover-preview">
           <div className="manager-preview-identity">
             <TeamLogo team={selectedRoster} />
-            <span><small>{selectedRoster.rank ? `VRS #${selectedRoster.rank}` : "Unranked organization"}</small><h2>{selectedRoster.name}</h2><p>{selectedRoster.tagline}</p></span>
+            <span><small>{`VRS #${previewCareer.vrsRank}`}</small><h2>{selectedRoster.name}</h2><p>{selectedRoster.tagline}</p></span>
           </div>
           <div className="manager-preview-kpis">
-            <span><small>VRS points</small><b>{managerRosterVrsPoints(selectedRoster).toLocaleString()}</b></span>
+            <span><small>VRS points</small><b>{previewCareer.vrsPoints.toLocaleString()}</b></span>
             <span><small>Opening cash</small><b>{fmtMoney(previewCareer.cash)}</b></span>
             <span><small>Monthly payroll</small><b>{fmtMoney(monthlyPayroll)}</b></span>
             <span><small>Head coach</small><b>{previewCoach?.handle ?? "Appoint next"}</b></span>
@@ -15360,7 +15395,9 @@ function managerVrsEvidenceFromResults(
       id: matchId,
       opponentId: opponent.id,
       opponentName: opponent.name,
-      opponentPoints: managerRosterVrsPoints(opponent),
+      opponentPoints: Number.isFinite(opponent.vrsPoints)
+        ? Math.round(opponent.vrsPoints!)
+        : managerRosterVrsPoints(opponent),
       won: result.winnerId === "user",
     });
   });

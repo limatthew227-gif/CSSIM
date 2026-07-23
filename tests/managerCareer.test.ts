@@ -66,6 +66,13 @@ import {
 
 const roster = ["p1", "p2", "p3", "p4", "p5"];
 const rosterPlayers = roster.map((id) => ({ id, handle: id, role: "Rifler", ovr: 80 }));
+const worldTeams = Array.from({ length: 40 }, (_, index) => ({
+  id: `world-${index + 1}`,
+  name: `World Team ${index + 1}`,
+  rank: index + 1,
+  vrsPoints: 2_000 - index * 30,
+  strength: 94 - index * 0.65,
+}));
 
 test("Manager career starts at a stable date with a usable contender budget", () => {
   const state = createManagerCareer("save-a");
@@ -1121,6 +1128,140 @@ test("calendar advancement recalculates decayed VRS evidence", () => {
   assert.ok(advanced.vrsPoints < state.vrsPoints);
   assert.ok(advanced.vrsRank > state.vrsRank);
   assert.equal(advanced.vrsProfile.baselineDate, state.date);
+});
+
+test("every world team decays and skipped events resolve into persistent standings", () => {
+  const state = createManagerCareer("world-decay", {
+    organizationId: "managed-club",
+    organizationName: "Managed Club",
+    vrsRank: 18,
+    worldTeams,
+  });
+  const before = new Map(state.worldVrs.teams.map((team) => [team.id, team.points]));
+  const advanced = advanceManagerDate(state, "2026-08-02");
+  const frontier = advanced.worldVrs.events.find((result) => result.eventId === "frontier-open-2026");
+  assert.ok(frontier);
+  assert.equal(frontier.placements.length, 8);
+  assert.equal(frontier.placements.some((placement) => placement.managed), false);
+  const nonParticipant = advanced.worldVrs.teams.find((team) => (
+    !frontier.placements.some((placement) => placement.teamId === team.id)
+  ))!;
+  assert.ok(nonParticipant.points < before.get(nonParticipant.id)!);
+  assert.equal(nonParticipant.profile.events.length, 0);
+  const participant = advanced.worldVrs.teams.find((team) => team.id === frontier.placements[0].teamId)!;
+  assert.equal(participant.profile.events.length, 1);
+  assert.ok(participant.profile.events[0].matches.length > 0);
+  const ranks = [advanced.vrsRank, ...advanced.worldVrs.teams.map((team) => team.rank)];
+  assert.equal(new Set(ranks).size, ranks.length);
+  const replay = advanceManagerDate(createManagerCareer("world-decay", {
+    organizationId: "managed-club",
+    organizationName: "Managed Club",
+    vrsRank: 18,
+    worldTeams,
+  }), "2026-08-02");
+  assert.deepEqual(frontier.placements, replay.worldVrs.events[0].placements);
+  assert.equal(advanceManagerDate(advanced, "2026-08-03").worldVrs.events.length, 1);
+});
+
+test("off-screen tournament matches give both clubs mirrored VRS evidence", () => {
+  const state = advanceManagerDate(createManagerCareer("world-matches", {
+    organizationId: "managed-club",
+    organizationName: "Managed Club",
+    vrsRank: 18,
+    worldTeams,
+  }), "2026-08-02");
+  const firstTeam = state.worldVrs.teams.find((team) => team.profile.events.length)!;
+  const firstMatch = firstTeam.profile.events[0].matches[0];
+  const opponent = state.worldVrs.teams.find((team) => team.id === firstMatch.opponentId)!;
+  const mirrored = opponent.profile.events[0].matches.find((match) => match.id === firstMatch.id)!;
+  assert.equal(mirrored.opponentId, firstTeam.id);
+  assert.equal(mirrored.won, !firstMatch.won);
+});
+
+test("all elapsed events are simulated even when the manager enters none of them", () => {
+  const state = createManagerCareer("world-calendar", {
+    organizationId: "managed-club",
+    organizationName: "Managed Club",
+    vrsRank: 18,
+    worldTeams,
+  });
+  const advanced = advanceManagerDate(state, "2026-09-28");
+  assert.deepEqual(
+    advanced.worldVrs.events.map((result) => result.eventId),
+    managerEvents.slice(0, 6).map((event) => event.id),
+  );
+  assert.ok(advanced.inbox.some((item) => item.title.includes("take the title")));
+});
+
+test("a managed event is inserted once into the shared world result", () => {
+  const base = createManagerCareer("world-managed-event", {
+    organizationId: "managed-club",
+    organizationName: "Managed Club",
+    vrsRank: 24,
+    players: rosterPlayers,
+    worldTeams,
+  });
+  const event = managerEventById("frontier-open-2026")!;
+  const launched = launchManagerEvent(advanceManagerDate(registerManagerEvent(base, event.id, roster), event.startsOn), event.id);
+  const completed = completeManagerEvent(launched, event.id, "champion");
+  const result = completed.worldVrs.events.find((item) => item.eventId === event.id)!;
+  assert.equal(result.placements.filter((placement) => placement.managed).length, 1);
+  assert.equal(result.placements[0].teamId, base.organizationId);
+  assert.equal(result.placements[0].placement, "champion");
+  assert.equal(completed.worldVrs.events.filter((item) => item.eventId === event.id).length, 1);
+});
+
+test("legacy manager saves seed and backfill the world VRS circuit on load", () => {
+  const legacy = createManagerCareer("world-migration", {
+    organizationId: "managed-club",
+    organizationName: "Managed Club",
+    vrsRank: 18,
+  });
+  const migrated = normalizeManagerCareer({ ...legacy, version: 18, date: "2026-08-16" }, {
+    organizationId: "managed-club",
+    organizationName: "Managed Club",
+    vrsRank: 18,
+    worldTeams,
+  })!;
+  assert.equal(migrated.worldVrs.teams.length, worldTeams.length);
+  assert.deepEqual(
+    migrated.worldVrs.events.map((result) => result.eventId),
+    managerEvents.slice(0, 3).map((event) => event.id),
+  );
+});
+
+test("save migration removes a duplicate AI profile for the managed club", () => {
+  const career = createManagerCareer("world-managed-duplicate", {
+    organizationId: "managed-club",
+    organizationName: "Managed Club",
+    vrsRank: 18,
+    worldTeams,
+  });
+  const duplicate = {
+    ...career.worldVrs.teams[0],
+    id: career.organizationId,
+    name: career.organizationName,
+  };
+  const migrated = normalizeManagerCareer({
+    ...career,
+    version: MANAGER_CAREER_VERSION,
+    date: "2026-07-27",
+    worldVrs: {
+      ...career.worldVrs,
+      teams: [duplicate, ...career.worldVrs.teams],
+    },
+  }, {
+    organizationId: career.organizationId,
+    organizationName: career.organizationName,
+    vrsRank: career.vrsRank,
+    worldTeams,
+  })!;
+  assert.equal(migrated.worldVrs.teams.some((team) => (
+    team.id === migrated.organizationId
+    || team.name.toLowerCase() === migrated.organizationName.toLowerCase()
+  )), false);
+  const ranks = [migrated.vrsRank, ...migrated.worldVrs.teams.map((team) => team.rank)].sort((a, b) => a - b);
+  assert.deepEqual(ranks, Array.from({ length: ranks.length }, (_, index) => index + 1));
 });
 
 test("reaching the board VRS target completes the mandate once", () => {
