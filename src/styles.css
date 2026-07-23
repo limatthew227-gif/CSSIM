@@ -1932,6 +1932,40 @@ textarea {
   text-align: right;
 }
 
+.manager-vrs-factors {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(110px, 1fr)) minmax(180px, 1.35fr);
+  border-bottom: 1px solid var(--line);
+  background: #121b18;
+}
+
+.manager-vrs-factors > span {
+  display: grid;
+  gap: 3px;
+  min-height: 69px;
+  padding: 12px 15px;
+  border-right: 1px solid var(--line);
+}
+
+.manager-vrs-factors > span:last-child {
+  border-right: 0;
+}
+
+.manager-vrs-factors small,
+.manager-vrs-factors em {
+  color: var(--muted);
+  font-size: 8px;
+  font-style: normal;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.manager-vrs-factors b {
+  color: var(--text);
+  font-size: 17px;
+  font-variant-numeric: tabular-nums;
+}
+
 .manager-vrs-columns,
 .manager-vrs-list > div {
   display: grid;
@@ -2067,6 +2101,7 @@ textarea {
   }
 
   .manager-vrs-board > header,
+  .manager-vrs-factors,
   .manager-vrs-columns,
   .manager-vrs-list {
     min-width: 650px;

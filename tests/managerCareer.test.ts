@@ -1095,12 +1095,36 @@ test("negative cash is survivable during the season", () => {
   assert.ok(advanced.cash < 0);
 });
 
+test("calendar advancement recalculates decayed VRS evidence", () => {
+  const state = createManagerCareer("vrs-decay", { vrsRank: 12 });
+  const advanced = advanceManagerDate(state, "2026-08-20");
+  assert.ok(advanced.vrsPoints < state.vrsPoints);
+  assert.ok(advanced.vrsRank > state.vrsRank);
+  assert.equal(advanced.vrsProfile.baselineDate, state.date);
+});
+
 test("reaching the board VRS target completes the mandate once", () => {
   const players = roster.map((id) => ({ id, handle: id, role: "Rifler", ovr: 80 }));
   const state = createManagerCareer("board-target", { vrsRank: 25, players });
   const event = managerEventById("frontier-open-2026")!;
   const launched = launchManagerEvent(advanceManagerDate(registerManagerEvent(state, event.id, roster), event.startsOn), event.id);
-  const completed = completeManagerEvent(launched, event.id, "champion");
+  const completed = completeManagerEvent(launched, event.id, "champion", {}, {
+    id: "board-target-result",
+    eventId: event.id,
+    eventName: event.name,
+    completedOn: event.endsOn,
+    prizePool: event.prizePool,
+    prizeWon: event.prizes.champion,
+    lan: false,
+    prestige: 1,
+    matches: Array.from({ length: 7 }, (_, index) => ({
+      id: `board-target-${index}`,
+      opponentId: `top-${index}`,
+      opponentName: `Top ${index}`,
+      opponentPoints: 1_850,
+      won: true,
+    })),
+  });
   assert.equal(completed.boardObjective.status, "completed");
   assert.ok(completed.inbox.some((item) => item.title === "Board objective achieved"));
 });

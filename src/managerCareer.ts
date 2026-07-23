@@ -1,7 +1,16 @@
 import { expectedRating, playerValue, type PlacementTier } from "./career";
 import type { Player, PlayerStats } from "./gameData";
+import {
+  appendVrsEvent,
+  calculateVrs,
+  createVrsProfile,
+  normalizeVrsProfile,
+  vrsRankForPoints,
+  type VrsEventEvidence,
+  type VrsProfile,
+} from "./vrs";
 
-export const MANAGER_CAREER_VERSION = 17;
+export const MANAGER_CAREER_VERSION = 18;
 export const MANAGER_START_DATE = "2026-07-20";
 export const MANAGER_SALARY_MODEL_VERSION = 2;
 export const MANAGER_POTENTIAL_LAB_ELITE_COST = 200_000;
@@ -358,6 +367,7 @@ export interface ManagerCareerState {
   cash: number;
   vrsPoints: number;
   vrsRank: number;
+  vrsProfile: VrsProfile;
   reputation: number;
   boardConfidence: number;
   activeEventId?: string;
@@ -1479,6 +1489,7 @@ function registrationPriority(status: ManagerRegistrationStatus) {
 
 export function createManagerCareer(seed: string, start: ManagerCareerStart = {}): ManagerCareerState {
   const vrsRank = start.vrsRank ?? 32;
+  const vrsProfile = createVrsProfile(MANAGER_START_DATE, vrsRank);
   const organizationCountry = start.organizationCountry ?? "INT";
   const contracts = createManagerContracts(seed, start.players ?? [], { vrsRank, organizationCountry });
   const organizationId = start.organizationId ?? "independent-manager";
@@ -1496,8 +1507,9 @@ export function createManagerCareer(seed: string, start: ManagerCareerStart = {}
     organizationName,
     organizationCountry,
     cash: openingCash,
-    vrsPoints: start.vrsPoints ?? 1_240,
+    vrsPoints: calculateVrs(vrsProfile, MANAGER_START_DATE).points,
     vrsRank,
+    vrsProfile,
     reputation,
     boardConfidence: 68,
     registrations: [automaticManagerMajorRegistration(MANAGER_START_DATE, contracts)],
@@ -1557,6 +1569,13 @@ export function normalizeManagerCareer(
   const normalizedDate = saved.activeEventId === "fall-mrq-2026" && (saved.date ?? base.date) < managerMajorStageStart("mrq", normalizedSeason)
     ? managerMajorStageStart("mrq", normalizedSeason)
     : saved.date ?? base.date;
+  // Legacy saves only stored a permanent point total. Treat that total as a fresh
+  // ranking snapshot on the migration date so the new rolling window starts cleanly.
+  const vrsProfile = normalizeVrsProfile(
+    saved.vrsProfile,
+    saved.date ?? normalizedDate,
+    saved.vrsRank ?? base.vrsRank,
+  );
   const fallbackPlayers = new Map((fallback.players ?? []).map((player) => [player.id, player]));
   const contracts = savedContracts.map((contract) => {
     const player = fallbackPlayers.get(contract.playerId);
@@ -1710,6 +1729,9 @@ export function normalizeManagerCareer(
     organizationName: saved.organizationName ?? base.organizationName,
     organizationCountry: saved.organizationCountry ?? base.organizationCountry,
     cash: (saved.cash ?? base.cash) + reimbursedMajorCost,
+    vrsPoints: calculateVrs(vrsProfile, normalizedDate).points,
+    vrsRank: saved.vrsRank ?? base.vrsRank,
+    vrsProfile,
     activeEventId,
     activeMajorStage,
     registrations,
@@ -3272,34 +3294,26 @@ export function advanceManagerMajorStage(
   return awardManagerMajorStickerRevenue(advanced, event, nextStage, startsOn);
 }
 
-const rankMovement: Record<PlacementTier, number> = {
-  swiss: 2,
-  top8: -1,
-  top4: -3,
-  "runner-up": -5,
-  champion: -7,
-};
-
-const baseVrsAward: Record<PlacementTier, number> = {
-  swiss: 6,
-  top8: 18,
-  top4: 32,
-  "runner-up": 46,
-  champion: 64,
-};
+export function recalculateManagerVrs(state: ManagerCareerState, asOf = state.date): ManagerCareerState {
+  const breakdown = calculateVrs(state.vrsProfile, asOf);
+  return {
+    ...state,
+    vrsPoints: breakdown.points,
+    vrsRank: vrsRankForPoints(breakdown.points),
+  };
+}
 
 export function completeManagerEvent(
   state: ManagerCareerState,
   eventId: string,
   placement: PlacementTier,
   playerRatings: Record<string, number> = {},
+  vrsEvidence?: VrsEventEvidence,
 ): ManagerCareerState {
   const event = managerEventById(eventId);
   const registration = state.registrations.find((item) => item.eventId === eventId);
   if (!event || !registration || registration.status !== "active" || state.activeEventId !== eventId) return state;
   const prize = event.prizes[placement];
-  const points = Math.round(baseVrsAward[placement] * event.vrsWeight);
-  const nextRank = Math.max(1, Math.min(64, state.vrsRank + rankMovement[placement]));
   const boardDelta = placement === "champion" ? 8 : placement === "runner-up" ? 5 : placement === "top4" ? 3 : placement === "top8" ? 1 : -3;
   const completedOn = event.majorCycle && state.activeMajorStage
     ? managerMajorStageEnd(state.activeMajorStage, state.season)
@@ -3309,6 +3323,22 @@ export function completeManagerEvent(
     : state;
   const working = resolveManagerTradeTimeline(stickerState, completedOn);
   const payroll = settlePayroll(working, completedOn);
+  const evidence: VrsEventEvidence = {
+    id: vrsEvidence?.id ?? `${working.seed}:${working.season}:${eventId}`,
+    eventId,
+    eventName: vrsEvidence?.eventName ?? managerEventName(event, working.season),
+    completedOn,
+    prizePool: event.prizePool,
+    prizeWon: prize,
+    lan: event.environment === "LAN",
+    prestige: Math.max(0.1, Math.min(1, event.vrsWeight / 2.6)),
+    matches: vrsEvidence?.matches ?? [],
+  };
+  const beforeVrs = calculateVrs(working.vrsProfile, completedOn);
+  const vrsProfile = appendVrsEvent(working.vrsProfile, evidence);
+  const afterVrs = calculateVrs(vrsProfile, completedOn);
+  const points = afterVrs.points - beforeVrs.points;
+  const nextRank = vrsRankForPoints(afterVrs.points);
   const usedPlayerIds = new Set(registration.lockedRosterIds);
   const moraleDelta = placement === "champion" ? 7 : placement === "runner-up" ? 5 : placement === "top4" ? 3 : placement === "top8" ? 1 : -4;
   const contractByPlayer = new Map(working.contracts.map((contract) => [contract.playerId, contract]));
@@ -3349,9 +3379,10 @@ export function completeManagerEvent(
     ...working,
     date: completedOn,
     cash: payroll.cash + prize,
-    vrsPoints: working.vrsPoints + points,
+    vrsPoints: afterVrs.points,
     vrsRank: nextRank,
-    reputation: Math.max(0, Math.min(100, working.reputation + Math.max(-1, -rankMovement[placement]))),
+    vrsProfile,
+    reputation: Math.max(0, Math.min(100, working.reputation + (placement === "champion" ? 7 : placement === "runner-up" ? 5 : placement === "top4" ? 3 : placement === "top8" ? 1 : -1))),
     boardConfidence: Math.max(0, Math.min(100, working.boardConfidence + boardDelta + (objectiveCompleted ? boardObjective.rewardConfidence : 0))),
     activeEventId: undefined,
     activeMajorStage: undefined,
@@ -3385,7 +3416,7 @@ export function completeManagerEvent(
           }]
         : []),
       {
-        id: inboxId(working, `ranking:${eventId}:${nextRank}:${points}`),
+        id: inboxId(working, `ranking:${eventId}:${nextRank}:${afterVrs.points}`),
         kind: "ranking",
         createdOn: completedOn,
         title: nextRank < working.vrsRank
@@ -3393,7 +3424,7 @@ export function completeManagerEvent(
           : nextRank > working.vrsRank
             ? `VRS drop: #${working.vrsRank} to #${nextRank}`
             : `VRS position held at #${nextRank}`,
-        body: `${event.shortName} added ${points} points. ${working.organizationName} now has ${working.vrsPoints + points} VRS points.`,
+        body: `${event.shortName} entered the rolling six-month window. The four seed factors and head-to-head record recalculated ${working.organizationName} to ${afterVrs.points} VRS points (${points >= 0 ? "+" : ""}${points}).`,
         eventId,
         rankBefore: working.vrsRank,
         rankAfter: nextRank,
@@ -3406,7 +3437,7 @@ export function completeManagerEvent(
         kind: "result",
         createdOn: completedOn,
         title: `${event.shortName} campaign complete`,
-        body: `${placementLabel(placement)} earned $${prize.toLocaleString()} and ${points} VRS points.`,
+        body: `${placementLabel(placement)} earned $${prize.toLocaleString()}. VRS now reflects the event's prize, opponents, LAN wins, and decayed head-to-head results.`,
         eventId,
         mandatory: false,
         read: false,
@@ -3498,7 +3529,7 @@ export function advanceManagerDate(state: ManagerCareerState, nextDate: string):
     ],
   };
   const resolvedCamps = resolveManagerPerformanceCamps(advanced, nextDate);
-  const resolvedTrades = resolveManagerTradeTimeline(resolvedCamps, nextDate);
+  const resolvedTrades = recalculateManagerVrs(resolveManagerTradeTimeline(resolvedCamps, nextDate), nextDate);
   const objective = resolvedTrades.boardObjective;
   if (objective.status !== "active" || nextDate < objective.deadline) return resolvedTrades;
   const completed = resolvedTrades.vrsRank <= objective.targetRank;
@@ -3528,7 +3559,7 @@ export function startNextManagerSeason(state: ManagerCareerState): ManagerCareer
   const nextSeason = state.season + 1;
   const nextDate = managerSeasonStartDate(nextSeason);
   if (nextDate <= state.date) return state;
-  const resolved = resolveManagerTradeTimeline(state, nextDate);
+  const resolved = recalculateManagerVrs(resolveManagerTradeTimeline(state, nextDate), nextDate);
   const payroll = settlePayroll(resolved, nextDate);
   if (payroll.cash < 0) {
     const endReason = `${resolved.organizationName} closed Season ${resolved.season} with ${Math.abs(payroll.cash).toLocaleString()} in unpaid obligations.`;
