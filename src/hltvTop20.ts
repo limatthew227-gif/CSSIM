@@ -361,6 +361,7 @@ export function makeHltvRoster(team: HltvTeamSeed): Roster {
     ...source,
     tagline: `${rankingLabel}${pointsCopy}. OVR is opposition, role, sample-size, recent-form, and team-context adjusted.${team.note ? ` ${team.note}` : ""}`,
     mapPool: maps,
+    sourceRank: team.rank,
     rank: team.rank,
     vrsPoints: team.points,
     trophies: team.trophies,

@@ -34,6 +34,7 @@ test("July 13 HLTV snapshot contains every team ranked 27 through 50", async () 
   const { hltvRanked27To50Rosters, hltvRanked27To50Seeds } = await import("../src/hltvRanked27To50");
 
   assert.deepEqual(hltvRanked27To50Rosters.map((roster) => roster.rank), Array.from({ length: 24 }, (_, index) => index + 27));
+  assert.deepEqual(hltvRanked27To50Rosters.map((roster) => roster.sourceRank), Array.from({ length: 24 }, (_, index) => index + 27));
   assert.deepEqual(hltvRanked27To50Rosters.map((roster) => roster.name), expectedTeams);
   assert.ok(hltvRanked27To50Seeds.every((team) => team.rankingLabel.includes("July 13, 2026")));
 });

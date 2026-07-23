@@ -11,8 +11,8 @@ import {
   type VrsProfile,
 } from "./vrs";
 
-export const MANAGER_CAREER_VERSION = 20;
-const MANAGER_WORLD_VRS_VERSION = 20;
+export const MANAGER_CAREER_VERSION = 22;
+const MANAGER_WORLD_VRS_VERSION = 22;
 export const MANAGER_START_DATE = "2026-07-20";
 export const MANAGER_SALARY_MODEL_VERSION = 2;
 export const MANAGER_POTENTIAL_LAB_ELITE_COST = 200_000;
@@ -1069,21 +1069,49 @@ function rankManagerVrsAt(state: ManagerCareerState, asOf: string): ManagerCaree
     };
   }
   const order = [
-    ...worldTeams.map((team) => ({ id: team.id, points: team.points, initialRank: team.initialRank, managed: false })),
-    { id: state.organizationId, points: managedPoints, initialRank: state.boardObjective?.startingRank ?? state.vrsRank, managed: true },
+    ...worldTeams.map((team) => ({
+      key: `world:${team.id}`,
+      id: team.id,
+      points: team.points,
+      initialRank: team.initialRank,
+      managed: false,
+    })),
+    {
+      key: "managed",
+      id: state.organizationId,
+      points: managedPoints,
+      initialRank: state.boardObjective?.startingRank ?? state.vrsRank,
+      managed: true,
+    },
   ].sort((left, right) => (
     right.points - left.points
     || left.initialRank - right.initialRank
     || left.id.localeCompare(right.id)
   ));
-  const ranks = new Map(order.map((team, index) => [team.id, index + 1]));
+  const sourceOrder = [...order].sort((left, right) => (
+    left.initialRank - right.initialRank
+    || left.id.localeCompare(right.id)
+  ));
+  const rankSlots: number[] = [];
+  let nextSourceRank = 1;
+  sourceOrder.forEach((team, index) => {
+    const remainingTeams = sourceOrder.length - index - 1;
+    const latestAvailableRank = 64 - remainingTeams;
+    const rank = Math.min(Math.max(team.initialRank, nextSourceRank), latestAvailableRank);
+    rankSlots.push(rank);
+    nextSourceRank = rank + 1;
+  });
+  const ranks = new Map<string, number>();
+  order.forEach((team, index) => {
+    ranks.set(team.key, rankSlots[index]);
+  });
   return {
     ...state,
     vrsPoints: managedPoints,
-    vrsRank: ranks.get(state.organizationId) ?? state.vrsRank,
+    vrsRank: ranks.get("managed") ?? state.vrsRank,
     worldVrs: {
       ...state.worldVrs,
-      teams: worldTeams.map((team) => ({ ...team, rank: ranks.get(team.id) ?? team.rank })),
+      teams: worldTeams.map((team) => ({ ...team, rank: ranks.get(`world:${team.id}`) ?? team.rank })),
     },
   };
 }
@@ -2190,13 +2218,18 @@ export function normalizeManagerCareer(
   fallback: ManagerCareerStart = {},
 ): ManagerCareerState | undefined {
   if (!saved) return undefined;
+  const migratingAbsoluteSourceRanks = (saved.version ?? 0) < MANAGER_WORLD_VRS_VERSION
+    && Number.isFinite(fallback.vrsRank)
+    && Number.isFinite(fallback.vrsPoints);
+  const fallbackRank = migratingAbsoluteSourceRanks ? fallback.vrsRank : saved.vrsRank ?? fallback.vrsRank;
+  const fallbackPoints = migratingAbsoluteSourceRanks ? fallback.vrsPoints : saved.vrsPoints ?? fallback.vrsPoints;
   const base = createManagerCareer(saved.seed ?? "manager-save", {
     ...fallback,
     organizationId: saved.organizationId ?? fallback.organizationId,
     organizationName: saved.organizationName ?? fallback.organizationName,
     organizationCountry: saved.organizationCountry ?? fallback.organizationCountry,
-    vrsPoints: saved.vrsPoints ?? fallback.vrsPoints,
-    vrsRank: saved.vrsRank ?? fallback.vrsRank,
+    vrsPoints: fallbackPoints,
+    vrsRank: fallbackRank,
     cash: saved.cash ?? fallback.cash,
   });
   const normalizedSeason = saved.season ?? base.season;
@@ -2206,11 +2239,18 @@ export function normalizeManagerCareer(
     : saved.date ?? base.date;
   // Legacy saves only stored a permanent point total. Treat that total as a fresh
   // ranking snapshot on the migration date so the new rolling window starts cleanly.
-  const vrsProfile = normalizeVrsProfile(
+  const normalizedVrsProfile = normalizeVrsProfile(
     saved.vrsProfile,
     saved.date ?? normalizedDate,
     saved.vrsRank ?? base.vrsRank,
   );
+  const vrsProfile = migratingAbsoluteSourceRanks
+    ? {
+        ...normalizedVrsProfile,
+        baselineDate: base.vrsProfile.baselineDate,
+        baselinePoints: Math.max(400, Math.min(2000, Math.round(fallback.vrsPoints!))),
+      }
+    : normalizedVrsProfile;
   const fallbackPlayers = new Map((fallback.players ?? []).map((player) => [player.id, player]));
   const contracts = savedContracts.map((contract) => {
     const player = fallbackPlayers.get(contract.playerId);
@@ -2381,7 +2421,11 @@ export function normalizeManagerCareer(
     trainingPlans,
     performanceCamps: saved.performanceCamps ?? [],
     casinoVisits: saved.casinoVisits ?? [],
-    boardObjective: saved.boardObjective ?? createBoardObjective(base.seed, saved.vrsRank ?? base.vrsRank, saved.season ?? base.season),
+    boardObjective: saved.boardObjective
+      ? migratingAbsoluteSourceRanks
+        ? { ...saved.boardObjective, startingRank: base.vrsRank }
+        : saved.boardObjective
+      : createBoardObjective(base.seed, base.vrsRank, saved.season ?? base.season),
     market: {
       ...base.market,
       ...saved.market,

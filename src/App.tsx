@@ -408,17 +408,11 @@ function managerWorldTeamSeeds(rosters: Roster[]): ManagerWorldTeamSeed[] {
     byOrganization.set(roster.name.trim().toLowerCase(), roster);
   });
   const currentWorld = [...byOrganization.values()];
-  const ranked = [...currentWorld].sort((left, right) => (
-    (right.vrsPoints ?? 0) - (left.vrsPoints ?? 0)
-    || (left.rank ?? 64) - (right.rank ?? 64)
-    || left.id.localeCompare(right.id)
-  ));
-  const rankById = new Map(ranked.map((roster, index) => [roster.id, index + 1]));
   return currentWorld.map((roster) => ({
     id: roster.id,
     name: roster.name,
-    rank: rankById.get(roster.id) ?? roster.rank,
-    vrsPoints: vrsPointsForRank(rankById.get(roster.id) ?? roster.rank ?? 64),
+    rank: roster.sourceRank ?? roster.rank ?? 64,
+    vrsPoints: vrsPointsForRank(roster.sourceRank ?? roster.rank ?? 64),
     strength: averageOvr(roster.players),
   }));
 }
@@ -1094,17 +1088,18 @@ function App() {
       currentWorld.find((roster) => roster.id === standing.id)
       ?? currentWorld.find((roster) => roster.name.trim().toLowerCase() === standing.name.trim().toLowerCase())
     )).filter((roster): roster is Roster => Boolean(roster)) ?? currentWorld;
-    const rankedWorld = rankRostersByVrs(canonicalWorld.map((roster) => {
-      const controlled = roster.id === managerControlledOrganizationId
-        || roster.name.trim().toLowerCase() === managerControlledOrganizationName;
+    const rankedWorld = canonicalWorld.map((roster) => {
       const standing = managerWorldVrsTeam(managerCareer, roster.id, roster.name);
       return {
         ...roster,
-        vrsPoints: controlled && managerCareer
-          ? managerCareer.vrsPoints
-          : standing?.points ?? managerRosterVrsPoints(roster),
+        rank: standing?.rank ?? roster.sourceRank ?? roster.rank ?? 64,
+        vrsPoints: standing?.points ?? managerRosterVrsPoints(roster),
       };
-    }));
+    }).sort((left, right) => (
+      (left.rank ?? 64) - (right.rank ?? 64)
+      || (right.vrsPoints ?? 0) - (left.vrsPoints ?? 0)
+      || left.id.localeCompare(right.id)
+    ));
     return rankedWorld.filter((roster) => (
       roster.id !== managerControlledOrganizationId
       && roster.name.trim().toLowerCase() !== managerControlledOrganizationName
@@ -1206,36 +1201,40 @@ function App() {
       currentWorld.find((roster) => roster.id === standing.id)
       ?? currentWorld.find((roster) => roster.name.trim().toLowerCase() === standing.name.trim().toLowerCase())
     )).filter((roster): roster is Roster => Boolean(roster));
-    const baselineOrder = [
-      ...world.map((team) => ({
-        id: team.id,
-        rank: managerWorldVrsTeam(managerCareer, team.id, team.name)?.initialRank ?? team.rank ?? 64,
-      })),
-      { id: yourTeam.id, rank: managerCareer.boardObjective.startingRank },
-    ].sort((left, right) => left.rank - right.rank || left.id.localeCompare(right.id));
-    const baselineRanks = new Map(baselineOrder.map((entry, index) => [entry.id, index + 1]));
-    const rows: Array<{ team: Roster | FieldTeam; points: number; baselineRank: number; managed: boolean }> = world.map((team) => ({
-      team,
-      points: managerWorldVrsTeam(managerCareer, team.id, team.name)?.points ?? managerRosterVrsPoints(team),
-      baselineRank: baselineRanks.get(team.id) ?? 64,
-      managed: false,
-    }));
+    const rows: Array<{
+      team: Roster | FieldTeam;
+      rank: number;
+      points: number;
+      baselineRank: number;
+      managed: boolean;
+    }> = world.map((team) => {
+      const standing = managerWorldVrsTeam(managerCareer, team.id, team.name);
+      return {
+        team,
+        rank: standing?.rank ?? team.sourceRank ?? team.rank ?? 64,
+        points: standing?.points ?? managerRosterVrsPoints(team),
+        baselineRank: standing?.initialRank ?? team.sourceRank ?? team.rank ?? 64,
+        managed: false,
+      };
+    });
     rows.push({
       team: yourTeam,
+      rank: managerCareer.vrsRank,
       points: managerCareer.vrsPoints,
-      baselineRank: baselineRanks.get(yourTeam.id) ?? managerCareer.boardObjective.startingRank,
+      baselineRank: managerCareer.boardObjective.startingRank,
       managed: true,
     });
     rows.sort((left, right) => (
-      right.points - left.points
+      left.rank - right.rank
+      || right.points - left.points
       || left.baselineRank - right.baselineRank
       || left.team.id.localeCompare(right.team.id)
     ));
-    return rows.map((row, index) => ({
+    return rows.map((row) => ({
       team: row.team,
-      rank: index + 1,
+      rank: row.rank,
       points: row.points,
-      movement: row.baselineRank - (index + 1),
+      movement: row.baselineRank - row.rank,
       managed: row.managed,
     }));
   }, [managerCareer, managerControlledOrganizationId, managerWorldRosters, yourTeam]);
@@ -3584,14 +3583,21 @@ function App() {
       ? resolveManagerOrganization(rosterPool, snapshot.managerCareer.organizationId, snapshot.managerCareer.organizationName)
         ?? (loadedCurrentRoster.name === snapshot.managerCareer.organizationName ? loadedCurrentRoster : undefined)
       : undefined;
+    const managerWorldTeams = managerWorldTeamSeeds(rosterPool);
+    const savedManagerSeed = snapshot.managerCareer
+      ? managerWorldTeams.find((team) => team.id === savedManagerOrganization?.id)
+        ?? managerWorldTeams.find((team) => (
+          team.name.trim().toLowerCase() === snapshot.managerCareer!.organizationName?.trim().toLowerCase()
+        ))
+      : undefined;
     const normalizedManagerCareer = normalizeManagerCareer(snapshot.managerCareer, {
       organizationId: savedManagerOrganization?.id ?? snapshot.currentRoster?.id ?? "legacy-user-organization",
       organizationName: snapshot.managerCareer?.organizationName ?? snapshot.teamName ?? "My Five",
       organizationCountry: snapshot.managerCareer?.organizationCountry ?? savedManagerOrganization?.country ?? snapshot.currentRoster?.country ?? loadedSelected[0]?.country,
-      vrsPoints: snapshot.managerCareer?.vrsPoints,
-      vrsRank: snapshot.managerCareer?.vrsRank,
+      vrsPoints: savedManagerSeed?.vrsPoints ?? snapshot.managerCareer?.vrsPoints,
+      vrsRank: savedManagerSeed?.rank ?? snapshot.managerCareer?.vrsRank,
       players: loadedSelected,
-      worldTeams: managerWorldTeamSeeds(rosterPool),
+      worldTeams: managerWorldTeams,
     });
     const loadedManagerCareer = normalizedManagerCareer && savedManagerOrganization
       ? {

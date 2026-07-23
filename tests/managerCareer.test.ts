@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { Player } from "../src/gameData";
+import { vrsPointsForRank } from "../src/vrs";
 import {
   acceptManagerIncomingOffer,
   advanceManagerMajorStage,
@@ -1261,7 +1262,83 @@ test("save migration removes a duplicate AI profile for the managed club", () =>
     || team.name.toLowerCase() === migrated.organizationName.toLowerCase()
   )), false);
   const ranks = [migrated.vrsRank, ...migrated.worldVrs.teams.map((team) => team.rank)].sort((a, b) => a - b);
-  assert.deepEqual(ranks, Array.from({ length: ranks.length }, (_, index) => index + 1));
+  assert.equal(new Set(ranks).size, ranks.length);
+  assert.ok(ranks.every((rank) => rank >= 1 && rank <= 64));
+});
+
+test("partial world data preserves absolute VRS rank gaps", () => {
+  const partialWorld = [
+    { id: "top-1", name: "Top 1", rank: 1, vrsPoints: vrsPointsForRank(1), strength: 96 },
+    { id: "top-2", name: "Top 2", rank: 2, vrsPoints: vrsPointsForRank(2), strength: 94 },
+    { id: "nip", name: "Ninjas in Pyjamas", rank: 27, vrsPoints: vrsPointsForRank(27), strength: 78 },
+    { id: "sharks", name: "Sharks", rank: 31, vrsPoints: vrsPointsForRank(31), strength: 74 },
+    { id: "nemesis", name: "Nemesis", rank: 32, vrsPoints: vrsPointsForRank(32), strength: 73 },
+  ];
+  const state = createManagerCareer("absolute-vrs-gaps", {
+    organizationId: "liquid",
+    organizationName: "Liquid",
+    vrsRank: 28,
+    vrsPoints: vrsPointsForRank(28),
+    worldTeams: partialWorld,
+  });
+
+  assert.equal(state.vrsRank, 28);
+  assert.equal(state.worldVrs.teams.find((team) => team.id === "nip")?.rank, 27);
+  assert.equal(state.worldVrs.teams.find((team) => team.id === "sharks")?.rank, 31);
+  assert.equal(state.worldVrs.teams.find((team) => team.id === "nemesis")?.rank, 32);
+  const ranks = [state.vrsRank, ...state.worldVrs.teams.map((team) => team.rank)];
+  assert.equal(new Set(ranks).size, ranks.length);
+
+  const decayed = advanceManagerDate(state, "2026-07-27");
+  assert.equal(decayed.worldVrs.teams.find((team) => team.id === "top-1")?.rank, 1);
+  assert.equal(decayed.worldVrs.teams.find((team) => team.id === "top-2")?.rank, 2);
+  assert.equal(decayed.vrsRank, 28);
+  assert.equal(decayed.worldVrs.teams.find((team) => team.id === "sharks")?.rank, 31);
+});
+
+test("version 20 saves migrate from compressed ranks to organization source ranks", () => {
+  const old = createManagerCareer("absolute-vrs-migration", {
+    organizationId: "liquid",
+    organizationName: "Liquid",
+    vrsRank: 21,
+    vrsPoints: vrsPointsForRank(21),
+  });
+  const evidence = {
+    id: "liquid-result",
+    eventName: "Recorded Event",
+    completedOn: "2026-07-20",
+    prizePool: 0,
+    prizeWon: 0,
+    lan: true,
+    prestige: 0,
+    matches: [],
+  };
+  const saved = {
+    ...old,
+    version: 20,
+    vrsProfile: {
+      ...old.vrsProfile,
+      baselinePoints: vrsPointsForRank(21),
+      events: [evidence],
+    },
+  };
+  const migrated = normalizeManagerCareer(saved, {
+    organizationId: "liquid",
+    organizationName: "Liquid",
+    vrsRank: 28,
+    vrsPoints: vrsPointsForRank(28),
+    worldTeams: [
+      { id: "nip", name: "Ninjas in Pyjamas", rank: 27, vrsPoints: vrsPointsForRank(27), strength: 78 },
+      { id: "sharks", name: "Sharks", rank: 31, vrsPoints: vrsPointsForRank(31), strength: 74 },
+      { id: "nemesis", name: "Nemesis", rank: 32, vrsPoints: vrsPointsForRank(32), strength: 73 },
+    ],
+  })!;
+
+  assert.equal(migrated.vrsProfile.baselinePoints, vrsPointsForRank(28));
+  assert.equal(migrated.vrsProfile.baselineDate, "2026-07-20");
+  assert.deepEqual(migrated.vrsProfile.events, [evidence]);
+  assert.equal(migrated.vrsRank, 28);
+  assert.equal(migrated.boardObjective.startingRank, 28);
 });
 
 test("reaching the board VRS target completes the mandate once", () => {

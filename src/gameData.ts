@@ -63,6 +63,8 @@ export interface Roster extends SourceTeam {
   tagline: string;
   players: Player[];
   mapPool: Record<MapId, number>;
+  /** Rank from the roster's source snapshot, before mixed-era display sorting. */
+  sourceRank?: number;
   rank?: number;
   vrsPoints?: number;
   trophies?: string[]; // notable titles this roster has won (for the team profile)
