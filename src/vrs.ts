@@ -120,39 +120,56 @@ function eventStakes(event: VrsEventEvidence) {
   return vrsBountyCurve(prizeRatio) * clamp(event.prestige);
 }
 
+function eventPerformanceFactor(event: VrsEventEvidence) {
+  if (!event.matches.length) return 1;
+  const wins = event.matches.filter((match) => match.won).length;
+  const winRate = wins / event.matches.length;
+  // Positive bounty, network, and prize evidence must be earned by a competitive event record.
+  // A result below 20% wins contributes no positive seed evidence; a 50% record receives full value.
+  return clamp((winRate - 0.2) / 0.3);
+}
+
 export function calculateVrs(profile: VrsProfile, asOf: string): VrsBreakdown {
   const baseline = clamp((profile.baselinePoints - VRS_FLOOR) / (VRS_CEILING - VRS_FLOOR));
   const agedBaseline = baseline * vrsAgeWeight(profile.baselineDate, asOf);
   const activeEvents = profile.events
-    .map((event) => ({ event, age: vrsAgeWeight(event.completedOn, asOf) }))
+    .map((event) => ({
+      event,
+      age: vrsAgeWeight(event.completedOn, asOf),
+      performance: eventPerformanceFactor(event),
+    }))
     .filter(({ event, age }) => age > 0 && timestamp(event.completedOn) <= timestamp(asOf));
 
   const weightedPrizes = activeEvents
-    .map(({ event, age }) => event.prizeWon * age * clamp(event.prestige))
+    .map(({ event, age, performance }) => event.prizeWon * age * clamp(event.prestige) * performance)
     .sort((left, right) => right - left)
     .slice(0, VRS_RESULT_BUCKET);
   const prizeEvidence = weightedPrizes.length
     ? vrsBountyCurve(clamp(weightedPrizes.reduce((sum, prize) => sum + prize, 0) / 500_000))
     : 0;
 
-  const wins = activeEvents.flatMap(({ event, age }) => event.matches
+  const wins = activeEvents.flatMap(({ event, age, performance }) => event.matches
     .filter((match) => match.won)
     .map((match) => ({
       event,
       match,
       age,
+      performance,
       stakes: eventStakes(event),
       opponentStrength: clamp((match.opponentPoints - VRS_FLOOR) / (VRS_CEILING - VRS_FLOOR)),
     })));
   const collectedEvidence = clamp(wins
-    .map((win) => win.opponentStrength * win.age * win.stakes)
+    .map((win) => win.opponentStrength * win.age * win.stakes * win.performance)
     .sort((left, right) => right - left)
     .slice(0, VRS_RESULT_BUCKET)
     .reduce((sum, value) => sum + value, 0) / 5);
 
   const networkByOpponent = new Map<string, number>();
   wins.forEach((win) => {
-    networkByOpponent.set(win.match.opponentId, Math.max(networkByOpponent.get(win.match.opponentId) ?? 0, win.age));
+    networkByOpponent.set(
+      win.match.opponentId,
+      Math.max(networkByOpponent.get(win.match.opponentId) ?? 0, win.age * win.performance),
+    );
   });
   const networkEvidence = clamp([...networkByOpponent.values()]
     .sort((left, right) => right - left)
@@ -161,7 +178,7 @@ export function calculateVrs(profile: VrsProfile, asOf: string): VrsBreakdown {
 
   const lanEvidence = clamp(wins
     .filter((win) => win.event.lan)
-    .map((win) => win.age * win.stakes)
+    .map((win) => win.age * win.stakes * win.performance)
     .sort((left, right) => right - left)
     .slice(0, VRS_RESULT_BUCKET)
     .reduce((sum, value) => sum + value, 0) / VRS_RESULT_BUCKET);
@@ -173,9 +190,10 @@ export function calculateVrs(profile: VrsProfile, asOf: string): VrsBreakdown {
   const seed = (bountyOffered + bountyCollected + opponentNetwork + lanWins) / 4;
   const seedPoints = VRS_FLOOR + seed * (VRS_CEILING - VRS_FLOOR);
 
-  const headToHead = Math.round(activeEvents.flatMap(({ event, age }) => event.matches.map((match) => {
+  const headToHead = Math.round(activeEvents.flatMap(({ event, age, performance }) => event.matches.map((match) => {
     const expected = 1 / (1 + 10 ** ((match.opponentPoints - seedPoints) / 400));
-    return 24 * age * eventStakes(event) * ((match.won ? 1 : 0) - expected);
+    const result = match.won ? performance * (1 - expected) : -expected;
+    return 24 * age * eventStakes(event) * result;
   })).reduce((sum, adjustment) => sum + adjustment, 0));
   // The 400-2000 range applies to seeding. Valve's match adjustments happen
   // afterward, so a sufficiently strong head-to-head record may cross either bound.

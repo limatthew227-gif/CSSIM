@@ -22,7 +22,9 @@ export function corridorPath(mapId: MapId, points: XY[]): XY[] {
   for (let i = 0; i < points.length - 1; i += 1) {
     const a = points[i];
     const b = points[i + 1];
-    const key = `${mapId}:${a.x.toFixed(1)},${a.y.toFixed(1)}>${b.x.toFixed(1)},${b.y.toFixed(1)}`;
+    // Combat routes need their exact endpoints: coarse 0.1-unit keys could reuse a neighbouring
+    // route and leave the rendered shooter a few centimetres away from the authoritative tracer.
+    const key = `${mapId}:${a.x.toFixed(3)},${a.y.toFixed(3)}>${b.x.toFixed(3)},${b.y.toFixed(3)}`;
     let seg = corridorCache.get(key);
     if (!seg) {
       const meshPath = mapId === "mirage"

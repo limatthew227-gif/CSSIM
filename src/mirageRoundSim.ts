@@ -82,6 +82,10 @@ export interface MirageSimInput {
   tactics: Record<TeamKey, MirageCallStyle>;
   utilityCounts: Record<TeamKey, number>;
   economies: Record<TeamKey, MirageEconomy>;
+  preparation?: {
+    plan: "anti-awp" | "punish-aggression" | "heavy-utility" | "targeted-site-stack";
+    targetSite: "A" | "B";
+  };
 }
 interface Team {
   players: Player[];
@@ -245,7 +249,14 @@ export function simulateMirageRound(input: MirageSimInput): MirageSimResult {
         route = { pts: r.pts, cum: r.cum, len: r.len };
         objective = r.lastNode;
       } else {
-        objective = ctObjectiveForMirageJob(job, pushers.has(ref.id));
+        if (team === "you" && input.preparation?.plan === "targeted-site-stack") {
+          const stackObjectives = input.preparation.targetSite === "A"
+            ? ["asite", "jungle", "connector", "asite", "jungle"]
+            : ["bsite", "market", "catwalk", "bsite", "market"];
+          objective = stackObjectives[idx % stackObjectives.length];
+        } else {
+          objective = ctObjectiveForMirageJob(job, pushers.has(ref.id));
+        }
         route = buildRoute("ctspawn", objective, situation);
       }
       // start spread in a pentagon around the spawn centre so the 5 dots don't stack. Not snapped to

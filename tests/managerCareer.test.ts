@@ -1,12 +1,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { Player } from "../src/gameData";
-import { vrsPointsForRank } from "../src/vrs";
+import { VRS_FLOOR, vrsPointsForRank } from "../src/vrs";
 import {
   acceptManagerIncomingOffer,
+  assignManagerMentorship,
   advanceManagerMajorStage,
   acceptManagerTradeCounter,
   advanceManagerDate,
+  buildManagerLfoTeam,
   completeManagerEvent,
   createManagerCareer,
   createManagerIncomingOffer,
@@ -14,9 +16,14 @@ import {
   declineManagerIncomingOffer,
   launchManagerEvent,
   isCurrentManagerWorldRoster,
+  integrateManagerWorldSeries,
+  managerWorldEventSnapshot,
   managerEventById,
+  managerEventAwardsEligible,
   managerEventPayoutTotal,
   managerEventEntryStage,
+  managerEventPrestige,
+  managerQualifiedTeamIdsForEvent,
   managerEventName,
   managerEventSchedule,
   managerEventStageRules,
@@ -29,7 +36,10 @@ import {
   managerMajorStickerRevenue,
   MANAGER_MAJOR_CHAMPIONS_CAPSULE_REVENUE,
   managerFinancialStatus,
+  managerMentorshipEligibility,
+  managerMatchPreparation,
   managerLineupEditLocked,
+  managerLfoSnapshotOrganization,
   managerMonthlyPayroll,
   managerPlayerDynamics,
   managerTeamFamiliarity,
@@ -37,9 +47,12 @@ import {
   managerActivePerformanceCamp,
   managerPerformanceCampEligibility,
   managerPerformanceCampPrograms,
+  managerScrimEligibility,
   MANAGER_CAREER_VERSION,
   MANAGER_POTENTIAL_LAB_ELITE_COST,
   managerPotentialLabCost,
+  managerOvrDiceResult,
+  managerOvrLabCost,
   managerCasinoCoinResult,
   managerCasinoVisitAllowed,
   evaluateManagerTradeProposal,
@@ -51,21 +64,28 @@ import {
   registerManagerEvent,
   renewManagerPlayerContract,
   releaseManagerPlayerContract,
+  endManagerMentorship,
   resolveManagerTrainingCycle,
   resolveManagerPotentialInvestment,
+  resolveManagerOvrInvestment,
   resolveManagerCasinoVisit,
   scheduleManagerPerformanceCamp,
+  scheduleManagerScrim,
+  simulateManagerWorldEvent,
   resolveManagerOrganization,
   scoutManagerCandidate,
   setManagerStartingLineup,
+  setManagerPreparationPlan,
   setManagerTrainingFocus,
   startNextManagerSeason,
   submitManagerFreeAgentOffer,
   submitManagerTradeOffer,
+  synchronizeManagerLfoTeam,
   toggleManagerShortlist,
   withdrawManagerTradeOffer,
   withdrawManagerEvent,
 } from "../src/managerCareer";
+import { createManagerFreeAgentPool } from "../src/managerMarket";
 
 const roster = ["p1", "p2", "p3", "p4", "p5"];
 const rosterPlayers = roster.map((id) => ({ id, handle: id, role: "Rifler", ovr: 80 }));
@@ -149,6 +169,87 @@ test("manager training turns performance and potential into persistent player gr
   assert.equal(setManagerTrainingFocus(locked, prospect, "recovery"), locked);
 });
 
+test("mentorship pairs a veteran with a prospect and adds role-aware development progress", () => {
+  const stats = { aim: 78, clutch: 76, consistency: 75, awp: 55, igl: 52 };
+  const players = [
+    { id: "mentor", handle: "mentor", realName: "Mentor", country: "DK", role: "Rifler", style: "Balanced", traits: [], ovr: 84, age: 30, potential: 84, stats, maps: {}, source: { id: "club", name: "Club", tag: "CLB", country: "DK", era: "CS2", year: "2026", accent: "#fff" } },
+    { id: "mentee", handle: "mentee", realName: "Mentee", country: "DK", role: "Rifler", style: "Balanced", traits: [], ovr: 74, age: 19, potential: 84, stats, maps: {}, source: { id: "club", name: "Club", tag: "CLB", country: "DK", era: "CS2", year: "2026", accent: "#fff" } },
+    ...[1, 2, 3].map((index) => ({ id: `mate-${index}`, handle: `mate-${index}`, realName: `Mate ${index}`, country: "DK", role: index === 1 ? "IGL" : index === 2 ? "AWP" : "Support", style: "Balanced", traits: [], ovr: 76, age: 25, potential: 78, stats, maps: {}, source: { id: "club", name: "Club", tag: "CLB", country: "DK", era: "CS2", year: "2026", accent: "#fff" } })),
+  ] as Player[];
+  const base = createManagerCareer("mentorship", {
+    organizationId: "club",
+    organizationName: "Club",
+    players,
+  });
+  const eligibility = managerMentorshipEligibility(base, players, "mentor", "mentee");
+  assert.equal(eligibility.eligible, true);
+  assert.equal(eligibility.bonus, 24, "same-role mentorship receives the strongest bonus");
+  const cappedPlayers = players.map((player) => player.id === "mentee"
+    ? { ...player, ovr: player.potential }
+    : player);
+  assert.equal(
+    managerMentorshipEligibility(base, cappedPlayers, "mentor", "mentee").eligible,
+    false,
+    "a prospect at their development ceiling cannot consume a mentorship slot",
+  );
+
+  const assigned = assignManagerMentorship(base, players, "mentor", "mentee");
+  assert.equal(assigned.mentorships.length, 1);
+  assert.equal(managerMentorshipEligibility(assigned, players, "mentor", "mentee").eligible, false);
+
+  const baseline = resolveManagerTrainingCycle(base, players, {}, "swiss");
+  const trained = resolveManagerTrainingCycle(assigned, players, {}, "swiss");
+  const baselineReport = baseline.reports.find((report) => report.playerId === "mentee")!;
+  const mentoredReport = trained.reports.find((report) => report.playerId === "mentee")!;
+  assert.equal(mentoredReport.mentorshipBonus, 24);
+  assert.equal(mentoredReport.progressEarned, baselineReport.progressEarned + 24);
+  assert.equal(trained.state.mentorships[0].cyclesCompleted, 1);
+  assert.equal(trained.state.mentorships[0].lastCycleBonus, 24);
+  assert.equal(
+    managerPlayerDynamics(trained.state, "mentee")!.familiarity,
+    managerPlayerDynamics(assigned, "mentee")!.familiarity + 3,
+  );
+  assert.equal(endManagerMentorship(trained.state, trained.state.mentorships[0].id).mentorships.length, 0);
+});
+
+test("scrims resolve on the calendar and turn the rehearsed plan into match preparation", () => {
+  const base = createManagerCareer("scrim-network", {
+    organizationId: "club",
+    organizationName: "Club",
+    players: rosterPlayers,
+  });
+  const prepared = setManagerPreparationPlan(base, "heavy-utility", "A");
+  const input = {
+    opponentId: "practice-rival",
+    opponentName: "Practice Rival",
+    map: "mirage" as const,
+    scheduledFor: "2026-07-22",
+    intensity: "standard" as const,
+    privacy: "closed" as const,
+  };
+  const eligibility = managerScrimEligibility(prepared, input);
+  assert.equal(eligibility.eligible, true);
+  assert.equal(eligibility.leakRisk, 12);
+
+  const booked = scheduleManagerScrim(prepared, input);
+  assert.equal(booked.preparation.scrims[0].status, "scheduled");
+  assert.equal(booked.preparation.scrims[0].plan, "heavy-utility");
+  assert.equal(nextManagerCheckpoint(booked), input.scheduledFor);
+
+  const resolved = advanceManagerDate(booked, input.scheduledFor);
+  assert.equal(resolved.preparation.scrims[0].status, "completed");
+  assert.equal(resolved.preparation.mastery["heavy-utility"], 19);
+  assert.equal(resolved.preparation.fatigue, 7);
+  assert.equal(managerPlayerDynamics(resolved, "p1")!.familiarity, managerPlayerDynamics(booked, "p1")!.familiarity + 2);
+  assert.deepEqual(managerMatchPreparation(resolved, "practice-rival"), {
+    plan: "heavy-utility",
+    targetSite: "A",
+    mastery: 19,
+    fatigue: 7,
+    leaked: resolved.preparation.scrims[0].leaked ?? false,
+  });
+});
+
 test("Potential Lab charges for every flip and can push potential beyond 99", () => {
   const player = { id: "ceiling-star", handle: "ceiling", role: "AWP", ovr: 98, potential: 99 };
   let state = createManagerCareer("potential-lab", {
@@ -183,6 +284,60 @@ test("Potential Lab pricing scales with the value of the player's ceiling", () =
   assert.equal(managerPotentialLabCost(state, low), 25_000);
   assert.equal(managerPotentialLabCost(state, prospect), 85_000);
   assert.equal(managerPotentialLabCost(state, star), 160_000);
+});
+
+test("manager training repairs a stale saved ceiling from the current player metadata", () => {
+  const player = { id: "xkacpersky", handle: "xKacpersky", role: "Entry", ovr: 74, age: 19, potential: 84 };
+  const state = createManagerCareer("stale-potential", { players: [player, ...rosterPlayers.slice(1)] });
+  const stale = {
+    ...state,
+    version: 23,
+    trainingPlans: state.trainingPlans.map((plan) => plan.playerId === player.id
+      ? { ...plan, potentialOvr: 74 }
+      : plan),
+  };
+
+  assert.equal(managerTrainingPlan(stale, player).potentialOvr, 84, "live careers use the corrected player ceiling");
+  assert.equal(
+    normalizeManagerCareer(stale, { players: [player, ...rosterPlayers.slice(1)] })!.trainingPlans
+      .find((plan) => plan.playerId === player.id)?.potentialOvr,
+    84,
+    "the corrected ceiling persists through save migration",
+  );
+});
+
+test("OVR Lab costs more than Potential Lab and applies a deterministic 0-3 roll", () => {
+  const stats = { aim: 72, clutch: 70, consistency: 71, awp: 50, igl: 50 };
+  const player = { id: "dice-prospect", handle: "dice", role: "Entry", ovr: 74, potential: 75, stats };
+  let state = createManagerCareer("ovr-dice", {
+    organizationId: "club",
+    organizationName: "Club",
+    cash: 2_000_000,
+    players: [player, ...rosterPlayers.slice(1)],
+  });
+  const potentialCost = managerPotentialLabCost(state, player);
+  const firstCost = managerOvrLabCost(state, player);
+  const deterministicResult = managerOvrDiceResult(state, player);
+
+  assert.ok(firstCost > potentialCost);
+  assert.ok(deterministicResult >= 0 && deterministicResult <= 3);
+  assert.equal(managerOvrDiceResult(state, player), deterministicResult);
+
+  state = resolveManagerOvrInvestment(state, player, 3);
+  const improved = managerTrainingPlan(state, player);
+  assert.equal(state.cash, 2_000_000 - firstCost);
+  assert.equal(improved.currentOvr, 77);
+  assert.equal(improved.potentialOvr, 77, "potential follows a direct OVR boost when necessary");
+  assert.equal(improved.currentStats?.aim, 75);
+  assert.equal(improved.ovrLabAttempts, 1);
+  assert.equal(improved.ovrLabGains, 3);
+  assert.equal(state.ledger.at(-1)?.category, "development");
+
+  const zeroCost = managerOvrLabCost(state, { ...player, ovr: improved.currentOvr, potential: improved.potentialOvr });
+  const afterZero = resolveManagerOvrInvestment(state, { ...player, ovr: improved.currentOvr, potential: improved.potentialOvr }, 0);
+  assert.equal(afterZero.cash, state.cash - zeroCost, "a zero roll still costs the full investment");
+  assert.equal(managerTrainingPlan(afterZero, player).currentOvr, 77);
+  assert.equal(managerTrainingPlan(afterZero, player).ovrLabAttempts, 2);
 });
 
 test("Casino Night moves club cash, affects the selected player, and is limited to one visit per day", () => {
@@ -255,7 +410,7 @@ test("performance camps cannot overlap a confirmed tournament", () => {
 test("old manager saves receive organization, contract, and market defaults during migration", () => {
   const oldState = createManagerCareer("legacy-a");
   const migrated = normalizeManagerCareer(
-    { ...oldState, version: 1, organizationId: undefined, organizationName: undefined, contracts: undefined, market: undefined },
+    { ...oldState, version: 1, organizationId: undefined, organizationName: undefined, contracts: undefined, market: undefined, preparation: undefined },
     {
       organizationId: "legacy-club",
       organizationName: "Legacy Club",
@@ -269,6 +424,8 @@ test("old manager saves receive organization, contract, and market defaults duri
   assert.equal(migrated.trainingPlans.length, 1);
   assert.deepEqual(migrated.performanceCamps, []);
   assert.deepEqual(migrated.casinoVisits, []);
+  assert.equal(migrated.preparation.activePlan, "anti-awp");
+  assert.deepEqual(migrated.preparation.scrims, []);
   assert.equal(migrated.status, "active");
   assert.deepEqual(migrated.market, {
     scoutedPlayerIds: [],
@@ -312,7 +469,7 @@ test("Manager calendar carries Swiss, round-robin, and direct knockout formats",
 });
 
 test("Manager seasons carry a dense S-tier and A-tier circuit with varied fields", () => {
-  assert.equal(managerEvents.length, 12);
+  assert.equal(managerEvents.length, 15);
   assert.equal(managerEvents.filter((event) => event.classification === "S-Tier").length, 5);
   assert.equal(managerEvents.filter((event) => event.classification === "A-Tier").length, 4);
   assert.deepEqual(new Set(managerEvents.map((event) => event.format)), new Set(["single-elimination", "swiss", "round-robin", "double-elimination"]));
@@ -361,6 +518,433 @@ test("the Manager calendar exposes one VRS-seeded Major cycle", () => {
 
 test("declared Manager prize pools equal the total placement payouts", () => {
   managerEvents.forEach((event) => assert.equal(managerEventPayoutTotal(event), event.prizePool, event.name));
+});
+
+test("event prestige keeps Cologne above Studio Rivals and the Major above both", () => {
+  const cologne = managerEventPrestige(managerEventById("cologne-masters-2026")!);
+  const studio = managerEventPrestige(managerEventById("studio-rivals-2026")!);
+  const major = managerEventPrestige(managerEventById("fall-global-major-2026")!);
+  assert.equal(cologne.tier, "flagship");
+  assert.equal(studio.tier, "challenger");
+  assert.ok(cologne.score > studio.score);
+  assert.ok(major.score > cologne.score);
+});
+
+test("open qualifiers and challenger events do not issue MVP or EVP medals", () => {
+  assert.equal(managerEventAwardsEligible(managerEventById("cologne-open-qualifier-2026")!), false);
+  assert.equal(managerEventAwardsEligible(managerEventById("frontier-open-2026")!), false);
+  assert.equal(managerEventAwardsEligible(managerEventById("studio-rivals-2026")!), false);
+  assert.equal(managerEventAwardsEligible(managerEventById("cologne-masters-2026")!), true);
+  assert.equal(managerEventAwardsEligible(managerEventById("fall-global-major-2026")!), true);
+});
+
+test("one LFO mix forms from available players with a distinct IGL and AWPer", () => {
+  const candidates = createManagerFreeAgentPool("lfo-test").map((candidate) => candidate.player);
+  const lfo = buildManagerLfoTeam("lfo-test", "2026-07-20", candidates)!;
+  assert.equal(lfo.name, "LFO");
+  assert.equal(lfo.players.length, 5);
+  assert.equal(new Set(lfo.players.map((player) => player.id)).size, 5);
+  assert.ok(lfo.players.some((player) => player.role === "IGL" || player.secondaryRole === "IGL"));
+  assert.ok(lfo.players.some((player) => player.role === "AWP" || player.secondaryRole === "AWP"));
+
+  const career = createManagerCareer("lfo-career", { players: rosterPlayers, worldTeams });
+  const formed = synchronizeManagerLfoTeam(career, candidates);
+  const unchanged = synchronizeManagerLfoTeam(formed, candidates);
+  assert.equal(formed.worldVrs.teams.filter((team) => team.id === "manager-lfo").length, 1);
+  assert.equal(unchanged, formed);
+});
+
+test("an unsigned LFO generation rotates after three events without a breakthrough", () => {
+  const candidates = createManagerFreeAgentPool("lfo-rotation").map((candidate) => candidate.player);
+  const formed = synchronizeManagerLfoTeam(
+    createManagerCareer("lfo-rotation", { players: rosterPlayers, worldTeams }),
+    candidates,
+  );
+  const first = formed.lfoTeam!;
+  const results = Array.from({ length: 3 }, (_, index) => ({
+    id: `lfo-rotation-result-${index}`,
+    eventId: `lfo-open-${index}`,
+    eventName: `LFO Open ${index + 1}`,
+    season: formed.season,
+    completedOn: `2026-07-${21 + index}`,
+    classification: "Open" as const,
+    format: "single-elimination" as const,
+    placements: [{
+      teamId: first.id,
+      teamName: first.name,
+      placement: "top8" as const,
+      wins: 1,
+      losses: 1,
+      prizeWon: 0,
+      managed: false,
+    }],
+  }));
+  const rotated = synchronizeManagerLfoTeam({
+    ...formed,
+    date: "2026-07-29",
+    worldVrs: { ...formed.worldVrs, events: results },
+  }, candidates);
+  assert.equal(rotated.lfoTeam?.generation, first.generation + 1);
+  assert.notDeepEqual(
+    new Set(rotated.lfoTeam?.players.map((player) => player.id)),
+    new Set(first.players.map((player) => player.id)),
+  );
+  assert.ok(rotated.lfoTeam?.players.some((player) => player.role === "IGL" || player.secondaryRole === "IGL"));
+  assert.ok(rotated.lfoTeam?.players.some((player) => player.role === "AWP" || player.secondaryRole === "AWP"));
+});
+
+test("an LFO qualifier win protects the project from a full generation reset", () => {
+  const candidates = createManagerFreeAgentPool("lfo-momentum").map((candidate) => candidate.player);
+  const formed = synchronizeManagerLfoTeam(
+    createManagerCareer("lfo-momentum", { players: rosterPlayers, worldTeams }),
+    candidates,
+  );
+  const first = formed.lfoTeam!;
+  const results = Array.from({ length: 3 }, (_, index) => ({
+    id: `lfo-momentum-result-${index}`,
+    eventId: `lfo-momentum-open-${index}`,
+    eventName: `LFO Momentum Open ${index + 1}`,
+    season: formed.season,
+    completedOn: `2026-07-${21 + index}`,
+    classification: "Open" as const,
+    format: "single-elimination" as const,
+    placements: [{
+      teamId: first.id,
+      teamName: first.name,
+      placement: index === 2 ? "champion" as const : "top8" as const,
+      wins: index === 2 ? 3 : 1,
+      losses: index === 2 ? 0 : 1,
+      prizeWon: index === 2 ? 25_000 : 0,
+      managed: false,
+    }],
+  }));
+  const synchronized = synchronizeManagerLfoTeam({
+    ...formed,
+    date: "2026-07-29",
+    worldVrs: { ...formed.worldVrs, events: results },
+  }, candidates);
+  assert.equal(synchronized.lfoTeam?.generation, first.generation);
+  assert.deepEqual(
+    new Set(synchronized.lfoTeam?.players.map((player) => player.id)),
+    new Set(first.players.map((player) => player.id)),
+  );
+});
+
+test("an LFO departure replaces only the open slot and preserves results and VRS", () => {
+  const candidates = createManagerFreeAgentPool("lfo-core-repair").map((candidate) => candidate.player);
+  const formed = synchronizeManagerLfoTeam(
+    createManagerCareer("lfo-core-repair", { players: rosterPlayers, worldTeams }),
+    candidates,
+  );
+  const first = formed.lfoTeam!;
+  const departing = first.players.find((player) => player.role === "IGL") ?? first.players[0];
+  const retainedIds = first.players.filter((player) => player.id !== departing.id).map((player) => player.id);
+  const standingBefore = formed.worldVrs.teams.find((team) => team.id === first.id)!;
+  const repaired = synchronizeManagerLfoTeam(
+    formed,
+    candidates.filter((player) => player.id !== departing.id),
+  );
+  assert.equal(repaired.lfoTeam?.generation, first.generation);
+  assert.ok(retainedIds.every((id) => repaired.lfoTeam?.players.some((player) => player.id === id)));
+  assert.equal(repaired.lfoTeam?.players.some((player) => player.id === departing.id), false);
+  assert.equal(repaired.inbox[0].title.includes("keeps its core"), true);
+  assert.deepEqual(repaired.worldVrs.teams.find((team) => team.id === first.id)?.profile, standingBefore.profile);
+});
+
+test("canonical identity keeps a manager's player card out of LFO", () => {
+  const candidates = createManagerFreeAgentPool("lfo-canonical-reservation").map((candidate) => candidate.player);
+  const formed = synchronizeManagerLfoTeam(
+    createManagerCareer("lfo-canonical-reservation", { players: rosterPlayers, worldTeams }),
+    candidates,
+  );
+  const managedIgl = candidates.find((player) => player.handle === "HooXi")!;
+  const degster = candidates.find((player) => player.handle === "degster")!;
+  const lauNX = candidates.find((player) => player.handle === "lauNX")!;
+  const skullz = candidates.find((player) => player.handle === "skullz")!;
+  const cobrazera = candidates.find((player) => player.handle === "cobrazera")!;
+  const conflicting = {
+    ...formed,
+    lfoTeam: {
+      ...formed.lfoTeam!,
+      players: [managedIgl, degster, lauNX, skullz, cobrazera],
+    },
+  };
+  const repaired = synchronizeManagerLfoTeam(conflicting, candidates, [], [{
+    ...managedIgl,
+    id: "managed-roster-igl",
+  }]);
+  assert.equal(repaired.lfoTeam?.generation, conflicting.lfoTeam.generation);
+  assert.equal(repaired.lfoTeam?.players.some((player) => player.handle === managedIgl.handle), false);
+  assert.ok([degster, lauNX, skullz, cobrazera].every((retained) => (
+    repaired.lfoTeam?.players.some((player) => player.id === retained.id)
+  )));
+  assert.ok(repaired.lfoTeam?.players.some((player) => player.role === "IGL" || player.secondaryRole === "IGL"));
+});
+
+test("legacy Generation 2 saves recover an available qualifier-winning core", () => {
+  const candidates = createManagerFreeAgentPool("lfo-legacy-continuity").map((candidate) => candidate.player);
+  const formed = synchronizeManagerLfoTeam(
+    createManagerCareer("lfo-legacy-continuity", { players: rosterPlayers, worldTeams }),
+    candidates,
+  );
+  const original = formed.lfoTeam!;
+  const departing = original.players.find((player) => player.role === "IGL") ?? original.players[0];
+  const available = candidates.filter((player) => player.id !== departing.id);
+  const buggyGeneration = buildManagerLfoTeam(
+    formed.seed,
+    "2026-07-29",
+    available,
+    original.generation + 1,
+    original.players.map((player) => player.id),
+  )!;
+  const legacySave = {
+    ...formed,
+    date: "2026-07-29",
+    lfoTeam: { ...buggyGeneration, continuityVersion: undefined },
+    worldVrs: {
+      ...formed.worldVrs,
+      events: [{
+        id: "lfo-legacy-qualifier-win",
+        eventId: "cologne-open-qualifier-2026",
+        eventName: "IEM Cologne Open Qualifier",
+        season: formed.season,
+        completedOn: "2026-07-28",
+        classification: "Open" as const,
+        format: "single-elimination" as const,
+        placements: [{
+          teamId: original.id,
+          teamName: original.name,
+          placement: "champion" as const,
+          wins: 3,
+          losses: 0,
+          prizeWon: 0,
+          managed: false,
+        }],
+      }],
+    },
+  };
+  const repaired = synchronizeManagerLfoTeam(legacySave, available);
+  const availableOriginalIds = original.players
+    .filter((player) => player.id !== departing.id)
+    .map((player) => player.id);
+  assert.equal(repaired.lfoTeam?.generation, original.generation);
+  assert.ok(availableOriginalIds.every((id) => repaired.lfoTeam?.players.some((player) => player.id === id)));
+  assert.equal(repaired.inbox[0].title.includes("restores"), true);
+  assert.equal(repaired.inbox.some((item) => item.title === "LFO Generation 2 replaces the old mix"), false);
+});
+
+test("a Major-bound LFO is signed by one dormant organization and immediately replaced", () => {
+  const candidates = createManagerFreeAgentPool("lfo-signing").map((candidate) => candidate.player);
+  const formed = synchronizeManagerLfoTeam(
+    createManagerCareer("lfo-signing", { players: rosterPlayers, worldTeams }),
+    candidates,
+  );
+  const first = formed.lfoTeam!;
+  const earnedProfile = {
+    baselineDate: first.formedOn,
+    baselinePoints: VRS_FLOOR,
+    events: [{
+      id: "lfo-breakthrough:manager-lfo",
+      eventId: "frontier-open-2026",
+      eventName: "Frontier Open",
+      completedOn: "2026-07-28",
+      prizePool: 100_000,
+      prizeWon: 50_000,
+      lan: true,
+      prestige: 0.55,
+      matches: [{
+        id: "lfo-breakthrough-final",
+        opponentId: "world-20",
+        opponentName: "World Team 20",
+        opponentPoints: 1_300,
+        won: true,
+      }],
+    }],
+  };
+  const breakthrough = {
+    id: "lfo-breakthrough",
+    eventId: "frontier-open-2026",
+    eventName: "Frontier Open",
+    season: formed.season,
+    completedOn: "2026-07-28",
+    classification: "Open" as const,
+    format: "single-elimination" as const,
+    placements: [{
+      teamId: first.id,
+      teamName: first.name,
+      placement: "champion" as const,
+      wins: 3,
+      losses: 0,
+      prizeWon: 50_000,
+      managed: false,
+    }],
+  };
+  const majorBound = {
+    ...formed,
+    date: "2026-07-29",
+    worldVrs: {
+      teams: formed.worldVrs.teams.map((team) => team.id === first.id
+        ? { ...team, rank: 30, profile: earnedProfile }
+        : team),
+      events: [breakthrough],
+    },
+  };
+  const signed = synchronizeManagerLfoTeam(majorBound, candidates);
+  const organization = signed.revivedOrganizations[0];
+  assert.ok(["North", "Sentinels", "GODSENT"].includes(organization.name));
+  assert.equal(organization.formation, "lfo-signing");
+  assert.deepEqual(
+    new Set(organization.players.map((player) => player.id)),
+    new Set(first.players.map((player) => player.id)),
+  );
+  assert.equal(signed.lfoTeam?.generation, 2);
+  assert.equal(
+    signed.lfoTeam?.players.some((player) => organization.players.some((signedPlayer) => signedPlayer.id === player.id)),
+    false,
+  );
+  assert.equal(signed.worldVrs.events[0].placements[0].teamId, organization.id);
+  const organizationStanding = signed.worldVrs.teams.find((team) => team.id === organization.id)!;
+  const freshLfoStanding = signed.worldVrs.teams.find((team) => team.id === "manager-lfo")!;
+  assert.deepEqual(organizationStanding.profile, earnedProfile);
+  assert.equal(freshLfoStanding.profile.baselinePoints, VRS_FLOOR);
+  assert.equal(freshLfoStanding.profile.events.length, 0);
+  assert.equal(freshLfoStanding.points, VRS_FLOOR);
+  assert.ok(organizationStanding.points > freshLfoStanding.points);
+  assert.equal(signed.worldVrs.teams.filter((team) => team.id === "manager-lfo").length, 1);
+  assert.equal(
+    managerLfoSnapshotOrganization(first.players, signed.revivedOrganizations)?.id,
+    organization.id,
+  );
+  assert.equal(
+    managerLfoSnapshotOrganization(signed.lfoTeam!.players, signed.revivedOrganizations),
+    undefined,
+  );
+
+  const contaminated = {
+    ...signed,
+    worldVrs: {
+      ...signed.worldVrs,
+      teams: signed.worldVrs.teams.map((team) => team.id === "manager-lfo"
+        ? { ...team, profile: organizationStanding.profile, points: organizationStanding.points }
+        : team),
+    },
+  };
+  const repaired = synchronizeManagerLfoTeam(contaminated, candidates);
+  const repairedLfoStanding = repaired.worldVrs.teams.find((team) => team.id === "manager-lfo")!;
+  assert.equal(repairedLfoStanding.profile.baselinePoints, VRS_FLOOR);
+  assert.equal(repairedLfoStanding.profile.events.length, 0);
+  assert.equal(repairedLfoStanding.points, VRS_FLOOR);
+});
+
+test("an LFO Major appearance earns an organization even after a Swiss exit", () => {
+  const candidates = createManagerFreeAgentPool("lfo-major-appearance").map((candidate) => candidate.player);
+  const formed = synchronizeManagerLfoTeam(
+    createManagerCareer("lfo-major-appearance", { players: rosterPlayers, worldTeams }),
+    candidates,
+  );
+  const lfo = formed.lfoTeam!;
+  const signed = synchronizeManagerLfoTeam({
+    ...formed,
+    date: "2026-12-16",
+    worldVrs: {
+      teams: formed.worldVrs.teams.map((team) => team.id === lfo.id ? { ...team, rank: 52 } : team),
+      events: [{
+        id: "lfo-major-swiss-exit",
+        eventId: "fall-global-major-2026",
+        eventName: "Fall Global Major",
+        season: formed.season,
+        completedOn: "2026-12-15",
+        classification: "Major",
+        format: "swiss",
+        placements: [{
+          teamId: lfo.id,
+          teamName: lfo.name,
+          placement: "swiss",
+          wins: 1,
+          losses: 3,
+          prizeWon: 0,
+          managed: false,
+        }],
+      }],
+    },
+  }, candidates);
+  assert.equal(signed.revivedOrganizations[0]?.formation, "lfo-signing");
+  assert.equal(signed.revivedOrganizations[0]?.lfoGeneration, lfo.generation);
+});
+
+test("a dormant organization can independently build a hybrid free-agent and transfer roster", () => {
+  const pool = createManagerFreeAgentPool("legacy-org-project").map((candidate) => candidate.player);
+  const transferPlayers = pool
+    .filter((player) => player.role !== "IGL" && player.role !== "AWP")
+    .slice(0, 8)
+    .map((player, index) => ({
+    player: { ...player, ovr: player.ovr + 3 },
+    clubId: `seller-${index}`,
+    clubName: `Seller ${index}`,
+  }));
+  const freeAgents = pool.filter((player) => !transferPlayers.some((target) => target.player.id === player.id));
+  let formed = undefined as ReturnType<typeof createManagerCareer> | undefined;
+  for (let index = 0; index < 160; index += 1) {
+    const career = { ...createManagerCareer(`legacy-org-project-${index}`, { players: rosterPlayers, worldTeams }), date: "2026-12-20" };
+    const candidate = synchronizeManagerLfoTeam(career, freeAgents, transferPlayers);
+    if (candidate.revivedOrganizations.some((organization) => (
+      organization.formation === "independent-project"
+      && organization.acquisitions.some((acquisition) => acquisition.fromClubId)
+    ))) {
+      formed = candidate;
+      break;
+    }
+  }
+  assert.ok(formed);
+  const organization = formed.revivedOrganizations.find((entry) => entry.formation === "independent-project")!;
+  assert.equal(organization.players.length, 5);
+  assert.ok(organization.players.some((player) => player.role === "IGL" || player.secondaryRole === "IGL"));
+  assert.ok(organization.players.some((player) => player.role === "AWP" || player.secondaryRole === "AWP"));
+  assert.ok(organization.acquisitions.some((acquisition) => acquisition.fromClubId));
+  assert.ok(formed.market.rosterMoves.some((move) => move.clubId === organization.id && move.transactionType === "trade"));
+  assert.equal(formed.worldVrs.teams.some((team) => team.id === organization.id), true);
+  assert.equal(formed.worldVrs.teams.filter((team) => team.id === "manager-lfo").length, 1);
+});
+
+test("LFO play lower-tier opens and open qualifier finalists feed the destination event", () => {
+  const candidates = createManagerFreeAgentPool("lfo-qualifier").map((candidate) => candidate.player);
+  const career = synchronizeManagerLfoTeam(
+    createManagerCareer("lfo-qualifier", { players: rosterPlayers, worldTeams, vrsRank: 30 }),
+    candidates,
+  );
+  const registered = registerManagerEvent(career, "cologne-open-qualifier-2026", roster);
+  const onSite = advanceManagerDate(registered, "2026-07-30");
+  const launched = launchManagerEvent(onSite, "cologne-open-qualifier-2026");
+  const completed = completeManagerEvent(launched, "cologne-open-qualifier-2026", "champion");
+  const qualifier = completed.worldVrs.events.find((event) => event.eventId === "cologne-open-qualifier-2026")!;
+  const frontier = completed.worldVrs.events.find((event) => event.eventId === "frontier-open-2026")!;
+  const cologne = managerEventById("cologne-masters-2026")!;
+
+  assert.ok(frontier.placements.some((placement) => placement.teamId === "manager-lfo"));
+  assert.ok(qualifier.placements.some((placement) => placement.teamId === "manager-lfo"));
+  assert.ok(managerQualifiedTeamIdsForEvent(completed, cologne, completed.season).includes(completed.organizationId));
+  assert.equal(completed.registrations.find((item) => item.eventId === cologne.id)?.status, "confirmed");
+  assert.equal(completed.registrations.find((item) => item.eventId === cologne.id)?.feePaid, 0);
+});
+
+test("Cologne open qualifier excludes every team already auto-invited to the main event", () => {
+  const qualifier = managerEventById("cologne-open-qualifier-2026")!;
+  assert.equal(qualifier.rankMin, 25);
+  const state = simulateManagerWorldEvent(createManagerCareer("strict-open-qualifier", {
+    organizationId: "managed-club",
+    organizationName: "Managed Club",
+    vrsRank: 30,
+    worldTeams,
+  }), qualifier);
+  const result = state.worldVrs.events.find((event) => event.eventId === qualifier.id)!;
+  const entryRankById = new Map(state.worldVrs.teams.map((team) => [team.id, team.initialRank]));
+  assert.equal(result.placements.length, qualifier.capacity);
+  assert.ok(result.placements.every((placement) => {
+    const rank = entryRankById.get(placement.teamId)!;
+    return rank >= qualifier.rankMin && rank <= qualifier.rankMax;
+  }));
+  assert.equal(result.placements.some((placement) => placement.teamId === "world-6"), false);
+  assert.equal(result.placements.some((placement) => placement.teamId === "world-14"), false);
 });
 
 test("Manager event opponents use the current world while historic clubs remain valid takeovers", () => {
@@ -477,6 +1061,23 @@ test("an early Major exit completes on that stage's end date", () => {
   const launched = launchManagerEvent({ ...registered, date: "2026-10-19" }, event.id);
   const completed = completeManagerEvent(launched, event.id, "swiss");
   assert.equal(completed.date, managerMajorStageEnd("mrq"));
+  assert.equal(completed.activeMajorStage, undefined);
+});
+
+test("an early Major exit can wait for the completed tournament before returning to HQ", () => {
+  const event = managerEventById("fall-global-major-2026")!;
+  const registered = registerManagerEvent(createManagerCareer("major-full-exit", { vrsRank: 31 }), event.id, roster);
+  const launched = launchManagerEvent({ ...registered, date: "2026-10-19" }, event.id);
+  const completed = completeManagerEvent(
+    launched,
+    event.id,
+    "swiss",
+    {},
+    undefined,
+    [],
+    managerEventSchedule(event, launched.season).endsOn,
+  );
+  assert.equal(completed.date, managerEventSchedule(event, launched.season).endsOn);
   assert.equal(completed.activeMajorStage, undefined);
 });
 
@@ -1203,6 +1804,260 @@ test("off-screen tournament matches give both clubs mirrored VRS evidence", () =
   assert.equal(mirrored.won, !firstMatch.won);
 });
 
+test("off-screen placements are backed by a coherent match record", () => {
+  const state = advanceManagerDate(createManagerCareer("world-coherent-results", {
+    organizationId: "managed-club",
+    organizationName: "Managed Club",
+    vrsRank: 18,
+    worldTeams,
+  }), "2026-08-02");
+  const result = state.worldVrs.events.find((item) => item.eventId === "frontier-open-2026")!;
+  const winTotals = result.placements.map((placement) => placement.wins);
+  assert.ok(winTotals[0] > 0);
+  assert.equal(winTotals[0], Math.max(...winTotals));
+  assert.deepEqual(winTotals, [...winTotals].sort((left, right) => right - left));
+});
+
+test("an off-screen eight-team knockout stores the seven series shown in its result overview", () => {
+  const event = managerEventById("frontier-open-2026")!;
+  const state = simulateManagerWorldEvent(createManagerCareer("world-knockout-archive", {
+    organizationId: "managed-club",
+    organizationName: "Managed Club",
+    vrsRank: 18,
+    worldTeams,
+  }), event);
+  const result = state.worldVrs.events.find((item) => item.eventId === event.id)!;
+  const participants = new Set(result.series?.flatMap((series) => [series.left.id, series.right.id]));
+  assert.equal(result.placements.length, event.capacity);
+  assert.equal(result.series?.length, 7);
+  assert.equal(participants.size, event.capacity);
+  assert.deepEqual(
+    [...participants].sort(),
+    result.placements.map((placement) => placement.teamId).sort(),
+  );
+  assert.equal(result.series?.filter((series) => series.phase === "quarterfinal").length, 4);
+  assert.equal(result.series?.filter((series) => series.phase === "semifinal").length, 2);
+  assert.equal(result.series?.filter((series) => series.phase === "final").length, 1);
+  const legacySnapshot = managerWorldEventSnapshot(state, { ...result, series: undefined });
+  assert.equal(legacySnapshot.series?.length, 7);
+  assert.equal(new Set(legacySnapshot.series?.flatMap((series) => [series.left.id, series.right.id])).size, event.capacity);
+});
+
+test("played non-Major results replace the synthetic field instead of merging extra teams into it", () => {
+  const event = managerEventById("frontier-open-2026")!;
+  const base = createManagerCareer("played-field-authority", {
+    organizationId: "managed-club",
+    organizationName: "Managed Club",
+    vrsRank: 24,
+    worldTeams,
+  });
+  const simulated = simulateManagerWorldEvent(base, event, base.season, { managedPlacement: "champion" });
+  const actualOpponents = worldTeams.slice(29, 36);
+  const managed = { id: base.organizationId, name: base.organizationName, points: base.vrsPoints };
+  const team = (index: number) => ({
+    id: actualOpponents[index].id,
+    name: actualOpponents[index].name,
+    points: actualOpponents[index].vrsPoints,
+  });
+  const playedSeries = [
+    { id: "actual-quarterfinal-1", phase: "quarterfinal" as const, left: managed, right: team(6), winnerId: managed.id },
+    { id: "actual-quarterfinal-2", phase: "quarterfinal" as const, left: team(0), right: team(5), winnerId: team(0).id },
+    { id: "actual-quarterfinal-3", phase: "quarterfinal" as const, left: team(1), right: team(4), winnerId: team(1).id },
+    { id: "actual-quarterfinal-4", phase: "quarterfinal" as const, left: team(2), right: team(3), winnerId: team(2).id },
+    { id: "actual-semifinal-1", phase: "semifinal" as const, left: managed, right: team(0), winnerId: managed.id },
+    { id: "actual-semifinal-2", phase: "semifinal" as const, left: team(1), right: team(2), winnerId: team(1).id },
+    { id: "actual-final", phase: "final" as const, left: managed, right: team(1), winnerId: managed.id },
+  ];
+  const actualIds = new Set([managed.id, ...actualOpponents.map((opponent) => opponent.id)]);
+  const originalResult = simulated.worldVrs.events.find((item) => item.eventId === event.id)!;
+  const syntheticOnly = originalResult.placements.find((placement) => !actualIds.has(placement.teamId))!;
+  const integrated = integrateManagerWorldSeries(
+    simulated,
+    event.id,
+    playedSeries,
+    managerEventSchedule(event, base.season).endsOn,
+    base.season,
+    "champion",
+  );
+  const result = integrated.worldVrs.events.find((item) => item.eventId === event.id)!;
+  assert.equal(result.placements.length, event.capacity);
+  assert.deepEqual(new Set(result.placements.map((placement) => placement.teamId)), actualIds);
+  assert.equal(result.placements.some((placement) => placement.teamId === syntheticOnly.teamId), false);
+  assert.equal(result.series?.length, playedSeries.length);
+  const removed = integrated.worldVrs.teams.find((candidate) => candidate.id === syntheticOnly.teamId)!;
+  assert.equal(removed.profile.events.some((evidence) => evidence.eventId === event.id), false);
+
+  const legacyInflated = {
+    ...integrated,
+    worldVrs: {
+      ...integrated.worldVrs,
+      events: integrated.worldVrs.events.map((item) => item.eventId === event.id ? {
+        ...item,
+        placements: [...item.placements, syntheticOnly],
+        series: undefined,
+      } : item),
+    },
+  };
+  const repaired = managerWorldEventSnapshot(
+    legacyInflated,
+    legacyInflated.worldVrs.events.find((item) => item.eventId === event.id)!,
+  );
+  assert.equal(repaired.placements.length, event.capacity);
+  assert.equal(repaired.placements.some((placement) => placement.teamId === syntheticOnly.teamId), false);
+  assert.equal(repaired.series?.length, playedSeries.length);
+});
+
+test("played Major stages move a bottom-ranked AI team through shared VRS evidence", () => {
+  const bcGame = { id: "bcgame", name: "BC.Game", rank: 200, vrsPoints: 400, strength: 88 };
+  const base = createManagerCareer("world-played-major", {
+    organizationId: "managed-club",
+    organizationName: "Managed Club",
+    vrsRank: 18,
+    worldTeams: [...worldTeams, bcGame],
+  });
+  const before = base.worldVrs.teams.find((team) => team.id === bcGame.id)!;
+  const results = worldTeams.slice(0, 8).map((opponent, index) => ({
+    id: `stage-2-${index}`,
+    stageId: "stage-2",
+    phase: "swiss" as const,
+    left: { id: bcGame.id, name: bcGame.name, points: before.points },
+    right: { id: opponent.id, name: opponent.name, points: opponent.vrsPoints },
+    winnerId: bcGame.id,
+  }));
+  const updated = integrateManagerWorldSeries(
+    base,
+    "fall-global-major-2026",
+    results,
+    managerMajorStageEnd("stage-2"),
+  );
+  const after = updated.worldVrs.teams.find((team) => team.id === bcGame.id)!;
+  const evidence = after.profile.events.find((event) => event.eventId === "fall-global-major-2026")!;
+  assert.equal(evidence.matches.filter((match) => match.won).length, 8);
+  assert.equal(evidence.prizeWon, 0);
+  assert.ok(after.points > before.points);
+  assert.ok(after.rank < before.rank);
+});
+
+test("a completed played Major bracket replaces the synthetic champion and series", () => {
+  const event = managerEventById("fall-global-major-2026")!;
+  const base = createManagerCareer("world-played-major-final", {
+    organizationId: "managed-club",
+    organizationName: "Managed Club",
+    vrsRank: 18,
+    worldTeams,
+  });
+  const simulated = simulateManagerWorldEvent(base, event, base.season);
+  const original = simulated.worldVrs.events.find((item) => item.eventId === event.id)!;
+  const seeds = original.placements.slice(-8).map((placement) => ({
+    id: placement.teamId,
+    name: placement.teamName,
+  }));
+  const quarterfinals = [
+    [seeds[0], seeds[7]],
+    [seeds[1], seeds[6]],
+    [seeds[2], seeds[5]],
+    [seeds[3], seeds[4]],
+  ].map(([left, right], index) => ({
+    id: `actual-major-quarterfinal-${index}`,
+    stageId: "stage-3",
+    phase: "quarterfinal" as const,
+    left,
+    right,
+    winnerId: left.id,
+  }));
+  const semifinals = [
+    { id: "actual-major-semifinal-1", stageId: "stage-3", phase: "semifinal" as const, left: seeds[0], right: seeds[1], winnerId: seeds[0].id },
+    { id: "actual-major-semifinal-2", stageId: "stage-3", phase: "semifinal" as const, left: seeds[2], right: seeds[3], winnerId: seeds[2].id },
+  ];
+  const final = {
+    id: "actual-major-final",
+    stageId: "stage-3",
+    phase: "final" as const,
+    left: seeds[0],
+    right: seeds[2],
+    winnerId: seeds[0].id,
+  };
+  const played = [...quarterfinals, ...semifinals, final];
+  const integrated = integrateManagerWorldSeries(
+    simulated,
+    event.id,
+    played,
+    managerEventSchedule(event, base.season).endsOn,
+  );
+  const result = integrated.worldVrs.events.find((item) => item.eventId === event.id)!;
+  assert.equal(result.placements[0].teamId, seeds[0].id);
+  assert.deepEqual(result.series?.map((series) => series.id), played.map((series) => series.id));
+  assert.deepEqual(
+    new Set(result.placements.map((placement) => placement.teamId)),
+    new Set(seeds.map((team) => team.id)),
+  );
+});
+
+test("a winless visible Major record cannot receive invisible VRS credit", () => {
+  const magic = { id: "magic", name: "magic", rank: 20, vrsPoints: vrsPointsForRank(20), strength: 75 };
+  const base = createManagerCareer("world-winless-major", {
+    organizationId: "managed-club",
+    organizationName: "Managed Club",
+    vrsRank: 18,
+    worldTeams: [...worldTeams.filter((team) => team.rank !== 20), magic],
+  });
+  const before = base.worldVrs.teams.find((team) => team.id === magic.id)!;
+  const results = worldTeams.slice(0, 3).map((opponent, index) => ({
+    id: `stage-3-loss-${index}`,
+    stageId: "stage-3",
+    phase: "swiss" as const,
+    left: { id: magic.id, name: magic.name, points: before.points },
+    right: { id: opponent.id, name: opponent.name, points: opponent.vrsPoints },
+    winnerId: opponent.id,
+  }));
+  const updated = integrateManagerWorldSeries(
+    base,
+    "fall-global-major-2026",
+    results,
+    managerMajorStageEnd("stage-3"),
+  );
+  const after = updated.worldVrs.teams.find((team) => team.id === magic.id)!;
+  const evidence = after.profile.events.find((event) => event.eventId === "fall-global-major-2026")!;
+  assert.equal(evidence.matches.filter((match) => match.won).length, 0);
+  assert.equal(evidence.prizeWon, 0);
+  assert.ok(after.points < before.points);
+});
+
+test("visible Stage 3 elimination removes a conflicting synthetic Major prize", () => {
+  const event = managerEventById("fall-global-major-2026")!;
+  const simulated = simulateManagerWorldEvent(createManagerCareer("world-major-overlay", {
+    organizationId: "managed-club",
+    organizationName: "Managed Club",
+    vrsRank: 18,
+    worldTeams,
+  }), event);
+  const originalResult = simulated.worldVrs.events.find((item) => item.eventId === event.id)!;
+  const syntheticChampion = originalResult.placements[0];
+  const opponents = originalResult.placements.slice(-3);
+  const corrected = integrateManagerWorldSeries(
+    simulated,
+    event.id,
+    opponents.map((opponent, index) => ({
+      id: `visible-loss-${index}`,
+      stageId: "stage-3",
+      phase: "swiss" as const,
+      left: { id: syntheticChampion.teamId, name: syntheticChampion.teamName },
+      right: { id: opponent.teamId, name: opponent.teamName },
+      winnerId: opponent.teamId,
+    })),
+    managerMajorStageEnd("stage-3"),
+  );
+  const correctedResult = corrected.worldVrs.events.find((item) => item.eventId === event.id)!;
+  const placement = correctedResult.placements.find((item) => item.teamId === syntheticChampion.teamId)!;
+  const standing = corrected.worldVrs.teams.find((team) => team.id === syntheticChampion.teamId)!;
+  const evidence = standing.profile.events.find((item) => item.eventId === event.id)!;
+  assert.equal(placement.placement, "swiss");
+  assert.equal(placement.wins, 0);
+  assert.equal(placement.losses, 3);
+  assert.equal(evidence.prizeWon, event.prizes.swiss);
+  assert.equal(evidence.matches.filter((match) => match.won).length, 0);
+});
+
 test("all elapsed events are simulated even when the manager enters none of them", () => {
   const state = createManagerCareer("world-calendar", {
     organizationId: "managed-club",
@@ -1213,7 +2068,7 @@ test("all elapsed events are simulated even when the manager enters none of them
   const advanced = advanceManagerDate(state, "2026-09-28");
   assert.deepEqual(
     advanced.worldVrs.events.map((result) => result.eventId),
-    managerEvents.slice(0, 6).map((event) => event.id),
+    managerEvents.filter((event) => event.endsOn <= "2026-09-28").map((event) => event.id),
   );
   assert.ok(advanced.inbox.some((item) => item.title.includes("take the title")));
 });
@@ -1251,7 +2106,7 @@ test("legacy manager saves seed and backfill the world VRS circuit on load", () 
   assert.equal(migrated.worldVrs.teams.length, worldTeams.length);
   assert.deepEqual(
     migrated.worldVrs.events.map((result) => result.eventId),
-    managerEvents.slice(0, 3).map((event) => event.id),
+    managerEvents.filter((event) => event.endsOn <= "2026-08-16").map((event) => event.id),
   );
 });
 
@@ -1420,6 +2275,24 @@ test("expired and final-cycle player contracts can be renewed", () => {
   assert.deepEqual(renewed.market.signedPlayerIds, [player.id]);
   assert.match(renewed.inbox[0].title, /renewed/);
 
+  const finalCycle = {
+    ...renewed,
+    contracts: renewed.contracts.map((contract) => ({ ...contract, status: "active" as const, majorCyclesRemaining: 1 })),
+  };
+  const extended = renewManagerPlayerContract(finalCycle, player, {
+    monthlySalary: salary,
+    majorCycles: 4,
+    squadRole: "starter",
+  });
+  assert.equal(extended.contracts[0].majorCyclesRemaining, 5, "a two-year renewal adds four Major cycles");
+
+  const fiveYear = renewManagerPlayerContract(expired, player, {
+    monthlySalary: salary,
+    majorCycles: 10,
+    squadRole: "starter",
+  });
+  assert.equal(fiveYear.contracts[0].majorCyclesRemaining, 10);
+
   const longDeal = { ...renewed, contracts: renewed.contracts.map((contract) => ({ ...contract, status: "active" as const, majorCyclesRemaining: 2 })) };
   assert.equal(renewManagerPlayerContract(longDeal, player, {
     monthlySalary: salary,
@@ -1434,9 +2307,10 @@ test("a former signing can rejoin after their contract expires", () => {
   const salary = Math.ceil(managerRecommendedSalary(player, scouted) * 1.3 / 250) * 250;
   const firstDeal = submitManagerFreeAgentOffer(scouted, player, {
     monthlySalary: salary,
-    majorCycles: 1,
+    majorCycles: 10,
     squadRole: "starter",
   });
+  assert.equal(firstDeal.contracts[0].majorCyclesRemaining, 10);
   const expired = {
     ...firstDeal,
     contracts: firstDeal.contracts.map((contract) => ({ ...contract, status: "expired" as const, majorCyclesRemaining: 0 })),

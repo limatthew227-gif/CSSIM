@@ -8,7 +8,7 @@ export const STARTING_BANKROLL = 40000;
 export const OVR_CAP = 96; // nobody develops past this, whatever their potential
 export const MAX_OVR_GAIN = 2; // most OVR a player can add in one Major
 export const MAX_OVR_DROP = 2; // most OVR a player can shed in one Major
-export const POTENTIAL_MODEL_VERSION = 2;
+export const POTENTIAL_MODEL_VERSION = 3;
 
 export type PlacementTier = "champion" | "runner-up" | "top4" | "top8" | "swiss";
 
@@ -157,7 +157,7 @@ export function careerMetaForPlayer(
   }
 
   const age = player.age ?? 18 + Math.floor(rng() * 15);
-  const legacyBaseline = player.potential == null
+  const legacyBaseline = player.potential == null || player.potential <= player.ovr
     ? player.ovr
     : Math.min(player.ovr, Math.max(50, player.potential - legacyPotentialHeadroom(age)));
   const migrated = rollCareerMeta(legacyBaseline, age, rng, prospectBonus);

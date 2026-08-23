@@ -13,6 +13,7 @@
  */
 import type { MapId } from "./gameData";
 import { navGrids } from "./navGrids";
+import { getVoxelMap } from "./voxelMaps";
 
 export interface Vec {
   x: number;
@@ -51,6 +52,10 @@ export interface NavGrid {
   blockedMove: Uint8Array;
   /** 1 = blocks vision (walls). Smokes are applied dynamically on top. */
   blockedVision: Uint8Array;
+  /** Quantized Source 2 floor height. Present on voxel-derived grids. */
+  elevation?: Int16Array;
+  /** Largest traversable elevation change between adjacent cells. */
+  maxElevationStep?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -134,29 +139,80 @@ function moveBlocked(grid: NavGrid, gx: number, gy: number, mollies?: Circle[]):
   return false;
 }
 
-/** Walk the integer supercover of a cell-space line; `blocked` returning true stops it as obstructed. */
-function lineClear(x0: number, y0: number, x1: number, y1: number, blocked: (x: number, y: number) => boolean): boolean {
-  let dx = Math.abs(x1 - x0);
-  let dy = Math.abs(y1 - y0);
+function elevationStepBlocked(grid: NavGrid, ax: number, ay: number, bx: number, by: number) {
+  if (!grid.elevation) return false;
+  const a = ay * grid.res + ax;
+  const b = by * grid.res + bx;
+  return Math.abs(grid.elevation[a] - grid.elevation[b]) > (grid.maxElevationStep ?? 2);
+}
+
+/** Walk every grid cell touched by a cell-centre line. */
+function lineClear(
+  x0: number,
+  y0: number,
+  x1: number,
+  y1: number,
+  blocked: (x: number, y: number) => boolean,
+): boolean {
   let x = x0;
   let y = y0;
-  let n = 1 + dx + dy;
-  const xInc = x1 > x0 ? 1 : -1;
-  const yInc = y1 > y0 ? 1 : -1;
-  let error = dx - dy;
-  dx *= 2;
-  dy *= 2;
-  for (; n > 0; n -= 1) {
-    if (blocked(x, y)) return false;
-    if (error > 0) {
-      x += xInc;
-      error -= dy;
+  if (blocked(x, y)) return false;
+
+  const dx = x1 - x0;
+  const dy = y1 - y0;
+  const stepX = Math.sign(dx);
+  const stepY = Math.sign(dy);
+  const absX = Math.abs(dx);
+  const absY = Math.abs(dy);
+  const deltaX = absX > 0 ? 1 / absX : Number.POSITIVE_INFINITY;
+  const deltaY = absY > 0 ? 1 / absY : Number.POSITIVE_INFINITY;
+  let boundaryX = deltaX * 0.5;
+  let boundaryY = deltaY * 0.5;
+
+  while (x !== x1 || y !== y1) {
+    const boundaryGap = boundaryX - boundaryY;
+    if (boundaryGap < -1e-12) {
+      x += stepX;
+      boundaryX += deltaX;
+      if (blocked(x, y)) return false;
+    } else if (boundaryGap > 1e-12) {
+      y += stepY;
+      boundaryY += deltaY;
+      if (blocked(x, y)) return false;
     } else {
-      y += yInc;
-      error += dx;
+      // At an exact corner crossing the mathematical line touches both side cells. Checking only
+      // the diagonal destination lets Theta* shave through a wall corner, which later forces the
+      // renderer to snap the player sideways. Require both shoulders and the destination to clear.
+      if (blocked(x + stepX, y) || blocked(x, y + stepY)) return false;
+      x += stepX;
+      y += stepY;
+      boundaryX += deltaX;
+      boundaryY += deltaY;
+      if (blocked(x, y)) return false;
     }
   }
   return true;
+}
+
+function movementLineClear(
+  grid: NavGrid,
+  x0: number,
+  y0: number,
+  x1: number,
+  y1: number,
+  mollies?: Circle[],
+) {
+  let previousX = x0;
+  let previousY = y0;
+  let first = true;
+  return lineClear(x0, y0, x1, y1, (x, y) => {
+    if (moveBlocked(grid, x, y, mollies)) return true;
+    if (!first && elevationStepBlocked(grid, previousX, previousY, x, y)) return true;
+    first = false;
+    previousX = x;
+    previousY = y;
+    return false;
+  });
 }
 
 /**
@@ -270,13 +326,19 @@ export function findPath(grid: NavGrid, startW: Vec, goalW: Vec, opts?: { mollie
   const startIdx = nearestFreeIdx(grid, sCell.gx, sCell.gy, mollies);
   const goalIdx = nearestFreeIdx(grid, gCell.gx, gCell.gy, mollies);
   if (startIdx < 0 || goalIdx < 0) return [startW, goalW];
-  if (startIdx === goalIdx) return [startW, goalW];
+  const safeStart = moveBlocked(grid, sCell.gx, sCell.gy, mollies)
+    ? cellCenter(startIdx % res, (startIdx / res) | 0, res)
+    : startW;
+  const safeGoal = moveBlocked(grid, gCell.gx, gCell.gy, mollies)
+    ? cellCenter(goalIdx % res, (goalIdx / res) | 0, res)
+    : goalW;
+  if (startIdx === goalIdx) return [safeStart, safeGoal];
 
   const gx2 = goalIdx % res;
   const gy2 = (goalIdx / res) | 0;
 
   const losMove = (ax: number, ay: number, bx: number, by: number) =>
-    lineClear(ax, ay, bx, by, (x, y) => moveBlocked(grid, x, y, mollies));
+    movementLineClear(grid, ax, ay, bx, by, mollies);
 
   const h = (i: number) => {
     const x = i % res;
@@ -319,6 +381,7 @@ export function findPath(grid: NavGrid, startW: Vec, goalW: Vec, opts?: { mollie
       if (closed[nIdx] || moveBlocked(grid, nx, ny, mollies)) continue;
       // prevent corner-cutting through diagonal wall gaps
       if (dx !== 0 && dy !== 0 && (moveBlocked(grid, cx + dx, cy, mollies) || moveBlocked(grid, cx, cy + dy, mollies))) continue;
+      if (elevationStepBlocked(grid, cx, cy, nx, ny)) continue;
 
       // Theta*: try to attach the neighbour straight to the current node's parent (any-angle).
       if (losMove(px, py, nx, ny)) {
@@ -339,7 +402,7 @@ export function findPath(grid: NavGrid, startW: Vec, goalW: Vec, opts?: { mollie
     }
   }
 
-  if (parent[goalIdx] < 0) return [startW, goalW];
+  if (parent[goalIdx] < 0) return [safeStart];
 
   // reconstruct cell path (already any-angle thanks to Theta* parents)
   const cells: number[] = [];
@@ -355,8 +418,8 @@ export function findPath(grid: NavGrid, startW: Vec, goalW: Vec, opts?: { mollie
 
   const path: Vec[] = cells.map((i) => cellCenter(i % res, (i / res) | 0, res));
   // pin exact endpoints for clean rendering / interpolation
-  path[0] = startW;
-  path[path.length - 1] = goalW;
+  path[0] = safeStart;
+  path[path.length - 1] = safeGoal;
   return path;
 }
 
@@ -457,9 +520,58 @@ function decodeBakedGrid(res: number, moveBits: string, visionBits?: string): Na
   return { res, blockedMove, blockedVision };
 }
 
+function buildVoxelNavGrid(id: MapId): NavGrid {
+  const voxel = getVoxelMap(id);
+  const blockedMove = new Uint8Array(voxel.navRes * voxel.navRes);
+  const blockedVision = new Uint8Array(voxel.navRes * voxel.navRes);
+  const elevation = new Int16Array(voxel.navRes * voxel.navRes);
+  const components = new Int32Array(voxel.navRes * voxel.navRes).fill(-1);
+  const componentSizes: number[] = [];
+  let componentId = 0;
+  for (let index = 0; index < components.length; index += 1) {
+    if (!voxel.navOccupied[index] || components[index] >= 0) continue;
+    const queue = [index];
+    components[index] = componentId;
+    let size = 0;
+    while (queue.length) {
+      const current = queue.pop()!;
+      size += 1;
+      const x = current % voxel.navRes;
+      const y = (current / voxel.navRes) | 0;
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const nextX = x + dx;
+        const nextY = y + dy;
+        if (nextX < 0 || nextY < 0 || nextX >= voxel.navRes || nextY >= voxel.navRes) continue;
+        const next = nextY * voxel.navRes + nextX;
+        if (!voxel.navOccupied[next] || components[next] >= 0) continue;
+        components[next] = componentId;
+        queue.push(next);
+      }
+    }
+    componentSizes[componentId] = size;
+    componentId += 1;
+  }
+  const mainComponent = componentSizes.indexOf(Math.max(...componentSizes));
+  for (let index = 0; index < blockedMove.length; index += 1) {
+    // Tiny disconnected islands are raster artifacts or unreachable ledges. Keeping the largest
+    // connected nav surface prevents endpoint snapping onto an isolated pixel next to a spawn/site.
+    const blocked = voxel.navOccupied[index] && components[index] === mainComponent ? 0 : 1;
+    blockedMove[index] = blocked;
+    blockedVision[index] = blocked;
+    elevation[index] = voxel.navHeights[index] - 128;
+  }
+  return {
+    res: voxel.navRes,
+    blockedMove,
+    blockedVision,
+    elevation,
+    maxElevationStep: 3,
+  };
+}
+
 const gridCache = new Map<MapId, NavGrid>();
 
-/** True for maps navigated via a pixel-accurate grid baked from the radar image. */
+/** True when the renderer uses the legacy pixel-accurate baked radar grid. */
 export function hasPixelNav(id: MapId): boolean {
   return Boolean(navGrids[id]);
 }
@@ -480,7 +592,7 @@ export function snapToWalkable(grid: NavGrid, p: Vec): Vec {
 
 /**
  * Memoized nav grid for a map. Prefers a pixel-accurate grid baked from the radar PNG; falls back
- * to rasterizing hand-authored polygons; null if the map has neither yet.
+ * to the generated Source 2 voxel floor, then hand-authored polygons.
  */
 export function getNavGrid(id: MapId): NavGrid | null {
   let grid = gridCache.get(id);
@@ -489,9 +601,13 @@ export function getNavGrid(id: MapId): NavGrid | null {
   if (baked) {
     grid = decodeBakedGrid(baked.res, baked.move, baked.vision);
   } else {
-    const geo = mapGeometries[id];
-    if (!geo) return null;
-    grid = buildNavGrid(geo);
+    try {
+      grid = buildVoxelNavGrid(id);
+    } catch {
+      const geo = mapGeometries[id];
+      if (!geo) return null;
+      grid = buildNavGrid(geo);
+    }
   }
   gridCache.set(id, grid);
   return grid;

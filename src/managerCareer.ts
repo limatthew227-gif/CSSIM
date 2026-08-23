@@ -1,21 +1,25 @@
-import { expectedRating, playerValue, type PlacementTier } from "./career";
-import type { Player, PlayerStats } from "./gameData";
+import { expectedRating, OVR_CAP, playerValue, type PlacementTier } from "./career";
+import type { MapId, Player, PlayerStats } from "./gameData";
+import { canonicalPlayerKey, normalizeIdentityPart } from "./playerIdentity";
 import {
   appendVrsEvent,
   calculateVrs,
   createVrsProfile,
   normalizeVrsProfile,
+  VRS_FLOOR,
   vrsPointsForRank,
   vrsRankForPoints,
   type VrsEventEvidence,
   type VrsProfile,
 } from "./vrs";
 
-export const MANAGER_CAREER_VERSION = 23;
+export const MANAGER_CAREER_VERSION = 30;
 const MANAGER_WORLD_VRS_VERSION = 22;
 export const MANAGER_START_DATE = "2026-07-20";
 export const MANAGER_SALARY_MODEL_VERSION = 2;
+export const MANAGER_MAX_CONTRACT_CYCLES = 10;
 export const MANAGER_POTENTIAL_LAB_ELITE_COST = 200_000;
+export const MANAGER_MAX_MENTORSHIPS = 2;
 export const MANAGER_CASINO_STAKES = [5_000, 25_000, 100_000] as const;
 
 export type ManagerEventTier = "open" | "challenger" | "elite" | "major";
@@ -35,10 +39,107 @@ export type ManagerBoardObjectiveStatus = "active" | "completed" | "failed";
 export type ManagerFinancialPressure = "healthy" | "watch" | "critical";
 export type ManagerTrainingFocus = "balanced" | "mechanics" | "tactics" | "role" | "recovery";
 export type ManagerCoinSide = "heads" | "tails";
+export type ManagerOvrDiceResult = 0 | 1 | 2 | 3;
 export type ManagerCareerStatus = "active" | "bankrupt";
 export type ManagerCasinoStake = typeof MANAGER_CASINO_STAKES[number];
 export type ManagerPerformanceCampFocus = "tactical" | "mechanics" | "recovery";
 export type ManagerPerformanceCampStatus = "active" | "completed";
+export type ManagerPreparationPlan = "anti-awp" | "punish-aggression" | "heavy-utility" | "targeted-site-stack";
+export type ManagerScrimIntensity = "light" | "standard" | "intensive";
+export type ManagerScrimPrivacy = "closed" | "open";
+export type ManagerScrimStatus = "scheduled" | "completed" | "cancelled";
+
+export interface ManagerPreparationPlanDefinition {
+  id: ManagerPreparationPlan;
+  name: string;
+  shortName: string;
+  description: string;
+  matchEffect: string;
+}
+
+export const managerPreparationPlans: ManagerPreparationPlanDefinition[] = [
+  {
+    id: "anti-awp",
+    name: "Anti-AWP Protocol",
+    shortName: "Anti-AWP",
+    description: "Deny long sightlines with safer pathing, layered flashes, and disciplined re-peeks.",
+    matchEffect: "Strongest when the opponent fields an AWP",
+  },
+  {
+    id: "punish-aggression",
+    name: "Punish Aggression",
+    shortName: "Anti-push",
+    description: "Hold early pressure, preserve trade spacing, and convert overextensions into opening kills.",
+    matchEffect: "Strongest against aggressive lineups",
+  },
+  {
+    id: "heavy-utility",
+    name: "Heavy Utility",
+    shortName: "Utility",
+    description: "Commit more grenades to structured executes, retakes, and choke-point control.",
+    matchEffect: "Rewards healthy grenade inventories",
+  },
+  {
+    id: "targeted-site-stack",
+    name: "Targeted Site Stack",
+    shortName: "Site stack",
+    description: "Load the selected bombsite on CT rounds and trust the scouting read.",
+    matchEffect: "High upside on a correct read; exposed if it is wrong",
+  },
+];
+
+export const managerScrimIntensityProfiles: Record<ManagerScrimIntensity, {
+  label: string;
+  masteryGain: number;
+  familiarityGain: number;
+  fatigueGain: number;
+}> = {
+  light: { label: "Light", masteryGain: 5, familiarityGain: 1, fatigueGain: 3 },
+  standard: { label: "Standard", masteryGain: 9, familiarityGain: 2, fatigueGain: 7 },
+  intensive: { label: "Intensive", masteryGain: 14, familiarityGain: 3, fatigueGain: 13 },
+};
+
+export interface ManagerScrim {
+  id: string;
+  opponentId: string;
+  opponentName: string;
+  map: MapId;
+  plan: ManagerPreparationPlan;
+  targetSite: "A" | "B";
+  intensity: ManagerScrimIntensity;
+  privacy: ManagerScrimPrivacy;
+  bookedOn: string;
+  scheduledFor: string;
+  status: ManagerScrimStatus;
+  masteryGain: number;
+  familiarityGain: number;
+  fatigueGain: number;
+  leakRisk: number;
+  leaked?: boolean;
+}
+
+export interface ManagerPreparationState {
+  activePlan: ManagerPreparationPlan;
+  targetSite: "A" | "B";
+  mastery: Record<ManagerPreparationPlan, number>;
+  fatigue: number;
+  scrims: ManagerScrim[];
+}
+
+export interface ManagerScrimInput {
+  opponentId: string;
+  opponentName: string;
+  map: MapId;
+  scheduledFor: string;
+  intensity: ManagerScrimIntensity;
+  privacy: ManagerScrimPrivacy;
+}
+
+export interface ManagerScrimEligibility {
+  eligible: boolean;
+  reasons: string[];
+  leakRisk: number;
+}
 
 export interface ManagerPerformanceCampProgram {
   id: ManagerPerformanceCampFocus;
@@ -149,11 +250,91 @@ export interface ManagerWorldEventResult {
   classification: ManagerEventClassification;
   format: ManagerEventFormat;
   placements: ManagerWorldEventPlacement[];
+  series?: ManagerWorldPlayedSeries[];
+}
+
+export interface ManagerWorldPlayedSeriesTeam {
+  id: string;
+  name: string;
+  points?: number;
+}
+
+/** A light, persistence-safe series result shared by the tournament UI and world VRS. */
+export interface ManagerWorldPlayedSeries {
+  id: string;
+  stageId?: string;
+  phase: "swiss" | "quarterfinal" | "semifinal" | "final";
+  left: ManagerWorldPlayedSeriesTeam;
+  right: ManagerWorldPlayedSeriesTeam;
+  winnerId: string;
+  leftScore?: number;
+  rightScore?: number;
 }
 
 export interface ManagerWorldVrsState {
   teams: ManagerWorldVrsTeam[];
   events: ManagerWorldEventResult[];
+}
+
+export interface ManagerLfoTeam {
+  id: "manager-lfo";
+  name: "LFO";
+  tag: "LFO";
+  generation: number;
+  formedOn: string;
+  refreshedOn: string;
+  continuityVersion?: number;
+  players: Player[];
+}
+
+export type ManagerRevivedOrganizationId = "manager-north" | "manager-sentinels" | "manager-godsent";
+
+export interface ManagerRevivedOrganizationAcquisition {
+  playerId: string;
+  fromClubId?: string;
+  fromClubName?: string;
+}
+
+export interface ManagerRevivedOrganization {
+  id: ManagerRevivedOrganizationId;
+  name: string;
+  tag: string;
+  country: string;
+  accent: string;
+  formedOn: string;
+  formation: "lfo-signing" | "independent-project";
+  lfoGeneration?: number;
+  players: Player[];
+  acquisitions: ManagerRevivedOrganizationAcquisition[];
+}
+
+/**
+ * Resolve an old LFO tournament snapshot to the organization that signed that core.
+ * LFO deliberately reuses `manager-lfo` for each generation, so the id alone cannot
+ * distinguish a signed lineup from the replacement mix in persisted brackets.
+ */
+export function managerLfoSnapshotOrganization(
+  players: Player[],
+  organizations: ManagerRevivedOrganization[],
+) {
+  const snapshotKeys = new Set(players.map(canonicalPlayerKey));
+  const candidates = organizations
+    .filter((organization) => organization.formation === "lfo-signing")
+    .map((organization) => ({
+      organization,
+      overlap: organization.players.filter((player) => snapshotKeys.has(canonicalPlayerKey(player))).length,
+    }))
+    .sort((left, right) => (
+      right.overlap - left.overlap
+      || right.organization.formedOn.localeCompare(left.organization.formedOn)
+    ));
+  return candidates[0]?.overlap >= 3 ? candidates[0].organization : undefined;
+}
+
+export interface ManagerOrganizationTransferTarget {
+  player: Player;
+  clubId: string;
+  clubName: string;
 }
 
 export interface ManagerTrainingPlan {
@@ -169,6 +350,18 @@ export interface ManagerTrainingPlan {
   potentialLabAttempts: number;
   potentialLabWins: number;
   lastPotentialLabOn?: string;
+  ovrLabAttempts: number;
+  ovrLabGains: number;
+  lastOvrLabOn?: string;
+}
+
+export interface ManagerMentorship {
+  id: string;
+  mentorId: string;
+  menteeId: string;
+  startedOn: string;
+  cyclesCompleted: number;
+  lastCycleBonus: number;
 }
 
 export interface ManagerTrainingReport {
@@ -179,6 +372,7 @@ export interface ManagerTrainingReport {
   before: number;
   after: number;
   rating?: number;
+  mentorshipBonus: number;
 }
 
 export interface ManagerCareerStart {
@@ -271,6 +465,8 @@ export interface ManagerIncomingOffer {
   buyerTeamName: string;
   targetPlayer: ManagerCareerPlayerSeed;
   displacedPlayer: ManagerCareerPlayerSeed;
+  offeredPlayer?: ManagerCareerPlayerSeed;
+  isTrade?: boolean;
   createdOn: string;
   expiresOn: string;
   cashOffered: number;
@@ -306,6 +502,9 @@ export interface ManagerClubRosterMove {
   releasedPlayerId: string;
   acquiredPlayer: ManagerCareerPlayerSeed;
   completedOn: string;
+  transactionType?: "trade" | "free-agent-signing";
+  releasedPlayer?: Player;
+  releasedToTransferList?: boolean;
 }
 
 export interface ManagerTradeProposal {
@@ -358,9 +557,21 @@ export interface ManagerEvent {
   vrsWeight: number;
   hasPlayoffs: boolean;
   majorCycle?: boolean;
+  lfoEligible?: boolean;
+  qualifiesToEventId?: string;
+  qualificationSlots?: number;
+  openQualifierEventId?: string;
   doubleElimination?: ManagerDoubleEliminationRoute;
   description: string;
   prizes: Record<PlacementTier, number>;
+}
+
+export type ManagerEventPrestigeTier = "major" | "flagship" | "elite" | "challenger" | "open";
+
+export interface ManagerEventPrestige {
+  tier: ManagerEventPrestigeTier;
+  label: string;
+  score: number;
 }
 
 export interface ManagerDoubleEliminationRoute {
@@ -420,10 +631,22 @@ export interface ManagerInboxItem {
 export interface ManagerLedgerEntry {
   id: string;
   date: string;
-  category: "starting-balance" | "entry" | "travel" | "prize" | "sticker" | "withdrawal" | "payroll" | "scouting" | "signing" | "transfer" | "release" | "development" | "casino";
+  category: "starting-balance" | "entry" | "travel" | "prize" | "sticker" | "withdrawal" | "payroll" | "scouting" | "signing" | "transfer" | "release" | "development" | "casino" | "sponsorship";
   description: string;
   amount: number;
   eventId?: string;
+}
+
+export interface ManagerSponsorDeal {
+  id: string;
+  name: string;
+  tier: "standard" | "premium" | "title";
+  monthlyStipend: number;
+  bonusCondition: "playoffs" | "major_qualification" | "top_10_vrs" | "championship";
+  bonusDescription: string;
+  bonusAmount: number;
+  majorCyclesRemaining: number;
+  bonusClaimed?: boolean;
 }
 
 export interface ManagerCareerState {
@@ -442,6 +665,8 @@ export interface ManagerCareerState {
   vrsRank: number;
   vrsProfile: VrsProfile;
   worldVrs: ManagerWorldVrsState;
+  lfoTeam?: ManagerLfoTeam;
+  revivedOrganizations: ManagerRevivedOrganization[];
   reputation: number;
   boardConfidence: number;
   activeEventId?: string;
@@ -452,12 +677,16 @@ export interface ManagerCareerState {
   contracts: ManagerPlayerContract[];
   playerDynamics: ManagerPlayerDynamics[];
   trainingPlans: ManagerTrainingPlan[];
+  mentorships: ManagerMentorship[];
+  preparation: ManagerPreparationState;
   performanceCamps: ManagerPerformanceCamp[];
   casinoVisits: ManagerCasinoVisit[];
   boardObjective: ManagerBoardObjective;
   market: ManagerMarketState;
   inbox: ManagerInboxItem[];
   ledger: ManagerLedgerEntry[];
+  activeSponsor?: ManagerSponsorDeal;
+  availableSponsors?: ManagerSponsorDeal[];
 }
 
 export interface ManagerEligibility {
@@ -528,8 +757,44 @@ export const managerEvents: ManagerEvent[] = [
     stakesLabel: "$50,000 cash and VRS points; no qualification berth is attached.",
     vrsWeight: 0.75,
     hasPlayoffs: true,
+    lfoEligible: true,
     description: "A compact open-entry cup. Lose once and the event is over; later rounds move to longer series.",
     prizes: prizeDistribution(50_000),
+  },
+  {
+    id: "cologne-open-qualifier-2026",
+    name: "IEM Cologne Open Qualifier 2026",
+    shortName: "Cologne Open",
+    tier: "open",
+    classification: "Open",
+    entryType: "open",
+    region: "Global",
+    startsOn: "2026-07-30",
+    endsOn: "2026-08-04",
+    registrationDeadline: "2026-07-26",
+    rosterLockOn: "2026-07-28",
+    rankMin: 25,
+    rankMax: 64,
+    capacity: 8,
+    format: "single-elimination",
+    formatLabel: "8-team open qualifier / all matches BO3",
+    formatStages: [
+      { label: "Open qualifier", teams: 8, structure: "Single elimination", series: "BO3", advances: "Finalists qualify for IEM Cologne Stage 1" },
+    ],
+    groupBestOf: 3,
+    entryFee: 1_000,
+    travelCost: 0,
+    prizePool: 20_000,
+    environment: "Online",
+    location: "European servers",
+    stakesLabel: "$20,000 plus two protected places in IEM Cologne Stage 1.",
+    vrsWeight: 0.55,
+    hasPlayoffs: true,
+    lfoEligible: true,
+    qualifiesToEventId: "cologne-masters-2026",
+    qualificationSlots: 2,
+    description: "A volatile last-chance bracket where unsigned mixes and lower-ranked organizations can play their way into Cologne.",
+    prizes: prizeDistribution(20_000),
   },
   {
     id: "summer-bounty-finals-2026",
@@ -627,6 +892,7 @@ export const managerEvents: ManagerEvent[] = [
     stakesLabel: "$1,000,000 and maximum non-Major VRS prestige across a two-week arena event.",
     vrsWeight: 2.2,
     hasPlayoffs: true,
+    openQualifierEventId: "cologne-open-qualifier-2026",
     doubleElimination: {
       stageOneRankMin: 9,
       stageOneRankMax: 24,
@@ -641,6 +907,41 @@ export const managerEvents: ManagerEvent[] = [
     },
     description: "A flagship arena championship: VRS #9-24 fight through Stage 1 before eight survivors join the direct top-eight invites in two double-elimination groups.",
     prizes: prizeDistribution(1_000_000),
+  },
+  {
+    id: "pro-league-open-qualifier-2026",
+    name: "Pro League Open Qualifier 2026",
+    shortName: "Pro League Open",
+    tier: "open",
+    classification: "Open",
+    entryType: "open",
+    region: "Global",
+    startsOn: "2026-08-27",
+    endsOn: "2026-09-02",
+    registrationDeadline: "2026-08-24",
+    rosterLockOn: "2026-08-25",
+    rankMin: 20,
+    rankMax: 64,
+    capacity: 8,
+    format: "single-elimination",
+    formatLabel: "8-team online qualifier / BO1 opener and BO3 deciders",
+    formatStages: [
+      { label: "Open bracket", teams: 8, structure: "Single elimination", series: "BO1 / BO3", advances: "Finalists qualify for Pro League" },
+    ],
+    groupBestOf: 1,
+    entryFee: 1_500,
+    travelCost: 0,
+    prizePool: 25_000,
+    environment: "Online",
+    location: "European servers",
+    stakesLabel: "$25,000 plus two Pro League Challenger places.",
+    vrsWeight: 0.6,
+    hasPlayoffs: true,
+    lfoEligible: true,
+    qualifiesToEventId: "pro-league-challenger-2026",
+    qualificationSlots: 2,
+    description: "An open route into the studio league for emerging teams, free-agent projects, and organizations outside the invitation band.",
+    prizes: prizeDistribution(25_000),
   },
   {
     id: "pro-league-challenger-2026",
@@ -672,6 +973,7 @@ export const managerEvents: ManagerEvent[] = [
     stakesLabel: "$400,000 cash; the top four reach the playoff bracket after league play.",
     vrsWeight: 1.35,
     hasPlayoffs: true,
+    openQualifierEventId: "pro-league-open-qualifier-2026",
     description: "A league stop where every team meets once before the top four advance to a knockout playoff.",
     prizes: prizeDistribution(400_000),
   },
@@ -708,6 +1010,41 @@ export const managerEvents: ManagerEvent[] = [
     prizes: prizeDistribution(1_250_000),
   },
   {
+    id: "new-york-open-qualifier-2026",
+    name: "New York Elite Open Qualifier 2026",
+    shortName: "New York Open",
+    tier: "open",
+    classification: "Open",
+    entryType: "open",
+    region: "Global",
+    startsOn: "2026-09-24",
+    endsOn: "2026-09-29",
+    registrationDeadline: "2026-09-20",
+    rosterLockOn: "2026-09-22",
+    rankMin: 16,
+    rankMax: 64,
+    capacity: 8,
+    format: "single-elimination",
+    formatLabel: "8-team open qualifier / all matches BO3",
+    formatStages: [
+      { label: "Open qualifier", teams: 8, structure: "Single elimination", series: "BO3", advances: "Champion qualifies for New York" },
+    ],
+    groupBestOf: 3,
+    entryFee: 1_500,
+    travelCost: 0,
+    prizePool: 30_000,
+    environment: "Online",
+    location: "North Atlantic servers",
+    stakesLabel: "$30,000 plus one protected invitation to New York Elite.",
+    vrsWeight: 0.65,
+    hasPlayoffs: true,
+    lfoEligible: true,
+    qualifiesToEventId: "new-york-elite-2026",
+    qualificationSlots: 1,
+    description: "One clean bracket run can turn an unsigned mix or lower-tier organization into an arena invitee.",
+    prizes: prizeDistribution(30_000),
+  },
+  {
     id: "new-york-elite-2026",
     name: "New York Elite 2026",
     shortName: "New York Elite",
@@ -737,6 +1074,7 @@ export const managerEvents: ManagerEvent[] = [
     stakesLabel: "$500,000 cash for an eight-team invitation field.",
     vrsWeight: 1.8,
     hasPlayoffs: true,
+    openQualifierEventId: "new-york-open-qualifier-2026",
     description: "An elite invitation league with a full round robin before a four-team championship bracket.",
     prizes: prizeDistribution(500_000),
   },
@@ -805,6 +1143,7 @@ export const managerEvents: ManagerEvent[] = [
     stakesLabel: "$75,000 and a quick post-Major opportunity for teams outside the invitation places.",
     vrsWeight: 0.8,
     hasPlayoffs: true,
+    lfoEligible: true,
     description: "A direct online knockout that gives rebuilding squads a short route back into the VRS conversation.",
     prizes: prizeDistribution(75_000),
   },
@@ -909,6 +1248,40 @@ export const managerEvents: ManagerEvent[] = [
   },
 ];
 
+/**
+ * A cabinet-facing event hierarchy. Prize money alone is deliberately not enough: Cologne and the
+ * Major remain legacy-defining wins even when another short invitational happens to have a large purse.
+ */
+export function managerEventPrestige(event: ManagerEvent): ManagerEventPrestige {
+  if (event.tier === "major" || event.majorCycle) {
+    return { tier: "major", label: "Major prestige", score: 100 };
+  }
+  if (event.id === "cologne-masters-2026") {
+    return { tier: "flagship", label: "Flagship arena", score: 94 };
+  }
+  if (event.tier === "elite" && (event.vrsWeight >= 2.1 || event.prizePool >= 1_000_000)) {
+    return { tier: "flagship", label: "Flagship event", score: 90 };
+  }
+  if (event.tier === "elite") {
+    const score = Math.min(86, 70 + Math.round(event.vrsWeight * 5) + (event.environment === "LAN" ? 3 : 0));
+    return { tier: "elite", label: "Elite event", score };
+  }
+  if (event.tier === "challenger") {
+    const score = Math.min(68, 43 + Math.round(event.vrsWeight * 6) + (event.environment === "LAN" ? 3 : 0));
+    return { tier: "challenger", label: "Challenger event", score };
+  }
+  return {
+    tier: "open",
+    label: event.environment === "LAN" ? "Open LAN" : "Open event",
+    score: 22 + Math.round(event.vrsWeight * 5) + (event.environment === "LAN" ? 3 : 0),
+  };
+}
+
+/** Individual MVP/EVP honors are reserved for elite international events and Majors. */
+export function managerEventAwardsEligible(event: ManagerEvent) {
+  return event.tier === "elite" || event.tier === "major" || Boolean(event.majorCycle);
+}
+
 const managerMajorStageDetails: Record<ManagerMajorStage, { label: string; startsOn: string; rankMin: number; rankMax: number }> = {
   mrq: { label: "MRQ", startsOn: "2026-10-19", rankMin: 25, rankMax: 64 },
   "stage-1": { label: "Stage 1", startsOn: "2026-10-26", rankMin: 17, rankMax: 24 },
@@ -988,6 +1361,15 @@ export function managerEventPayoutTotal(event: ManagerEvent) {
     + event.prizes.top4 * 2
     + event.prizes.top8 * 4
     + event.prizes.swiss * 8;
+}
+
+export function managerPlacementEarnsQualification(event: ManagerEvent, placement: PlacementTier) {
+  const slots = event.qualificationSlots ?? 0;
+  if (!event.qualifiesToEventId || slots <= 0) return false;
+  if (placement === "champion") return true;
+  if (placement === "runner-up") return slots >= 2;
+  if (placement === "top4") return slots >= 4;
+  return false;
 }
 
 export function managerMajorStageStart(stage: ManagerMajorStage, season = 1) {
@@ -1077,6 +1459,644 @@ function stableUnit(value: string) {
   return (stableHash(value) % 100_000) / 100_000;
 }
 
+function managerPlayerCoversRole(player: Player, role: Player["role"]) {
+  return player.role === role || player.secondaryRole === role;
+}
+
+function managerLfoHasCore(players: Player[]) {
+  return players.length === 5
+    && players.some((player) => managerPlayerCoversRole(player, "IGL"))
+    && players.some((player) => managerPlayerCoversRole(player, "AWP"));
+}
+
+export const managerRevivalOrganizationDefinitions: ReadonlyArray<{
+  id: ManagerRevivedOrganizationId;
+  name: string;
+  tag: string;
+  country: string;
+  accent: string;
+}> = [
+  { id: "manager-north", name: "North", tag: "NORTH", country: "DK", accent: "#092b45" },
+  { id: "manager-sentinels", name: "Sentinels", tag: "SEN", country: "US", accent: "#d80042" },
+  { id: "manager-godsent", name: "GODSENT", tag: "GODSENT", country: "SE", accent: "#f0ad27" },
+];
+
+function selectManagerProjectPlayers(
+  seed: string,
+  date: string,
+  candidates: Player[],
+  generation: number,
+  preferred: Player[] = [],
+  avoidPlayerIds: string[] = [],
+  preferredLimit = 2,
+) {
+  const avoid = new Set(avoidPlayerIds);
+  const score = (player: Player) => (
+    player.ovr * 22
+    + stableHash(`${seed}:${date}:${generation}:${player.id}:project`) % 155
+    - (avoid.has(player.id) ? 800 : 0)
+  );
+  const unique = candidates
+    .filter((player, index, pool) => (
+      pool.findIndex((item) => canonicalPlayerKey(item) === canonicalPlayerKey(player)) === index
+    ))
+    .sort((left, right) => score(right) - score(left) || left.id.localeCompare(right.id));
+  const selected = preferred
+    .filter((player, index, pool) => (
+      pool.findIndex((item) => canonicalPlayerKey(item) === canonicalPlayerKey(player)) === index
+    ))
+    .slice(0, preferredLimit);
+  const take = (test: (player: Player) => boolean) => {
+    const player = unique.find((candidate) => (
+      !selected.some((item) => canonicalPlayerKey(item) === canonicalPlayerKey(candidate)) && test(candidate)
+    ));
+    if (player) selected.push(player);
+  };
+  if (!selected.some((player) => managerPlayerCoversRole(player, "IGL"))) {
+    take((player) => managerPlayerCoversRole(player, "IGL"));
+  }
+  if (!selected.some((player) => managerPlayerCoversRole(player, "AWP"))) {
+    take((player) => managerPlayerCoversRole(player, "AWP"));
+  }
+  take((player) => managerPlayerCoversRole(player, "Entry"));
+  take((player) => managerPlayerCoversRole(player, "Support"));
+  take((player) => managerPlayerCoversRole(player, "Lurker") || managerPlayerCoversRole(player, "Rifler"));
+  unique.forEach((player) => {
+    if (selected.length < 5 && !selected.some((item) => canonicalPlayerKey(item) === canonicalPlayerKey(player))) {
+      selected.push(player);
+    }
+  });
+  return selected.slice(0, 5);
+}
+
+/** Build one deterministic rag-tag roster, prioritizing a real caller and a distinct primary sniper. */
+export function buildManagerLfoTeam(
+  seed: string,
+  date: string,
+  candidates: Player[],
+  generation = 1,
+  avoidPlayerIds: string[] = [],
+): ManagerLfoTeam | undefined {
+  const selected = selectManagerProjectPlayers(seed, date, candidates, generation, [], avoidPlayerIds);
+  if (!managerLfoHasCore(selected)) return undefined;
+  return {
+    id: "manager-lfo",
+    name: "LFO",
+    tag: "LFO",
+    generation,
+    formedOn: date,
+    refreshedOn: date,
+    continuityVersion: 2,
+    players: selected.slice(0, 5),
+  };
+}
+
+function managerLfoEventResults(state: ManagerCareerState, team: ManagerLfoTeam) {
+  return state.worldVrs.events.filter((result) => (
+    result.completedOn >= team.refreshedOn
+    && result.placements.some((placement) => placement.teamId === team.id)
+  ));
+}
+
+function managerLfoEarnedOrganization(state: ManagerCareerState, team: ManagerLfoTeam) {
+  const results = managerLfoEventResults(state, team);
+  if (!results.length) return false;
+  const standing = state.worldVrs.teams.find((entry) => entry.id === team.id);
+  const majorBound = Boolean(standing && standing.rank <= 32);
+  const majorAppearance = results.some((result) => result.classification === "Major");
+  const flagshipRun = results.some((result) => {
+    const placement = result.placements.find((entry) => entry.teamId === team.id)?.placement;
+    return (result.classification === "S-Tier" || result.classification === "Major")
+      && placement != null
+      && placement !== "swiss"
+      && placement !== "top8";
+  });
+  return majorBound || majorAppearance || flagshipRun;
+}
+
+function managerLfoNeedsRefresh(state: ManagerCareerState, team: ManagerLfoTeam) {
+  const latestResults = [...managerLfoEventResults(state, team)]
+    .sort((left, right) => left.completedOn.localeCompare(right.completedOn))
+    .slice(-3);
+  const hasRecentMomentum = latestResults.some((result) => {
+    const placement = result.placements.find((entry) => entry.teamId === team.id)?.placement;
+    return placement === "champion" || placement === "runner-up" || placement === "top4";
+  });
+  return latestResults.length >= 3 && !hasRecentMomentum && !managerLfoEarnedOrganization(state, team);
+}
+
+function isolateManagerLfoGenerationVrs(state: ManagerCareerState): ManagerCareerState {
+  const lfo = state.lfoTeam;
+  if (!lfo) return state;
+  const standing = state.worldVrs.teams.find((team) => team.id === lfo.id);
+  if (!standing) return state;
+  const events = standing.profile.events.filter((event) => event.completedOn >= lfo.formedOn);
+  if (
+    standing.profile.baselineDate === lfo.formedOn
+    && standing.profile.baselinePoints === VRS_FLOOR
+    && events.length === standing.profile.events.length
+  ) return state;
+  const profile: VrsProfile = {
+    baselineDate: lfo.formedOn,
+    baselinePoints: VRS_FLOOR,
+    events,
+  };
+  return {
+    ...state,
+    worldVrs: {
+      ...state.worldVrs,
+      teams: state.worldVrs.teams.map((team) => team.id === lfo.id
+        ? { ...team, profile, points: calculateVrs(profile, state.date).points }
+        : team),
+    },
+  };
+}
+
+function managerLegacyLfoCore(
+  state: ManagerCareerState,
+  team: ManagerLfoTeam,
+  available: Player[],
+) {
+  if ((team.continuityVersion ?? 0) >= 2 || team.generation <= 1) return undefined;
+  const previousResults = state.worldVrs.events.filter((result) => (
+    result.completedOn <= team.refreshedOn
+    && result.placements.some((placement) => (
+      placement.teamId === team.id
+      && (placement.placement === "champion" || placement.placement === "runner-up" || placement.placement === "top4")
+    ))
+  ));
+  if (!previousResults.length) return undefined;
+  const previousGeneration = team.generation - 1;
+  const rosterMessage = state.inbox.find((item) => (
+    item.title === `LFO Generation ${previousGeneration} has formed`
+    || item.title === `LFO Generation ${previousGeneration} replaces the old mix`
+  ));
+  const rosterText = rosterMessage?.body.split(" will compete together")[0];
+  if (!rosterText) return undefined;
+  const handles = rosterText.split(",").map((handle) => normalizeIdentityPart(handle)).filter(Boolean);
+  const players = handles
+    .map((handle) => available.find((player) => normalizeIdentityPart(player.handle) === handle))
+    .filter((player): player is Player => Boolean(player));
+  if (players.length < 3) return undefined;
+  return {
+    generation: previousGeneration,
+    formedOn: rosterMessage.createdOn,
+    players,
+  };
+}
+
+function rebrandManagerWorldProfile(
+  profile: VrsProfile,
+  fromId: string,
+  organization: ManagerRevivedOrganization,
+  fromDate: string,
+) {
+  return {
+    ...profile,
+    events: profile.events.map((event) => ({
+      ...event,
+      matches: event.matches.map((match) => event.completedOn >= fromDate && match.opponentId === fromId
+        ? { ...match, opponentId: organization.id, opponentName: organization.name }
+        : match),
+    })),
+  };
+}
+
+function signManagerLfoProject(
+  state: ManagerCareerState,
+  definition: (typeof managerRevivalOrganizationDefinitions)[number],
+): ManagerCareerState {
+  const lfo = state.lfoTeam;
+  if (!lfo) return state;
+  const oldStanding = state.worldVrs.teams.find((team) => team.id === lfo.id);
+  const organization: ManagerRevivedOrganization = {
+    ...definition,
+    formedOn: state.date,
+    formation: "lfo-signing",
+    lfoGeneration: lfo.generation,
+    players: lfo.players,
+    acquisitions: lfo.players.map((player) => ({ playerId: player.id })),
+  };
+  const remapSeriesTeam = (team: ManagerWorldPlayedSeriesTeam) => team.id === lfo.id
+    ? { ...team, id: organization.id, name: organization.name }
+    : team;
+  const worldEvents = state.worldVrs.events.map((result) => ({
+    ...result,
+    placements: result.placements.map((placement) => result.completedOn >= lfo.formedOn && placement.teamId === lfo.id
+      ? { ...placement, teamId: organization.id, teamName: organization.name }
+      : placement),
+    series: result.series?.map((series) => ({
+      ...series,
+      left: result.completedOn >= lfo.formedOn ? remapSeriesTeam(series.left) : series.left,
+      right: result.completedOn >= lfo.formedOn ? remapSeriesTeam(series.right) : series.right,
+      winnerId: result.completedOn >= lfo.formedOn && series.winnerId === lfo.id ? organization.id : series.winnerId,
+    })),
+  }));
+  const profile = rebrandManagerWorldProfile(
+    oldStanding?.profile ?? initialVrsProfile(state.date, 64, 420),
+    lfo.id,
+    organization,
+    lfo.formedOn,
+  );
+  const standing: ManagerWorldVrsTeam = {
+    id: organization.id,
+    name: organization.name,
+    initialRank: oldStanding?.initialRank ?? 64,
+    strength: Math.round(lfo.players.reduce((sum, player) => sum + player.ovr, 0) / lfo.players.length),
+    points: calculateVrs(profile, state.date).points,
+    rank: oldStanding?.rank ?? 64,
+    profile,
+  };
+  const rosterMoves: ManagerClubRosterMove[] = lfo.players.map((player, index) => ({
+    id: `${state.seed}:${state.date}:${organization.id}:lfo-signing:${player.id}`,
+    clubId: organization.id,
+    clubName: organization.name,
+    releasedPlayerId: `${organization.id}:open-slot:${index}`,
+    acquiredPlayer: player,
+    completedOn: state.date,
+    transactionType: "free-agent-signing",
+  }));
+  return {
+    ...state,
+    lfoTeam: undefined,
+    revivedOrganizations: [...state.revivedOrganizations, organization],
+    vrsProfile: rebrandManagerWorldProfile(state.vrsProfile, lfo.id, organization, lfo.formedOn),
+    worldVrs: {
+      teams: [
+        ...state.worldVrs.teams
+          .filter((team) => team.id !== lfo.id)
+          .map((team) => ({
+            ...team,
+            profile: rebrandManagerWorldProfile(team.profile, lfo.id, organization, lfo.formedOn),
+          })),
+        standing,
+      ],
+      events: worldEvents,
+    },
+    market: {
+      ...state.market,
+      rosterMoves: [...state.market.rosterMoves, ...rosterMoves],
+      unavailablePlayerIds: Array.from(new Set([
+        ...state.market.unavailablePlayerIds,
+        ...lfo.players.map((player) => player.id),
+      ])),
+    },
+    inbox: [{
+      id: `${state.seed}:${state.date}:${organization.id}:lfo-acquisition`,
+      kind: "market",
+      createdOn: state.date,
+      title: `${organization.name} signs LFO Generation ${lfo.generation}`,
+      body: `${organization.name} has acquired the full ${lfo.players.map((player) => player.handle).join(", ")} lineup after its breakthrough run put the project on a Major trajectory. Their complete VRS profile and results transfer to the new organization; the replacement LFO receives none of that evidence.`,
+      mandatory: false,
+      read: false,
+    }, ...state.inbox],
+  };
+}
+
+function managerIndependentRevivalDate(state: ManagerCareerState, organizationId: ManagerRevivedOrganizationId) {
+  const seasonYear = managerEventSchedule(managerEvents[0], state.season).startsOn.slice(0, 4);
+  const month = 8 + stableHash(`${state.seed}:${state.season}:${organizationId}:month`) % 4;
+  const day = 1 + stableHash(`${state.seed}:${state.season}:${organizationId}:day`) % 20;
+  return `${seasonYear}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
+function formIndependentManagerOrganization(
+  state: ManagerCareerState,
+  definition: (typeof managerRevivalOrganizationDefinitions)[number],
+  freeAgents: Player[],
+  transferTargets: ManagerOrganizationTransferTarget[],
+): ManagerCareerState {
+  const currentLfoIds = new Set(state.lfoTeam?.players.map((player) => player.id) ?? []);
+  const transferTargetIds = new Set(transferTargets.map((target) => target.player.id));
+  const availableFreeAgents = freeAgents.filter((player) => (
+    !currentLfoIds.has(player.id) && !transferTargetIds.has(player.id)
+  ));
+  const wantsTransfers = transferTargets.length > 0
+    && stableHash(`${state.seed}:${state.season}:${definition.id}:formation-mode`) % 3 !== 0;
+  const replacementPool = [...availableFreeAgents];
+  const viableTargets = wantsTransfers
+    ? transferTargets
+        .filter((target) => replacementPool.some((player) => managerPlayerCoversRole(player, target.player.role)))
+        .sort((left, right) => (
+          right.player.ovr - left.player.ovr
+          || stableHash(`${state.seed}:${definition.id}:${left.player.id}:purchase`)
+          - stableHash(`${state.seed}:${definition.id}:${right.player.id}:purchase`)
+        ))
+        .slice(0, 2)
+    : [];
+  const preferred = viableTargets.map((target) => target.player);
+  const players = selectManagerProjectPlayers(
+    state.seed,
+    state.date,
+    [...availableFreeAgents, ...preferred],
+    state.season + stableHash(definition.id) % 17,
+    preferred,
+  );
+  if (!managerLfoHasCore(players)) return state;
+  const targetByPlayer = new Map(viableTargets.map((target) => [target.player.id, target]));
+  const usedReplacementIds = new Set(players.map((player) => player.id));
+  const donorMoves: ManagerClubRosterMove[] = [];
+  const acquisitions: ManagerRevivedOrganizationAcquisition[] = [];
+  players.forEach((player) => {
+    const target = targetByPlayer.get(player.id);
+    acquisitions.push({
+      playerId: player.id,
+      fromClubId: target?.clubId,
+      fromClubName: target?.clubName,
+    });
+    if (!target) return;
+    const replacement = replacementPool.find((candidate) => (
+      !usedReplacementIds.has(candidate.id)
+      && managerPlayerCoversRole(candidate, player.role)
+    ));
+    if (!replacement) return;
+    usedReplacementIds.add(replacement.id);
+    donorMoves.push({
+      id: `${state.seed}:${state.date}:${definition.id}:donor:${target.clubId}:${player.id}`,
+      clubId: target.clubId,
+      clubName: target.clubName,
+      releasedPlayerId: player.id,
+      acquiredPlayer: replacement,
+      completedOn: state.date,
+      transactionType: "free-agent-signing",
+      releasedPlayer: player,
+      releasedToTransferList: false,
+    });
+  });
+  const organization: ManagerRevivedOrganization = {
+    ...definition,
+    formedOn: state.date,
+    formation: "independent-project",
+    players,
+    acquisitions,
+  };
+  const signingMoves: ManagerClubRosterMove[] = players.map((player, index) => ({
+    id: `${state.seed}:${state.date}:${definition.id}:formation:${player.id}`,
+    clubId: definition.id,
+    clubName: definition.name,
+    releasedPlayerId: `${definition.id}:open-slot:${index}`,
+    acquiredPlayer: player,
+    completedOn: state.date,
+    transactionType: targetByPlayer.has(player.id) ? "trade" : "free-agent-signing",
+  }));
+  const profile = initialVrsProfile(state.date, Math.max(64, state.worldVrs.teams.length + 1), 420);
+  const standing: ManagerWorldVrsTeam = {
+    id: organization.id,
+    name: organization.name,
+    initialRank: Math.max(64, state.worldVrs.teams.length + 1),
+    strength: Math.round(players.reduce((sum, player) => sum + player.ovr, 0) / players.length),
+    points: calculateVrs(profile, state.date).points,
+    rank: Math.max(64, state.worldVrs.teams.length + 1),
+    profile,
+  };
+  const purchased = acquisitions.filter((item) => item.fromClubName);
+  return {
+    ...state,
+    revivedOrganizations: [...state.revivedOrganizations, organization],
+    worldVrs: {
+      ...state.worldVrs,
+      teams: [...state.worldVrs.teams, standing],
+    },
+    market: {
+      ...state.market,
+      rosterMoves: [...state.market.rosterMoves, ...donorMoves, ...signingMoves],
+      unavailablePlayerIds: Array.from(new Set([
+        ...state.market.unavailablePlayerIds,
+        ...players.map((player) => player.id),
+        ...donorMoves.map((move) => move.acquiredPlayer.id),
+      ])),
+    },
+    inbox: [{
+      id: `${state.seed}:${state.date}:${organization.id}:independent-formation`,
+      kind: "market",
+      createdOn: state.date,
+      title: `${organization.name} returns to Counter-Strike`,
+      body: purchased.length
+        ? `${organization.name} has built a hybrid roster around ${players.map((player) => player.handle).join(", ")}, including ${purchased.map((item) => `${players.find((player) => player.id === item.playerId)?.handle} from ${item.fromClubName}`).join(" and ")}. The organization will enter open events while building VRS evidence.`
+        : `${organization.name} has formed a new five from free transfers: ${players.map((player) => player.handle).join(", ")}. The organization will enter open events while building VRS evidence.`,
+      mandatory: false,
+      read: false,
+    }, ...state.inbox],
+  };
+}
+
+/** Keep exactly one unsigned project, rotate stale generations, and let dormant clubs enter the world. */
+export function synchronizeManagerLfoTeam(
+  state: ManagerCareerState,
+  candidates: Player[],
+  transferTargets: ManagerOrganizationTransferTarget[] = [],
+  reservedPlayers: Player[] = [],
+): ManagerCareerState {
+  let working = isolateManagerLfoGenerationVrs(state);
+  let lfoSigned = false;
+  const signingBlockedIds = new Set([
+    ...working.market.signedPlayerIds,
+    ...working.market.unavailablePlayerIds,
+    ...working.contracts.filter((contract) => contract.status !== "expired").map((contract) => contract.playerId),
+  ]);
+  const signingBlockedKeys = new Set(reservedPlayers.map(canonicalPlayerKey));
+  const signingCandidateKeys = new Set(candidates
+    .filter((player) => !signingBlockedIds.has(player.id) && !signingBlockedKeys.has(canonicalPlayerKey(player)))
+    .map(canonicalPlayerKey));
+  const lfoRosterStillAvailable = Boolean(working.lfoTeam?.players.every((player) => (
+    !signingBlockedIds.has(player.id)
+    && !signingBlockedKeys.has(canonicalPlayerKey(player))
+    && signingCandidateKeys.has(canonicalPlayerKey(player))
+  )));
+  if (working.lfoTeam && lfoRosterStillAvailable && managerLfoEarnedOrganization(working, working.lfoTeam)) {
+    const dormant = managerRevivalOrganizationDefinitions
+      .filter((definition) => (
+        !working.revivedOrganizations.some((organization) => organization.id === definition.id)
+        && definition.id !== working.organizationId
+        && definition.name.trim().toLowerCase() !== working.organizationName.trim().toLowerCase()
+      ))
+      .sort((left, right) => (
+        stableHash(`${working.seed}:${working.lfoTeam!.generation}:${left.id}:lfo-bid`)
+        - stableHash(`${working.seed}:${working.lfoTeam!.generation}:${right.id}:lfo-bid`)
+      ));
+    if (dormant[0]) {
+      working = signManagerLfoProject(working, dormant[0]);
+      lfoSigned = true;
+    }
+  }
+
+  const initialUnavailableIds = new Set([
+    ...working.market.signedPlayerIds,
+    ...working.market.unavailablePlayerIds,
+    ...working.contracts.filter((contract) => contract.status !== "expired").map((contract) => contract.playerId),
+    ...working.revivedOrganizations.flatMap((organization) => organization.players.map((player) => player.id)),
+  ]);
+  const initialUnavailableKeys = new Set([
+    ...reservedPlayers,
+    ...working.revivedOrganizations.flatMap((organization) => organization.players),
+  ].map(canonicalPlayerKey));
+  const eligibleCandidates = candidates.filter((player) => (
+    !initialUnavailableIds.has(player.id) && !initialUnavailableKeys.has(canonicalPlayerKey(player))
+  ));
+  const eligibleTransferTargets = transferTargets.filter((target) => (
+    !initialUnavailableIds.has(target.player.id)
+    && !initialUnavailableKeys.has(canonicalPlayerKey(target.player))
+  ));
+  const protectedLegacyCore = working.lfoTeam
+    ? managerLegacyLfoCore(working, working.lfoTeam, eligibleCandidates)?.players ?? []
+    : [];
+  const protectedLegacyKeys = new Set(protectedLegacyCore.map(canonicalPlayerKey));
+
+  const independentCandidate = (lfoSigned ? [] : managerRevivalOrganizationDefinitions)
+    .filter((definition) => (
+      !working.revivedOrganizations.some((organization) => organization.id === definition.id)
+      && definition.id !== working.organizationId
+      && definition.name.trim().toLowerCase() !== working.organizationName.trim().toLowerCase()
+      && stableHash(`${working.seed}:${working.season}:${definition.id}:independent`) % 100 < 55
+      && managerIndependentRevivalDate(working, definition.id) <= working.date
+    ))
+    .sort((left, right) => managerIndependentRevivalDate(working, left.id).localeCompare(managerIndependentRevivalDate(working, right.id)))[0];
+  if (independentCandidate) {
+    working = formIndependentManagerOrganization(
+      working,
+      independentCandidate,
+      eligibleCandidates.filter((player) => !protectedLegacyKeys.has(canonicalPlayerKey(player))),
+      eligibleTransferTargets,
+    );
+  }
+
+  const unavailableIds = new Set([
+    ...working.market.signedPlayerIds,
+    ...working.market.unavailablePlayerIds,
+    ...working.contracts.filter((contract) => contract.status !== "expired").map((contract) => contract.playerId),
+    ...working.revivedOrganizations.flatMap((organization) => organization.players.map((player) => player.id)),
+  ]);
+  const unavailableKeys = new Set([
+    ...reservedPlayers,
+    ...working.revivedOrganizations.flatMap((organization) => organization.players),
+  ].map(canonicalPlayerKey));
+  const available = candidates
+    .filter((player) => !unavailableIds.has(player.id) && !unavailableKeys.has(canonicalPlayerKey(player)))
+    .filter((player, index, pool) => (
+      pool.findIndex((item) => canonicalPlayerKey(item) === canonicalPlayerKey(player)) === index
+    ));
+  const availableKeys = new Set(available.map(canonicalPlayerKey));
+  const previousLfo = working.lfoTeam;
+  const legacyCore = previousLfo ? managerLegacyLfoCore(working, previousLfo, available) : undefined;
+  const continuityTeam = previousLfo
+    ? legacyCore
+      ? {
+          ...previousLfo,
+          generation: legacyCore.generation,
+          formedOn: legacyCore.formedOn,
+          refreshedOn: legacyCore.formedOn,
+          continuityVersion: 2,
+          players: legacyCore.players,
+        }
+      : { ...previousLfo, continuityVersion: 2 }
+    : undefined;
+  const needsFullRefresh = Boolean(continuityTeam && managerLfoNeedsRefresh(working, continuityTeam));
+  if (continuityTeam
+    && managerLfoHasCore(continuityTeam.players)
+    && continuityTeam.players.every((player) => availableKeys.has(canonicalPlayerKey(player)))
+    && !needsFullRefresh) {
+    return continuityTeam === previousLfo || previousLfo?.continuityVersion === 2
+      ? working
+      : { ...working, lfoTeam: continuityTeam };
+  }
+  const retainedPlayers = continuityTeam?.players
+    .filter((player) => availableKeys.has(canonicalPlayerKey(player)))
+    .map((player) => available.find((candidate) => canonicalPlayerKey(candidate) === canonicalPlayerKey(player)) ?? player)
+    ?? [];
+  let repairedCore = false;
+  let lfoTeam: ManagerLfoTeam | undefined = !needsFullRefresh && continuityTeam && retainedPlayers.length >= 3
+    ? (() => {
+        const players = selectManagerProjectPlayers(
+          working.seed,
+          working.date,
+          available,
+          continuityTeam.generation,
+          retainedPlayers,
+          [],
+          5,
+        );
+        if (!managerLfoHasCore(players)) return undefined;
+        repairedCore = true;
+        return { ...continuityTeam, continuityVersion: 2, players };
+      })()
+    : undefined;
+  const highestGeneration = Math.max(
+    previousLfo?.generation ?? 0,
+    ...working.revivedOrganizations.map((organization) => organization.lfoGeneration ?? 0),
+  );
+  const generation = Math.max(1, highestGeneration + (previousLfo || highestGeneration ? 1 : 0));
+  if (!lfoTeam) {
+    lfoTeam = buildManagerLfoTeam(
+      working.seed,
+      working.date,
+      available,
+      generation,
+      previousLfo?.players.map((player) => player.id) ?? [],
+    );
+  }
+  if (!lfoTeam) {
+    if (!working.lfoTeam) return working;
+    return {
+      ...working,
+      lfoTeam: undefined,
+      worldVrs: { ...working.worldVrs, teams: working.worldVrs.teams.filter((team) => team.id !== "manager-lfo") },
+    };
+  }
+  const currentStanding = working.worldVrs.teams.find((team) => team.id === lfoTeam!.id);
+  const profile = repairedCore && currentStanding
+    ? currentStanding.profile
+    : initialVrsProfile(working.date, Math.max(64, working.worldVrs.teams.length + 1), VRS_FLOOR);
+  const standing: ManagerWorldVrsTeam = currentStanding && repairedCore
+    ? {
+        ...currentStanding,
+        strength: Math.round(lfoTeam.players.reduce((sum, player) => sum + player.ovr, 0) / lfoTeam.players.length),
+        points: calculateVrs(profile, working.date).points,
+      }
+    : {
+        id: lfoTeam.id,
+        name: lfoTeam.name,
+        initialRank: Math.max(64, working.worldVrs.teams.length + 1),
+        strength: Math.round(lfoTeam.players.reduce((sum, player) => sum + player.ovr, 0) / lfoTeam.players.length),
+        points: calculateVrs(profile, working.date).points,
+        rank: Math.max(64, working.worldVrs.teams.length + 1),
+        profile,
+      };
+  const refreshed = Boolean(previousLfo);
+  const retainedKeys = new Set(retainedPlayers.map(canonicalPlayerKey));
+  const departed = continuityTeam?.players.filter((player) => !retainedKeys.has(canonicalPlayerKey(player))) ?? [];
+  const newcomers = lfoTeam.players.filter((player) => !retainedKeys.has(canonicalPlayerKey(player)));
+  const inboxTitle = legacyCore
+    ? `LFO restores Generation ${lfoTeam.generation}'s qualifier-winning core`
+    : repairedCore
+      ? `LFO keeps its core after ${departed.map((player) => player.handle).join(" and ") || "a roster"} change`
+      : refreshed
+        ? `LFO Generation ${lfoTeam.generation} replaces the old mix`
+        : `LFO Generation ${lfoTeam.generation} has formed`;
+  const inboxBody = repairedCore
+    ? `${lfoTeam.players.map((player) => player.handle).join(", ")} will continue as LFO. ${newcomers.map((player) => player.handle).join(" and ")} ${newcomers.length === 1 ? "fills" : "fill"} the open ${newcomers.length === 1 ? "slot" : "slots"}; the available core, tournament results, and VRS history remain intact.`
+    : `${lfoTeam.players.map((player) => player.handle).join(", ")} will compete together without an organization. This generation starts at the ${VRS_FLOOR}-point VRS floor with no inherited results, has a dedicated IGL and AWPer, and can enter lower-tier opens.`;
+  const retainedInbox = legacyCore && previousLfo
+    ? working.inbox.filter((item) => item.title !== `LFO Generation ${previousLfo.generation} replaces the old mix`)
+    : working.inbox;
+  return rankManagerVrsAt({
+    ...working,
+    lfoTeam,
+    worldVrs: {
+      ...working.worldVrs,
+      teams: [...working.worldVrs.teams.filter((team) => team.id !== lfoTeam.id), standing],
+    },
+    inbox: [{
+      id: `${working.seed}:${working.date}:lfo:${lfoTeam.generation}:${lfoTeam.players.map((player) => player.id).join(":")}`,
+      kind: "market",
+      createdOn: working.date,
+      title: inboxTitle,
+      body: inboxBody,
+      mandatory: false,
+      read: false,
+    }, ...retainedInbox],
+  }, working.date);
+}
+
 function initialVrsProfile(date: string, rank: number, points?: number): VrsProfile {
   const profile = createVrsProfile(date, rank);
   if (!Number.isFinite(points)) return profile;
@@ -1157,11 +2177,12 @@ function rankManagerVrsAt(state: ManagerCareerState, asOf: string): ManagerCaree
     left.initialRank - right.initialRank
     || left.id.localeCompare(right.id)
   ));
+  const rankCeiling = Math.max(64, sourceOrder.length);
   const rankSlots: number[] = [];
   let nextSourceRank = 1;
   sourceOrder.forEach((team, index) => {
     const remainingTeams = sourceOrder.length - index - 1;
-    const latestAvailableRank = 64 - remainingTeams;
+    const latestAvailableRank = rankCeiling - remainingTeams;
     const rank = Math.min(Math.max(team.initialRank, nextSourceRank), latestAvailableRank);
     rankSlots.push(rank);
     nextSourceRank = rank + 1;
@@ -1192,6 +2213,21 @@ export function managerWorldVrsTeam(
   return state?.worldVrs.teams.find((team) => team.name.trim().toLowerCase() === normalizedName);
 }
 
+export function managerQualifiedTeamIdsForEvent(
+  state: Pick<ManagerCareerState, "worldVrs">,
+  event: ManagerEvent,
+  season = 1,
+) {
+  if (!event.openQualifierEventId) return [];
+  const qualifier = managerEventById(event.openQualifierEventId);
+  const slots = qualifier?.qualificationSlots ?? 0;
+  if (!slots) return [];
+  const result = [...state.worldVrs.events].reverse().find((item) => (
+    item.eventId === event.openQualifierEventId && item.season === season
+  ));
+  return result?.placements.slice(0, slots).map((placement) => placement.teamId) ?? [];
+}
+
 function managerWorldEventId(state: ManagerCareerState, event: ManagerEvent, season: number) {
   return `${state.seed}:world:${season}:${event.id}`;
 }
@@ -1218,6 +2254,157 @@ function managerPlacementIndex(
   return Math.min(8 + stableHash(`${state.seed}:${season}:${event.id}:managed-swiss`) % Math.max(1, fieldSize - 8), fieldSize - 1);
 }
 
+function managerWorldSeriesPhase(id: string): ManagerWorldPlayedSeries["phase"] {
+  const normalized = id.toLowerCase();
+  if (normalized.includes("quarterfinal")) return "quarterfinal";
+  if (normalized.includes("semifinal")) return "semifinal";
+  if (normalized.includes("final")) return "final";
+  return "swiss";
+}
+
+function managerWorldSeriesFromEvidence(
+  state: Pick<ManagerCareerState, "seed" | "organizationId" | "organizationName" | "vrsPoints" | "vrsProfile" | "worldVrs">,
+  result: ManagerWorldEventResult,
+) {
+  const sources = [
+    {
+      id: state.organizationId,
+      name: state.organizationName,
+      points: state.vrsPoints,
+      profile: state.vrsProfile,
+    },
+    ...state.worldVrs.teams,
+  ];
+  const reconstructed = new Map<string, ManagerWorldPlayedSeries>();
+  sources.forEach((team) => {
+    const evidence = team.profile.events.find((item) => (
+      item.eventId === result.eventId && item.completedOn === result.completedOn
+    ));
+    evidence?.matches.forEach((match) => {
+      if (reconstructed.has(match.id)) return;
+      reconstructed.set(match.id, {
+        id: match.id,
+        phase: managerWorldSeriesPhase(match.id),
+        left: { id: team.id, name: team.name, points: team.points },
+        right: { id: match.opponentId, name: match.opponentName, points: match.opponentPoints },
+        winnerId: match.won ? team.id : match.opponentId,
+      });
+    });
+  });
+  const all = [...reconstructed.values()];
+  const played = all.filter((series) => !series.id.includes(":world:"));
+  return played.length ? played : all;
+}
+
+function managerLegacyKnockoutSeries(
+  result: ManagerWorldEventResult,
+  event: ManagerEvent,
+) {
+  const field = result.placements.slice(0, event.capacity);
+  if (field.length !== 8) return [];
+  const series: ManagerWorldPlayedSeries[] = [];
+  const add = (
+    leftIndex: number,
+    rightIndex: number,
+    winnerIndex: number,
+    phase: ManagerWorldPlayedSeries["phase"],
+  ) => {
+    const left = field[leftIndex];
+    const right = field[rightIndex];
+    const winner = field[winnerIndex];
+    const bestOf = event.format === "single-elimination" && phase !== "quarterfinal" ? 3 : event.groupBestOf;
+    const winsNeeded = bestOf === 1 ? 1 : 2;
+    const loserMaps = bestOf === 1
+      ? 0
+      : stableHash(`${result.id}:legacy-score:${phase}:${left.teamId}:${right.teamId}`) % winsNeeded;
+    const leftWon = winner.teamId === left.teamId;
+    series.push({
+      id: `${result.id}:legacy:${phase}:${series.length + 1}`,
+      stageId: event.formatStages[0]?.label,
+      phase,
+      left: { id: left.teamId, name: left.teamName },
+      right: { id: right.teamId, name: right.teamName },
+      winnerId: winner.teamId,
+      leftScore: leftWon ? winsNeeded : loserMaps,
+      rightScore: leftWon ? loserMaps : winsNeeded,
+    });
+  };
+  add(0, 7, 0, "quarterfinal");
+  add(3, 4, 3, "quarterfinal");
+  add(2, 5, 2, "quarterfinal");
+  add(1, 6, 1, "quarterfinal");
+  add(0, 3, 0, "semifinal");
+  add(2, 1, 1, "semifinal");
+  add(0, 1, 0, "final");
+  return series;
+}
+
+/**
+ * Produce the persistence-safe, capacity-bounded result used by saved careers and the event overview.
+ * Legacy saves can contain a synthetic field merged with the field that was actually played; recorded
+ * series/evidence is authoritative whenever it identifies a valid field.
+ */
+export function managerWorldEventSnapshot(
+  state: Pick<ManagerCareerState, "seed" | "organizationId" | "organizationName" | "vrsPoints" | "vrsProfile" | "worldVrs">,
+  result: ManagerWorldEventResult,
+): ManagerWorldEventResult {
+  const event = managerEventById(result.eventId);
+  if (!event) return result;
+  const evidenceSeries = result.series?.length ? [] : managerWorldSeriesFromEvidence(state, result);
+  const onlySyntheticEvidence = evidenceSeries.length > 0 && evidenceSeries.every((item) => item.id.includes(":world:"));
+  const series = result.series?.length
+    ? result.series
+    : event.format === "single-elimination" && (onlySyntheticEvidence || !evidenceSeries.length)
+      ? managerLegacyKnockoutSeries(result, event)
+      : evidenceSeries;
+  const participantIds = new Set(series.flatMap((item) => [item.left.id, item.right.id]));
+  const seriesDefinesField = participantIds.size > 1 && participantIds.size <= event.capacity;
+  const uniquePlacements = [...new Map(result.placements.map((placement) => [placement.teamId, placement])).values()];
+  const records = new Map<string, { wins: number; losses: number }>();
+  series.forEach((item) => {
+    const left = records.get(item.left.id) ?? { wins: 0, losses: 0 };
+    const right = records.get(item.right.id) ?? { wins: 0, losses: 0 };
+    if (item.winnerId === item.left.id) {
+      left.wins += 1;
+      right.losses += 1;
+    } else {
+      right.wins += 1;
+      left.losses += 1;
+    }
+    records.set(item.left.id, left);
+    records.set(item.right.id, right);
+  });
+  const fieldPlacements = (seriesDefinesField
+    ? uniquePlacements.filter((placement) => participantIds.has(placement.teamId))
+    : uniquePlacements
+  ).slice(0, event.capacity);
+  if (seriesDefinesField) {
+    const placementIds = new Set(fieldPlacements.map((placement) => placement.teamId));
+    series.forEach((item) => {
+      [item.left, item.right].forEach((team) => {
+        if (placementIds.has(team.id) || fieldPlacements.length >= event.capacity) return;
+        const record = records.get(team.id) ?? { wins: 0, losses: 0 };
+        fieldPlacements.push({
+          teamId: team.id,
+          teamName: team.name,
+          placement: "swiss",
+          wins: record.wins,
+          losses: record.losses,
+          prizeWon: event.prizes.swiss,
+          managed: team.id === state.organizationId,
+        });
+        placementIds.add(team.id);
+      });
+    });
+  }
+  const officialIds = new Set(fieldPlacements.map((placement) => placement.teamId));
+  return {
+    ...result,
+    placements: fieldPlacements,
+    series: series.filter((item) => officialIds.has(item.left.id) && officialIds.has(item.right.id)),
+  };
+}
+
 interface ManagerWorldSimulationOptions {
   managedPlacement?: PlacementTier;
   announce?: boolean;
@@ -1239,9 +2426,18 @@ export function simulateManagerWorldEvent(
   const managed = options.managedPlacement != null;
   const aiSlots = Math.max(1, event.capacity - (managed ? 1 : 0));
   const byRank = [...ranked.worldVrs.teams].sort((left, right) => left.rank - right.rank || left.id.localeCompare(right.id));
-  const eligible = byRank.filter((team) => team.rank >= event.rankMin && team.rank <= event.rankMax);
-  const field = [...eligible, ...byRank.filter((team) => !eligible.some((candidate) => candidate.id === team.id))]
-    .slice(0, aiSlots);
+  const qualifiedIds = new Set(managerQualifiedTeamIdsForEvent(ranked, event, season));
+  const canEnter = (team: ManagerWorldVrsTeam) => (
+    qualifiedIds.has(team.id) || managerWorldTeamEligibleForEvent(event, team)
+  );
+  const qualified = byRank.filter((team) => qualifiedIds.has(team.id));
+  const openProjects = byRank.filter((team) => team.id === "manager-lfo" && event.lfoEligible && !qualifiedIds.has(team.id));
+  const eligible = byRank.filter((team) => (
+    !qualifiedIds.has(team.id)
+    && !openProjects.some((candidate) => candidate.id === team.id)
+    && canEnter(team)
+  ));
+  const field = [...qualified, ...openProjects, ...eligible].slice(0, aiSlots);
   const scored = field.map((team) => {
     const pointStrength = Math.max(0, Math.min(1, (team.points - 400) / 1_600));
     const noise = (stableUnit(`${state.seed}:${season}:${event.id}:${team.id}:form`) - 0.5) * (event.tier === "major" ? 12 : 18);
@@ -1270,21 +2466,61 @@ export function simulateManagerWorldEvent(
   const fieldSize = entries.length;
   const records = new Map(entries.map((team) => [team.id, { wins: 0, losses: 0 }]));
   const evidence = new Map(entries.map((team) => [team.id, [] as VrsEventEvidence["matches"]]));
-  const matchDistance = fieldSize <= 2 ? 1 : fieldSize <= 8 ? 3 : 3;
-  for (let leftIndex = 0; leftIndex < fieldSize; leftIndex += 1) {
-    for (let rightIndex = leftIndex + 1; rightIndex < fieldSize; rightIndex += 1) {
-      const distance = Math.min(rightIndex - leftIndex, fieldSize - (rightIndex - leftIndex));
-      if (distance > matchDistance) continue;
-      const left = entries[leftIndex];
-      const right = entries[rightIndex];
-      const upsetChance = Math.max(0.08, 0.25 - Math.abs(rightIndex - leftIndex) * 0.015);
-      const upset = stableUnit(`${resultId}:${left.id}:${right.id}:result`) < upsetChance;
-      const leftWon = !upset;
-      const winner = records.get(leftWon ? left.id : right.id)!;
+  const series: ManagerWorldPlayedSeries[] = [];
+  const addSeries = (
+    leftIndex: number,
+    rightIndex: number,
+    winnerIndex: number,
+    phase: ManagerWorldPlayedSeries["phase"],
+  ) => {
+    const left = entries[leftIndex];
+    const right = entries[rightIndex];
+    const winner = entries[winnerIndex];
+    if (!left || !right || !winner) return;
+    const bestOf = phase === "quarterfinal" ? event.groupBestOf : 3;
+    const winsNeeded = bestOf === 1 ? 1 : 2;
+    const loserMaps = bestOf === 1
+      ? 0
+      : stableHash(`${resultId}:score:${phase}:${left.id}:${right.id}`) % winsNeeded;
+    const leftWon = winner.id === left.id;
+    series.push({
+      id: `${resultId}:series:${phase}:${series.length + 1}`,
+      stageId: event.formatStages[0]?.label,
+      phase,
+      left: { id: left.id, name: left.name, points: left.points },
+      right: { id: right.id, name: right.name, points: right.points },
+      winnerId: winner.id,
+      leftScore: leftWon ? winsNeeded : loserMaps,
+      rightScore: leftWon ? loserMaps : winsNeeded,
+    });
+  };
+  if (event.format === "single-elimination" && fieldSize === 8) {
+    addSeries(0, 7, 0, "quarterfinal");
+    addSeries(3, 4, 3, "quarterfinal");
+    addSeries(2, 5, 2, "quarterfinal");
+    addSeries(1, 6, 1, "quarterfinal");
+    addSeries(0, 3, 0, "semifinal");
+    addSeries(2, 1, 1, "semifinal");
+    addSeries(0, 1, 0, "final");
+  } else {
+    const matchDistance = event.format === "round-robin" ? fieldSize : fieldSize <= 2 ? 1 : 3;
+    for (let leftIndex = 0; leftIndex < fieldSize; leftIndex += 1) {
+      for (let rightIndex = leftIndex + 1; rightIndex < fieldSize; rightIndex += 1) {
+        const distance = Math.min(rightIndex - leftIndex, fieldSize - (rightIndex - leftIndex));
+        if (distance > matchDistance) continue;
+        addSeries(leftIndex, rightIndex, leftIndex, "swiss");
+      }
+    }
+  }
+  series.forEach((played) => {
+      const left = entries.find((team) => team.id === played.left.id)!;
+      const right = entries.find((team) => team.id === played.right.id)!;
+      const leftWon = played.winnerId === left.id;
+      const winner = records.get(played.winnerId)!;
       const loser = records.get(leftWon ? right.id : left.id)!;
       winner.wins += 1;
       loser.losses += 1;
-      const matchId = `${resultId}:match:${left.id}:${right.id}`;
+      const matchId = played.id;
       evidence.get(left.id)!.push({
         id: matchId,
         opponentId: right.id,
@@ -1299,8 +2535,7 @@ export function simulateManagerWorldEvent(
         opponentPoints: left.points,
         won: !leftWon,
       });
-    }
-  }
+  });
   const placements = entries.map((team, index): ManagerWorldEventPlacement => {
     const placement = managerPlacementForIndex(index);
     const record = records.get(team.id)!;
@@ -1340,6 +2575,7 @@ export function simulateManagerWorldEvent(
     classification: event.classification,
     format: event.format,
     placements,
+    series,
   };
   const champion = placements[0];
   const runnerUp = placements[1];
@@ -1363,6 +2599,235 @@ export function simulateManagerWorldEvent(
         }, ...ranked.inbox],
   };
   return rankManagerVrsAt(withResult, schedule.endsOn);
+}
+
+const managerMajorSeriesStageOrder: Record<string, number> = {
+  mrq: 0,
+  "stage-1": 1,
+  "stage-2": 2,
+  "stage-3": 3,
+};
+
+function managerSeriesTeamId(state: ManagerCareerState, team: ManagerWorldPlayedSeriesTeam) {
+  if (team.id === "user" || team.id === state.organizationId) return state.organizationId;
+  return managerWorldVrsTeam(state, team.id, team.name)?.id ?? team.id;
+}
+
+function managerSeriesPlacementOrder(placement: PlacementTier) {
+  if (placement === "champion") return 0;
+  if (placement === "runner-up") return 1;
+  if (placement === "top4") return 2;
+  if (placement === "top8") return 3;
+  return 4;
+}
+
+/**
+ * Replace invented AI evidence with the series that were actually shown in the tournament UI.
+ * The same function can be called between Major stages (no prize yet) and once more at event end.
+ */
+export function integrateManagerWorldSeries(
+  state: ManagerCareerState,
+  eventId: string,
+  series: ManagerWorldPlayedSeries[],
+  completedOn: string,
+  season = state.season,
+  managedPlacement?: PlacementTier,
+): ManagerCareerState {
+  const event = managerEventById(eventId);
+  if (!event || !series.length || !state.worldVrs.teams.length) return state;
+  const resultId = managerWorldEventId(state, event, season);
+  const eventResult = state.worldVrs.events.find((result) => result.id === resultId);
+  const worldById = new Map(state.worldVrs.teams.map((team) => [team.id, team]));
+  const resolvedSeries = series.flatMap((result) => {
+    const leftId = managerSeriesTeamId(state, result.left);
+    const rightId = managerSeriesTeamId(state, result.right);
+    const winnerId = result.winnerId === result.left.id ? leftId : rightId;
+    if (leftId === rightId || (winnerId !== leftId && winnerId !== rightId)) return [];
+    return [{
+      ...result,
+      left: { ...result.left, id: leftId },
+      right: { ...result.right, id: rightId },
+      winnerId,
+    }];
+  });
+  if (!resolvedSeries.length) return state;
+
+  const pointsBeforeEvent = (team: ManagerWorldPlayedSeriesTeam) => {
+    if (team.id === state.organizationId) return state.vrsPoints;
+    const standing = worldById.get(team.id);
+    if (!standing) return Number.isFinite(team.points) ? Math.round(team.points!) : VRS_FLOOR;
+    const profile = {
+      ...standing.profile,
+      events: standing.profile.events.filter((item) => item.id !== `${resultId}:${standing.id}`),
+    };
+    return calculateVrs(profile, completedOn).points;
+  };
+  const records = new Map<string, { wins: number; losses: number }>();
+  const stageRecords = new Map<string, Map<string, { wins: number; losses: number }>>();
+  const exactMatches = new Map<string, VrsEventEvidence["matches"]>();
+  const teamNames = new Map<string, string>();
+  const addRecord = (teamId: string, won: boolean, stageId?: string) => {
+    const record = records.get(teamId) ?? { wins: 0, losses: 0 };
+    record.wins += won ? 1 : 0;
+    record.losses += won ? 0 : 1;
+    records.set(teamId, record);
+    if (!stageId) return;
+    const byTeam = stageRecords.get(teamId) ?? new Map<string, { wins: number; losses: number }>();
+    const stageRecord = byTeam.get(stageId) ?? { wins: 0, losses: 0 };
+    stageRecord.wins += won ? 1 : 0;
+    stageRecord.losses += won ? 0 : 1;
+    byTeam.set(stageId, stageRecord);
+    stageRecords.set(teamId, byTeam);
+  };
+  resolvedSeries.forEach((result) => {
+    teamNames.set(result.left.id, result.left.name);
+    teamNames.set(result.right.id, result.right.name);
+    const leftWon = result.winnerId === result.left.id;
+    addRecord(result.left.id, leftWon, result.stageId);
+    addRecord(result.right.id, !leftWon, result.stageId);
+    const matchId = `${event.id}:${season}:${result.stageId ?? "event"}:${result.id}`;
+    const leftMatches = exactMatches.get(result.left.id) ?? [];
+    leftMatches.push({
+      id: matchId,
+      opponentId: result.right.id,
+      opponentName: result.right.name,
+      opponentPoints: pointsBeforeEvent(result.right),
+      won: leftWon,
+    });
+    exactMatches.set(result.left.id, leftMatches);
+    const rightMatches = exactMatches.get(result.right.id) ?? [];
+    rightMatches.push({
+      id: matchId,
+      opponentId: result.left.id,
+      opponentName: result.left.name,
+      opponentPoints: pointsBeforeEvent(result.left),
+      won: !leftWon,
+    });
+    exactMatches.set(result.right.id, rightMatches);
+  });
+
+  const exactPlacements = new Map<string, PlacementTier>();
+  resolvedSeries.forEach((result) => {
+    const loserId = result.winnerId === result.left.id ? result.right.id : result.left.id;
+    if (result.phase === "final") {
+      exactPlacements.set(result.winnerId, "champion");
+      exactPlacements.set(loserId, "runner-up");
+    } else if (result.phase === "semifinal" && !exactPlacements.has(loserId)) {
+      exactPlacements.set(loserId, "top4");
+    } else if (result.phase === "quarterfinal" && !exactPlacements.has(loserId)) {
+      exactPlacements.set(loserId, "top8");
+    }
+  });
+  stageRecords.forEach((byStage, teamId) => {
+    const latest = [...byStage.entries()].sort((left, right) => (
+      (managerMajorSeriesStageOrder[right[0]] ?? -1) - (managerMajorSeriesStageOrder[left[0]] ?? -1)
+    ))[0];
+    if (!latest || exactPlacements.has(teamId)) return;
+    const [stageId, record] = latest;
+    if (stageId === "stage-3" && record.wins >= 3) exactPlacements.set(teamId, "top8");
+    else if (record.losses >= 3) exactPlacements.set(teamId, "swiss");
+  });
+  if (managedPlacement) exactPlacements.set(state.organizationId, managedPlacement);
+
+  const playedParticipantIds = new Set(resolvedSeries.flatMap((result) => [result.left.id, result.right.id]));
+  const hasResolvedFinal = resolvedSeries.some((result) => result.phase === "final");
+  const replacesSyntheticField = Boolean(
+    eventResult
+    && playedParticipantIds.size > 1
+    && (
+      hasResolvedFinal
+      || (!event.majorCycle && !event.doubleElimination && playedParticipantIds.size <= event.capacity)
+    ),
+  );
+  let placements = eventResult?.placements.filter((placement) => (
+    !replacesSyntheticField || playedParticipantIds.has(placement.teamId)
+  )) ?? [];
+  if (eventResult) {
+    const placementById = new Map(placements.map((placement, index) => [placement.teamId, { placement, index }]));
+    records.forEach((record, teamId) => {
+      if (placementById.has(teamId)) return;
+      const name = teamId === state.organizationId
+        ? state.organizationName
+        : worldById.get(teamId)?.name ?? teamNames.get(teamId) ?? teamId;
+      const placement: ManagerWorldEventPlacement = {
+        teamId,
+        teamName: name,
+        placement: exactPlacements.get(teamId) ?? "swiss",
+        wins: record.wins,
+        losses: record.losses,
+        prizeWon: 0,
+        managed: teamId === state.organizationId,
+      };
+      placementById.set(teamId, { placement, index: placementById.size });
+    });
+    const ordered = [...placementById.values()].sort((left, right) => {
+      const leftExact = exactPlacements.get(left.placement.teamId);
+      const rightExact = exactPlacements.get(right.placement.teamId);
+      const leftTier = managerSeriesPlacementOrder(leftExact ?? left.placement.placement);
+      const rightTier = managerSeriesPlacementOrder(rightExact ?? right.placement.placement);
+      return leftTier - rightTier
+        || (Boolean(leftExact) !== Boolean(rightExact)
+          ? leftTier === managerSeriesPlacementOrder("swiss")
+            ? Number(Boolean(leftExact)) - Number(Boolean(rightExact))
+            : Number(Boolean(rightExact)) - Number(Boolean(leftExact))
+          : 0)
+        || (records.get(right.placement.teamId)?.wins ?? right.placement.wins) - (records.get(left.placement.teamId)?.wins ?? left.placement.wins)
+        || (records.get(left.placement.teamId)?.losses ?? left.placement.losses) - (records.get(right.placement.teamId)?.losses ?? right.placement.losses)
+        || left.index - right.index;
+    });
+    placements = ordered.slice(0, event.capacity).map(({ placement }, index) => {
+      const resolvedPlacement = managerPlacementForIndex(index);
+      const record = records.get(placement.teamId);
+      return {
+        ...placement,
+        placement: resolvedPlacement,
+        wins: record?.wins ?? placement.wins,
+        losses: record?.losses ?? placement.losses,
+        prizeWon: event.prizes[resolvedPlacement],
+      };
+    });
+  }
+  const placementByTeam = new Map(placements.map((placement) => [placement.teamId, placement]));
+  const updatedTeams = state.worldVrs.teams.map((team) => {
+    const matches = exactMatches.get(team.id);
+    if (!matches && !replacesSyntheticField) return team;
+    const placement = placementByTeam.get(team.id);
+    const profile = {
+      ...team.profile,
+      events: team.profile.events.filter((item) => item.id !== `${resultId}:${team.id}`),
+    };
+    if (!matches) return { ...team, profile };
+    return {
+      ...team,
+      profile: appendVrsEvent(profile, {
+        id: `${resultId}:${team.id}`,
+        eventId: event.id,
+        eventName: managerEventName(event, season),
+        completedOn,
+        prizePool: event.prizePool,
+        prizeWon: placement?.prizeWon ?? 0,
+        lan: event.environment === "LAN",
+        prestige: Math.max(0.1, Math.min(1, event.vrsWeight / 2.6)),
+        matches,
+      }),
+    };
+  });
+  const next: ManagerCareerState = {
+    ...state,
+    worldVrs: {
+      teams: updatedTeams,
+      events: eventResult
+        ? state.worldVrs.events.map((result) => result.id === resultId ? {
+            ...result,
+            placements,
+            series: replacesSyntheticField
+              ? resolvedSeries
+              : [...new Map([...(result.series ?? []), ...resolvedSeries].map((item) => [item.id, item])).values()],
+          } : result)
+        : state.worldVrs.events,
+    },
+  };
+  return rankManagerVrsAt(next, completedOn);
 }
 
 export function simulateManagerWorldEventsThrough(
@@ -1408,6 +2873,58 @@ function addDays(date: string, days: number) {
   const value = new Date(`${date}T00:00:00Z`);
   value.setUTCDate(value.getUTCDate() + days);
   return value.toISOString().slice(0, 10);
+}
+
+function daysBetween(from: string, to: string) {
+  const start = Date.parse(`${from}T00:00:00Z`);
+  const end = Date.parse(`${to}T00:00:00Z`);
+  return Math.max(0, Math.floor((end - start) / 86_400_000));
+}
+
+function createManagerPreparationState(): ManagerPreparationState {
+  return {
+    activePlan: "anti-awp",
+    targetSite: "A",
+    mastery: {
+      "anti-awp": 10,
+      "punish-aggression": 10,
+      "heavy-utility": 10,
+      "targeted-site-stack": 10,
+    },
+    fatigue: 0,
+    scrims: [],
+  };
+}
+
+function normalizeManagerPreparationState(saved?: Partial<ManagerPreparationState>): ManagerPreparationState {
+  const base = createManagerPreparationState();
+  const validPlans = new Set(managerPreparationPlans.map((plan) => plan.id));
+  const activePlan = saved?.activePlan && validPlans.has(saved.activePlan) ? saved.activePlan : base.activePlan;
+  const mastery = Object.fromEntries(managerPreparationPlans.map((plan) => [
+    plan.id,
+    clampScore(saved?.mastery?.[plan.id] ?? base.mastery[plan.id]),
+  ])) as Record<ManagerPreparationPlan, number>;
+  const scrims = (saved?.scrims ?? []).filter((scrim) => (
+    Boolean(scrim.id)
+    && Boolean(scrim.opponentId)
+    && Boolean(scrim.scheduledFor)
+    && validPlans.has(scrim.plan)
+  )).map((scrim): ManagerScrim => ({
+    ...scrim,
+    targetSite: scrim.targetSite === "B" ? "B" : "A",
+    status: ["scheduled", "completed", "cancelled"].includes(scrim.status) ? scrim.status : "cancelled",
+    masteryGain: Math.max(0, Math.round(scrim.masteryGain ?? 0)),
+    familiarityGain: Math.max(0, Math.round(scrim.familiarityGain ?? 0)),
+    fatigueGain: Math.max(0, Math.round(scrim.fatigueGain ?? 0)),
+    leakRisk: Math.max(0, Math.min(100, Math.round(scrim.leakRisk ?? 0))),
+  }));
+  return {
+    activePlan,
+    targetSite: saved?.targetSite === "B" ? "B" : "A",
+    mastery,
+    fatigue: clampScore(saved?.fatigue ?? 0),
+    scrims,
+  };
 }
 
 export interface ManagerSalaryContext {
@@ -1511,6 +3028,8 @@ function createManagerTrainingPlan(player: ManagerCareerPlayerSeed, date: string
     lastUpdatedOn: date,
     potentialLabAttempts: 0,
     potentialLabWins: 0,
+    ovrLabAttempts: 0,
+    ovrLabGains: 0,
   };
 }
 
@@ -1522,8 +3041,18 @@ export function managerTrainingPlan(
   state: Pick<ManagerCareerState, "trainingPlans" | "date">,
   player: ManagerCareerPlayerSeed,
 ) {
-  return state.trainingPlans.find((plan) => plan.playerId === player.id)
-    ?? createManagerTrainingPlan(player, state.date);
+  const existing = state.trainingPlans.find((plan) => plan.playerId === player.id);
+  if (!existing) return createManagerTrainingPlan(player, state.date);
+  const currentOvr = existing.currentOvr ?? player.ovr;
+  return {
+    ...existing,
+    currentOvr,
+    potentialOvr: Math.max(currentOvr, existing.potentialOvr ?? 0, player.potential ?? player.ovr),
+    potentialLabAttempts: existing.potentialLabAttempts ?? 0,
+    potentialLabWins: existing.potentialLabWins ?? 0,
+    ovrLabAttempts: existing.ovrLabAttempts ?? 0,
+    ovrLabGains: existing.ovrLabGains ?? 0,
+  };
 }
 
 export function setManagerTrainingFocus(
@@ -1539,6 +3068,101 @@ export function setManagerTrainingFocus(
       ...state.trainingPlans.filter((plan) => plan.playerId !== player.id),
       { ...current, focus, lastUpdatedOn: state.date },
     ],
+  };
+}
+
+export function managerMentorshipTrainingBonus(
+  mentor: Pick<ManagerCareerPlayerSeed, "role">,
+  mentee: Pick<ManagerCareerPlayerSeed, "role">,
+) {
+  if (mentor.role === mentee.role) return 24;
+  if (mentor.role === "IGL" || mentor.role === "Support") return 21;
+  return 18;
+}
+
+export function managerMentorshipEligibility(
+  state: Pick<ManagerCareerState, "status" | "activeEventId" | "contracts" | "mentorships">,
+  players: ManagerCareerPlayerSeed[],
+  mentorId: string,
+  menteeId: string,
+) {
+  const reasons: string[] = [];
+  const mentor = players.find((player) => player.id === mentorId);
+  const mentee = players.find((player) => player.id === menteeId);
+  const activeIds = new Set(state.contracts
+    .filter((contract) => contract.status !== "expired")
+    .map((contract) => contract.playerId));
+  if (state.status !== "active") reasons.push("The career is no longer active");
+  if (state.activeEventId) reasons.push("Mentorship assignments are locked during an event");
+  if (!mentor || !activeIds.has(mentorId)) reasons.push("Choose an active contracted mentor");
+  if (!mentee || !activeIds.has(menteeId)) reasons.push("Choose an active contracted prospect");
+  if (mentorId === menteeId) reasons.push("A player cannot mentor themselves");
+  if (mentor && (mentor.age ?? 24) < 27) reasons.push("Mentors must be at least 27 years old");
+  if (mentee && (mentee.age ?? 24) > 22) reasons.push("Prospects must be 22 or younger");
+  if (mentee && mentee.ovr >= (mentee.potential ?? mentee.ovr)) {
+    reasons.push("The selected prospect is already at their development ceiling");
+  }
+  if (state.mentorships.length >= MANAGER_MAX_MENTORSHIPS) reasons.push("Both mentorship slots are already occupied");
+  if (state.mentorships.some((pair) => pair.mentorId === mentorId || pair.menteeId === mentorId)) {
+    reasons.push("The selected mentor is already in a mentorship");
+  }
+  if (state.mentorships.some((pair) => pair.mentorId === menteeId || pair.menteeId === menteeId)) {
+    reasons.push("The selected prospect is already in a mentorship");
+  }
+  return {
+    eligible: reasons.length === 0,
+    reasons,
+    bonus: mentor && mentee ? managerMentorshipTrainingBonus(mentor, mentee) : 0,
+  };
+}
+
+export function assignManagerMentorship(
+  state: ManagerCareerState,
+  players: ManagerCareerPlayerSeed[],
+  mentorId: string,
+  menteeId: string,
+): ManagerCareerState {
+  const eligibility = managerMentorshipEligibility(state, players, mentorId, menteeId);
+  if (!eligibility.eligible) return state;
+  const mentor = players.find((player) => player.id === mentorId)!;
+  const mentee = players.find((player) => player.id === menteeId)!;
+  const id = `${state.seed}:${state.date}:mentorship:${mentorId}:${menteeId}`;
+  return {
+    ...state,
+    mentorships: [
+      ...state.mentorships,
+      {
+        id,
+        mentorId,
+        menteeId,
+        startedOn: state.date,
+        cyclesCompleted: 0,
+        lastCycleBonus: 0,
+      },
+    ],
+    inbox: [
+      {
+        id: `${id}:assigned`,
+        kind: "result",
+        createdOn: state.date,
+        title: `${mentor.handle} begins mentoring ${mentee.handle}`,
+        body: `${mentee.handle} will receive +${eligibility.bonus} development progress after each event while the partnership remains active.`,
+        mandatory: false,
+        read: false,
+      },
+      ...state.inbox,
+    ],
+  };
+}
+
+export function endManagerMentorship(
+  state: ManagerCareerState,
+  mentorshipId: string,
+): ManagerCareerState {
+  if (state.activeEventId || !state.mentorships.some((pair) => pair.id === mentorshipId)) return state;
+  return {
+    ...state,
+    mentorships: state.mentorships.filter((pair) => pair.id !== mentorshipId),
   };
 }
 
@@ -1616,6 +3240,97 @@ export function resolveManagerPotentialInvestment(
         date: state.date,
         category: "development",
         description: `Potential Lab: ${player.handle} called ${choice} (${won ? "won" : "lost"})`,
+        amount: -cost,
+      },
+    ],
+  };
+}
+
+export function managerOvrLabCost(
+  state: Pick<ManagerCareerState, "trainingPlans" | "date">,
+  player: ManagerCareerPlayerSeed,
+) {
+  const currentOvr = managerTrainingPlan(state, player).currentOvr;
+  const qualityBase = currentOvr < 70
+    ? 90_000
+    : currentOvr < 75
+      ? 130_000
+      : currentOvr < 80
+        ? 180_000
+        : currentOvr < 85
+          ? 250_000
+          : currentOvr < 90
+            ? 350_000
+            : 500_000;
+  const premiumOverPotentialLab = Math.ceil((managerPotentialLabCost(state, player) * 1.75) / 5_000) * 5_000;
+  return Math.max(qualityBase, premiumOverPotentialLab);
+}
+
+export function managerOvrDiceResult(
+  state: Pick<ManagerCareerState, "seed" | "date" | "trainingPlans">,
+  player: ManagerCareerPlayerSeed,
+): ManagerOvrDiceResult {
+  const attempts = managerTrainingPlan(state, player).ovrLabAttempts;
+  return (stableHash(`${state.seed}:${state.date}:ovr-lab:${player.id}:${attempts + 1}`) % 4) as ManagerOvrDiceResult;
+}
+
+export function resolveManagerOvrInvestment(
+  state: ManagerCareerState,
+  player: ManagerCareerPlayerSeed,
+  result: ManagerOvrDiceResult,
+): ManagerCareerState {
+  const current = managerTrainingPlan(state, player);
+  const cost = managerOvrLabCost(state, player);
+  if (state.status !== "active" || state.cash < cost || current.currentOvr >= OVR_CAP) return state;
+  const contract = state.contracts.find((item) => item.playerId === player.id && item.status !== "expired");
+  if (!contract) return state;
+  const attempts = current.ovrLabAttempts + 1;
+  const appliedGain = Math.min(result, OVR_CAP - current.currentOvr);
+  const currentOvr = current.currentOvr + appliedGain;
+  const potentialOvr = Math.max(currentOvr, current.potentialOvr);
+  const baseStats = current.currentStats ?? player.stats;
+  const currentStats = baseStats
+    ? improveManagerTrainingStats(baseStats, player.role as Player["role"], "balanced", appliedGain)
+    : undefined;
+  const transactionId = `${state.seed}:${state.date}:ovr-lab:${player.id}:${attempts}`;
+  return {
+    ...state,
+    cash: state.cash - cost,
+    trainingPlans: [
+      ...state.trainingPlans.filter((plan) => plan.playerId !== player.id),
+      {
+        ...current,
+        currentOvr,
+        potentialOvr,
+        currentStats,
+        lastOvrChange: appliedGain,
+        lastUpdatedOn: state.date,
+        ovrLabAttempts: attempts,
+        ovrLabGains: current.ovrLabGains + appliedGain,
+        lastOvrLabOn: state.date,
+      },
+    ],
+    inbox: [
+      {
+        id: `${transactionId}:result`,
+        kind: "finance",
+        createdOn: state.date,
+        title: appliedGain > 0 ? `${player.handle} gains ${appliedGain} OVR in the Lab` : `${player.handle}'s OVR Lab roll comes up empty`,
+        body: appliedGain > 0
+          ? `${player.handle} rolled ${result} and improved from ${current.currentOvr} to ${currentOvr} OVR.`
+          : `${player.handle} rolled 0. The session was completed, but their OVR remains ${currentOvr}.`,
+        mandatory: false,
+        read: false,
+      },
+      ...state.inbox,
+    ],
+    ledger: [
+      ...state.ledger,
+      {
+        id: transactionId,
+        date: state.date,
+        category: "development",
+        description: `OVR Lab: ${player.handle} rolled ${result} (+${appliedGain} OVR)`,
         amount: -cost,
       },
     ],
@@ -1854,6 +3569,222 @@ function resolveManagerPerformanceCamps(state: ManagerCareerState, nextDate: str
   };
 }
 
+export function setManagerPreparationPlan(
+  state: ManagerCareerState,
+  plan: ManagerPreparationPlan,
+  targetSite: "A" | "B" = state.preparation.targetSite,
+): ManagerCareerState {
+  if (state.status !== "active" || state.activeEventId || !managerPreparationPlans.some((item) => item.id === plan)) return state;
+  if (state.preparation.activePlan === plan && state.preparation.targetSite === targetSite) return state;
+  return {
+    ...state,
+    preparation: {
+      ...state.preparation,
+      activePlan: plan,
+      targetSite,
+    },
+  };
+}
+
+export function managerScrimDateOptions(state: Pick<ManagerCareerState, "date">, days = 21) {
+  return Array.from({ length: Math.max(1, days) }, (_, index) => addDays(state.date, index + 1));
+}
+
+export function managerScrimLeakRisk(
+  state: Pick<ManagerCareerState, "preparation">,
+  scheduledFor: string,
+  intensity: ManagerScrimIntensity,
+  privacy: ManagerScrimPrivacy,
+) {
+  const recentLoad = state.preparation.scrims.filter((scrim) => (
+    scrim.status !== "cancelled"
+    && scrim.scheduledFor < scheduledFor
+    && daysBetween(scrim.scheduledFor, scheduledFor) <= 7
+  )).length;
+  const privacyRisk = privacy === "open" ? 26 : 8;
+  const intensityRisk = intensity === "intensive" ? 10 : intensity === "standard" ? 4 : 0;
+  return Math.min(75, privacyRisk + intensityRisk + recentLoad * 12);
+}
+
+export function managerScrimEligibility(
+  state: ManagerCareerState,
+  input: ManagerScrimInput,
+): ManagerScrimEligibility {
+  const reasons: string[] = [];
+  if (state.status !== "active") reasons.push("The manager career has ended");
+  if (state.activeEventId) reasons.push("Scrims cannot be booked during an active tournament");
+  if (input.scheduledFor <= state.date) reasons.push("Choose a future calendar date");
+  if (input.scheduledFor > addDays(state.date, 45)) reasons.push("Scrims can only be booked 45 days ahead");
+  if (!input.opponentId || input.opponentId === state.organizationId) reasons.push("Choose another organization as the practice opponent");
+  if (state.contracts.filter((contract) => contract.status !== "expired").length < 5) reasons.push("At least five contracted players are required");
+  if (state.preparation.scrims.some((scrim) => scrim.status === "scheduled" && scrim.scheduledFor === input.scheduledFor)) {
+    reasons.push("A scrim is already booked on this date");
+  }
+  const campConflict = state.performanceCamps.some((camp) => (
+    camp.status === "active" && rangesOverlap(input.scheduledFor, input.scheduledFor, camp.startsOn, camp.endsOn)
+  ));
+  if (campConflict) reasons.push("The squad is already committed to a performance camp");
+  const eventConflict = state.registrations.find((registration) => {
+    if (registration.status !== "confirmed" && registration.status !== "active") return false;
+    const event = managerEventById(registration.eventId);
+    if (!event) return false;
+    const startsOn = managerEventStartForRank(event, state.vrsRank, state.season);
+    const endsOn = event.majorCycle
+      ? managerMajorStageEnd(managerMajorEntryStage(state.vrsRank), state.season)
+      : managerEventSchedule(event, state.season).endsOn;
+    return rangesOverlap(input.scheduledFor, input.scheduledFor, startsOn, endsOn);
+  });
+  if (eventConflict) reasons.push(`${managerEventName(managerEventById(eventConflict.eventId)!, state.season)} occupies this date`);
+  return {
+    eligible: reasons.length === 0,
+    reasons,
+    leakRisk: managerScrimLeakRisk(state, input.scheduledFor, input.intensity, input.privacy),
+  };
+}
+
+export function scheduleManagerScrim(
+  state: ManagerCareerState,
+  input: ManagerScrimInput,
+): ManagerCareerState {
+  const eligibility = managerScrimEligibility(state, input);
+  if (!eligibility.eligible) return state;
+  const profile = managerScrimIntensityProfiles[input.intensity];
+  const openServerMastery = input.privacy === "open" ? 3 : 0;
+  const openServerFamiliarity = input.privacy === "open" ? 1 : 0;
+  const scrim: ManagerScrim = {
+    id: `${state.seed}:${state.date}:scrim:${input.opponentId}:${input.scheduledFor}:${state.preparation.scrims.length + 1}`,
+    opponentId: input.opponentId,
+    opponentName: input.opponentName,
+    map: input.map,
+    plan: state.preparation.activePlan,
+    targetSite: state.preparation.targetSite,
+    intensity: input.intensity,
+    privacy: input.privacy,
+    bookedOn: state.date,
+    scheduledFor: input.scheduledFor,
+    status: "scheduled",
+    masteryGain: profile.masteryGain + openServerMastery,
+    familiarityGain: profile.familiarityGain + openServerFamiliarity,
+    fatigueGain: profile.fatigueGain,
+    leakRisk: eligibility.leakRisk,
+  };
+  const plan = managerPreparationPlans.find((item) => item.id === scrim.plan)!;
+  return {
+    ...state,
+    preparation: { ...state.preparation, scrims: [...state.preparation.scrims, scrim] },
+    inbox: [
+      {
+        id: `${scrim.id}:booked`,
+        kind: "event",
+        createdOn: state.date,
+        title: `Scrim booked with ${input.opponentName}`,
+        body: `${profile.label} ${input.map.toUpperCase()} practice will rehearse ${plan.shortName}. Strategy exposure risk is ${eligibility.leakRisk}%.`,
+        deadline: input.scheduledFor,
+        mandatory: false,
+        read: false,
+      },
+      ...state.inbox,
+    ],
+  };
+}
+
+export function cancelManagerScrim(state: ManagerCareerState, scrimId: string): ManagerCareerState {
+  if (state.activeEventId) return state;
+  const scrim = state.preparation.scrims.find((item) => item.id === scrimId);
+  if (!scrim || scrim.status !== "scheduled" || scrim.scheduledFor <= state.date) return state;
+  return {
+    ...state,
+    preparation: {
+      ...state.preparation,
+      scrims: state.preparation.scrims.map((item) => item.id === scrimId ? { ...item, status: "cancelled" as const } : item),
+    },
+  };
+}
+
+export function managerMatchPreparation(
+  state: Pick<ManagerCareerState, "date" | "preparation">,
+  opponentId?: string,
+) {
+  const { activePlan, targetSite, mastery, fatigue, scrims } = state.preparation;
+  const leaked = scrims.some((scrim) => (
+    scrim.status === "completed"
+    && scrim.leaked
+    && scrim.plan === activePlan
+    && daysBetween(scrim.scheduledFor, state.date) <= 45
+    && (scrim.privacy === "open" || scrim.opponentId === opponentId)
+  ));
+  return {
+    plan: activePlan,
+    targetSite,
+    mastery: mastery[activePlan],
+    fatigue,
+    leaked,
+  };
+}
+
+function resolveManagerScrims(
+  state: ManagerCareerState,
+  fromDate: string,
+  nextDate: string,
+): ManagerCareerState {
+  const due = state.preparation.scrims
+    .filter((scrim) => scrim.status === "scheduled" && scrim.scheduledFor <= nextDate)
+    .sort((left, right) => left.scheduledFor.localeCompare(right.scheduledFor));
+  let fatigue = state.preparation.fatigue;
+  if (!due.length) {
+    fatigue = Math.max(0, fatigue - daysBetween(fromDate, nextDate) * 2);
+    return fatigue === state.preparation.fatigue
+      ? state
+      : { ...state, preparation: { ...state.preparation, fatigue } };
+  }
+  const activePlayerIds = new Set(state.contracts.filter((contract) => contract.status !== "expired").map((contract) => contract.playerId));
+  const mastery = { ...state.preparation.mastery };
+  let playerDynamics = state.playerDynamics;
+  const resolved = new Map<string, ManagerScrim>();
+  const resultItems: ManagerInboxItem[] = [];
+  let cursor = fromDate;
+  for (const scrim of due) {
+    fatigue = Math.max(0, fatigue - daysBetween(cursor, scrim.scheduledFor) * 2);
+    const leaked = stableHash(`${scrim.id}:strategy-leak`) % 100 < scrim.leakRisk;
+    const completed: ManagerScrim = { ...scrim, status: "completed", leaked };
+    resolved.set(scrim.id, completed);
+    mastery[scrim.plan] = clampScore(mastery[scrim.plan] + scrim.masteryGain);
+    fatigue = clampScore(fatigue + scrim.fatigueGain);
+    const formDelta = scrim.intensity === "light" ? 1 : scrim.intensity === "intensive" ? -2 : 0;
+    playerDynamics = playerDynamics.map((item) => activePlayerIds.has(item.playerId)
+      ? {
+          ...item,
+          familiarity: clampScore(item.familiarity + scrim.familiarityGain),
+          form: clampScore(item.form + formDelta),
+          lastUpdatedOn: scrim.scheduledFor,
+        }
+      : item);
+    const plan = managerPreparationPlans.find((item) => item.id === scrim.plan)!;
+    resultItems.push({
+      id: `${scrim.id}:complete`,
+      kind: "result",
+      createdOn: scrim.scheduledFor,
+      title: `${plan.shortName} scrim complete`,
+      body: `Practice against ${scrim.opponentName} added ${scrim.masteryGain} mastery and ${scrim.familiarityGain} squad familiarity.${leaked ? " Analysts believe the playbook was exposed." : " The session remained private."}`,
+      mandatory: leaked,
+      read: false,
+    });
+    cursor = scrim.scheduledFor;
+  }
+  fatigue = Math.max(0, fatigue - daysBetween(cursor, nextDate) * 2);
+  return {
+    ...state,
+    playerDynamics,
+    preparation: {
+      ...state.preparation,
+      mastery,
+      fatigue,
+      scrims: state.preparation.scrims.map((scrim) => resolved.get(scrim.id) ?? scrim),
+    },
+    inbox: [...resultItems.reverse(), ...state.inbox],
+  };
+}
+
 function managerTrainingAgeBase(age: number) {
   if (age <= 19) return 32;
   if (age <= 22) return 25;
@@ -1904,6 +3835,14 @@ export function resolveManagerTrainingCycle(
   const activeIds = new Set(state.contracts
     .filter((contract) => contract.status !== "expired")
     .map((contract) => contract.playerId));
+  const playerById = new Map(players.map((player) => [player.id, player]));
+  const activeMentorships = state.mentorships.filter((pair) => (
+    activeIds.has(pair.mentorId)
+    && activeIds.has(pair.menteeId)
+    && playerById.has(pair.mentorId)
+    && playerById.has(pair.menteeId)
+  ));
+  const mentorshipByMentee = new Map(activeMentorships.map((pair) => [pair.menteeId, pair]));
   const planByPlayer = new Map(state.trainingPlans.map((plan) => [plan.playerId, plan]));
   const placementBonus = placement === "champion" ? 8 : placement === "runner-up" ? 6 : placement === "top4" ? 4 : placement === "top8" ? 2 : 0;
   const reports: ManagerTrainingReport[] = [];
@@ -1920,9 +3859,14 @@ export function resolveManagerTrainingCycle(
       : 0;
     const focusBonus = plan.focus === "recovery" ? 0 : plan.focus === "balanced" ? 6 : 10;
     const participation = played ? 1 : 0.48;
+    const mentorship = mentorshipByMentee.get(player.id);
+    const mentor = mentorship ? playerById.get(mentorship.mentorId) : undefined;
+    const mentorshipBonus = before < potential && mentor
+      ? managerMentorshipTrainingBonus(mentor, player)
+      : 0;
     const rawProgress = (managerTrainingAgeBase(player.age ?? 24) + focusBonus + performancePoints + placementBonus) * participation;
     const progressEarned = before < potential
-      ? Math.max(3, Math.round(rawProgress * (plan.focus === "recovery" ? 0.45 : 1)))
+      ? Math.max(3, Math.round(rawProgress * (plan.focus === "recovery" ? 0.45 : 1)) + mentorshipBonus)
       : 0;
     const accumulated = plan.progress + progressEarned;
     const ovrGain = accumulated >= 100 && before < potential ? 1 : 0;
@@ -1945,6 +3889,7 @@ export function resolveManagerTrainingCycle(
       before,
       after,
       rating: played ? rating : undefined,
+      mentorshipBonus,
     });
     return { ...player, ovr: after, potential, stats: currentStats };
   });
@@ -1953,16 +3898,32 @@ export function resolveManagerTrainingCycle(
     nextPlans.push(plan);
   });
   const recoveryIds = new Set(nextPlans.filter((plan) => plan.focus === "recovery").map((plan) => plan.playerId));
-  const playerDynamics = state.playerDynamics.map((item) => recoveryIds.has(item.playerId)
-    ? {
-        ...item,
-        morale: clampScore(item.morale + 7),
-        form: clampScore(item.form + 6),
-        lastUpdatedOn: state.date,
-      }
-    : item);
+  const mentorIds = new Set(activeMentorships.map((pair) => pair.mentorId));
+  const menteeIds = new Set(activeMentorships.map((pair) => pair.menteeId));
+  const playerDynamics = state.playerDynamics.map((item) => {
+    const recovering = recoveryIds.has(item.playerId);
+    const mentoring = mentorIds.has(item.playerId);
+    const mentored = menteeIds.has(item.playerId);
+    if (!recovering && !mentoring && !mentored) return item;
+    return {
+      ...item,
+      morale: clampScore(item.morale + (recovering ? 7 : 0) + (mentored ? 1 : 0)),
+      familiarity: clampScore(item.familiarity + (mentoring ? 2 : 0) + (mentored ? 3 : 0)),
+      form: clampScore(item.form + (recovering ? 6 : 0)),
+      lastUpdatedOn: state.date,
+    };
+  });
+  const reportByPlayer = new Map(reports.map((report) => [report.playerId, report]));
+  const mentorships = state.mentorships.map((pair) => {
+    if (!activeMentorships.some((active) => active.id === pair.id)) return pair;
+    return {
+      ...pair,
+      cyclesCompleted: pair.cyclesCompleted + 1,
+      lastCycleBonus: reportByPlayer.get(pair.menteeId)?.mentorshipBonus ?? 0,
+    };
+  });
   return {
-    state: { ...state, trainingPlans: nextPlans, playerDynamics },
+    state: { ...state, trainingPlans: nextPlans, playerDynamics, mentorships },
     players: nextPlayers,
     reports,
   };
@@ -2129,6 +4090,19 @@ export function managerEventById(id: string | undefined) {
   return managerEvents.find((event) => event.id === id);
 }
 
+/** Open and seeded fields must never bypass their advertised VRS eligibility window. */
+export function managerWorldTeamEligibleForEvent(
+  event: Pick<ManagerEvent, "rankMin" | "rankMax" | "lfoEligible">,
+  team: { id: string; rank?: number },
+) {
+  if (team.id === "manager-lfo") return Boolean(event.lfoEligible);
+  const rank = team.rank ?? Number.POSITIVE_INFINITY;
+  if (team.id.startsWith("manager-") && managerRevivalOrganizationDefinitions.some((organization) => organization.id === team.id)) {
+    return Boolean(event.lfoEligible) || (rank >= event.rankMin && rank <= event.rankMax);
+  }
+  return rank >= event.rankMin && rank <= event.rankMax;
+}
+
 const legacyManagerMajorStages: Record<string, ManagerMajorStage> = {
   "fall-mrq-2026": "mrq",
   "fall-major-mrq-2026": "mrq",
@@ -2204,6 +4178,7 @@ export function createManagerCareer(seed: string, start: ManagerCareerStart = {}
     vrsRank,
     vrsProfile,
     worldVrs,
+    revivedOrganizations: [],
     reputation,
     boardConfidence: 68,
     registrations: [automaticManagerMajorRegistration(MANAGER_START_DATE, contracts)],
@@ -2211,6 +4186,8 @@ export function createManagerCareer(seed: string, start: ManagerCareerStart = {}
     contracts,
     playerDynamics: createPlayerDynamics(seed, contracts),
     trainingPlans: createManagerTrainingPlans(start.players ?? [], MANAGER_START_DATE),
+    mentorships: [],
+    preparation: createManagerPreparationState(),
     performanceCamps: [],
     casinoVisits: [],
     boardObjective: createBoardObjective(seed, vrsRank, 1),
@@ -2225,6 +4202,7 @@ export function createManagerCareer(seed: string, start: ManagerCareerStart = {}
         amount: openingCash,
       },
     ],
+    availableSponsors: generateManagerSponsors(seed, vrsRank, 1),
   };
   const ready: ManagerCareerState = {
     ...state,
@@ -2234,7 +4212,7 @@ export function createManagerCareer(seed: string, start: ManagerCareerStart = {}
         kind: "welcome",
         createdOn: MANAGER_START_DATE,
         title: `Welcome to ${organizationName}`,
-        body: "Audit the inherited contracts and review the calendar. Your Valve-funded Major entry is already assigned; its starting stage will follow launch-day VRS.",
+        body: "Audit the inherited contracts and review the calendar. Check out the Sponsorships desk to secure a seasonal partner stipend and performance bonuses!",
         eventId: managerEvents[0].id,
         deadline: managerEvents[0].registrationDeadline,
         mandatory: false,
@@ -2243,6 +4221,111 @@ export function createManagerCareer(seed: string, start: ManagerCareerStart = {}
     ],
   };
   return worldVrs.teams.length ? rankManagerVrsAt(ready, MANAGER_START_DATE) : ready;
+}
+
+export function generateManagerSponsors(seed: string, vrsRank: number, season: number): ManagerSponsorDeal[] {
+  const baseRankBonus = Math.max(1, 35 - Math.min(30, vrsRank)) * 1200;
+  return [
+    {
+      id: `${seed}:sponsor:hardware:s${season}`,
+      name: "Logitech G / Pro Gear",
+      tier: "standard",
+      monthlyStipend: 18_000 + baseRankBonus,
+      bonusCondition: "major_qualification",
+      bonusDescription: "Reach Stage 2 / Main Stage of the Major",
+      bonusAmount: 45_000,
+      majorCyclesRemaining: 2,
+    },
+    {
+      id: `${seed}:sponsor:energy:s${season}`,
+      name: "Monster Energy / Red Bull",
+      tier: "premium",
+      monthlyStipend: 28_000 + baseRankBonus * 1.4,
+      bonusCondition: "playoffs",
+      bonusDescription: "Reach the Major Playoff Quarterfinals",
+      bonusAmount: 85_000,
+      majorCyclesRemaining: 2,
+    },
+    {
+      id: `${seed}:sponsor:title:s${season}`,
+      name: "Rivalry / HyperX Global",
+      tier: "title",
+      monthlyStipend: 42_000 + baseRankBonus * 2,
+      bonusCondition: "championship",
+      bonusDescription: "Win the Major Championship Trophy",
+      bonusAmount: 175_000,
+      majorCyclesRemaining: 2,
+    },
+  ];
+}
+
+export function signManagerSponsor(state: ManagerCareerState, sponsorId: string): ManagerCareerState {
+  const sponsor = state.availableSponsors?.find((s) => s.id === sponsorId);
+  if (!sponsor) return state;
+
+  const nextLedgerEntry: ManagerLedgerEntry = {
+    id: `${state.seed}:sponsor-sign:${Date.now()}`,
+    date: state.date,
+    category: "sponsorship",
+    description: `Signed sponsorship agreement with ${sponsor.name}`,
+    amount: sponsor.monthlyStipend,
+  };
+
+  return {
+    ...state,
+    cash: state.cash + sponsor.monthlyStipend,
+    activeSponsor: { ...sponsor },
+    availableSponsors: state.availableSponsors?.filter((s) => s.id !== sponsorId),
+    ledger: [nextLedgerEntry, ...state.ledger],
+    inbox: [
+      {
+        id: `${state.seed}:sponsor-signed-mail:${Date.now()}`,
+        kind: "finance",
+        createdOn: state.date,
+        title: `Sponsorship Secured: ${sponsor.name}`,
+        body: `Your organization partnered with ${sponsor.name}. An upfront monthly stipend of $${sponsor.monthlyStipend.toLocaleString()} has been credited. Complete the bonus objective (${sponsor.bonusDescription}) for a +$${sponsor.bonusAmount.toLocaleString()} payout!`,
+        mandatory: false,
+        read: false,
+      },
+      ...state.inbox,
+    ],
+  };
+}
+
+export function checkAndAwardSponsorBonus(
+  state: ManagerCareerState,
+  achievedCondition: "playoffs" | "major_qualification" | "top_10_vrs" | "championship",
+): ManagerCareerState {
+  if (!state.activeSponsor || state.activeSponsor.bonusClaimed) return state;
+  if (state.activeSponsor.bonusCondition !== achievedCondition && achievedCondition !== "championship") return state;
+
+  const bonus = state.activeSponsor.bonusAmount;
+  const nextLedgerEntry: ManagerLedgerEntry = {
+    id: `${state.seed}:sponsor-bonus:${Date.now()}`,
+    date: state.date,
+    category: "sponsorship",
+    description: `Sponsor performance bonus (${state.activeSponsor.name})`,
+    amount: bonus,
+  };
+
+  return {
+    ...state,
+    cash: state.cash + bonus,
+    activeSponsor: { ...state.activeSponsor, bonusClaimed: true },
+    ledger: [nextLedgerEntry, ...state.ledger],
+    inbox: [
+      {
+        id: `${state.seed}:sponsor-bonus-mail:${Date.now()}`,
+        kind: "finance",
+        createdOn: state.date,
+        title: `Sponsor Milestone Met: +$${bonus.toLocaleString()}`,
+        body: `Congratulations! ${state.activeSponsor.name} has paid out your performance bonus of $${bonus.toLocaleString()} for fulfilling the milestone: "${state.activeSponsor.bonusDescription}".`,
+        mandatory: false,
+        read: false,
+      },
+      ...state.inbox,
+    ],
+  };
 }
 
 function normalizeManagerWorldVrs(
@@ -2455,11 +4538,35 @@ export function normalizeManagerCareer(
     return {
       ...plan,
       currentOvr,
-      potentialOvr: Math.max(currentOvr, plan.potentialOvr ?? player?.potential ?? player?.ovr ?? currentOvr),
+      potentialOvr: Math.max(currentOvr, plan.potentialOvr ?? 0, player?.potential ?? player?.ovr ?? currentOvr),
       potentialLabAttempts: plan.potentialLabAttempts ?? 0,
       potentialLabWins: plan.potentialLabWins ?? 0,
+      ovrLabAttempts: plan.ovrLabAttempts ?? 0,
+      ovrLabGains: plan.ovrLabGains ?? 0,
     };
   });
+  const activeContractIds = new Set(contracts
+    .filter((contract) => contract.status !== "expired")
+    .map((contract) => contract.playerId));
+  const mentorshipPlayerIds = new Set<string>();
+  const mentorships: ManagerMentorship[] = [];
+  for (const pair of saved.mentorships ?? []) {
+    if (
+      mentorships.length >= MANAGER_MAX_MENTORSHIPS
+      || pair.mentorId === pair.menteeId
+      || !activeContractIds.has(pair.mentorId)
+      || !activeContractIds.has(pair.menteeId)
+      || mentorshipPlayerIds.has(pair.mentorId)
+      || mentorshipPlayerIds.has(pair.menteeId)
+    ) continue;
+    mentorshipPlayerIds.add(pair.mentorId);
+    mentorshipPlayerIds.add(pair.menteeId);
+    mentorships.push({
+      ...pair,
+      cyclesCompleted: pair.cyclesCompleted ?? 0,
+      lastCycleBonus: pair.lastCycleBonus ?? 0,
+    });
+  }
   const normalized: ManagerCareerState = {
     ...base,
     ...saved,
@@ -2481,6 +4588,10 @@ export function normalizeManagerCareer(
       base.worldVrs,
       normalizedDate,
     ),
+    lfoTeam: saved.lfoTeam
+      ? { ...saved.lfoTeam, generation: saved.lfoTeam.generation ?? 1 }
+      : undefined,
+    revivedOrganizations: saved.revivedOrganizations ?? [],
     activeEventId,
     activeMajorStage,
     activeEventStage,
@@ -2489,6 +4600,8 @@ export function normalizeManagerCareer(
     contracts,
     playerDynamics,
     trainingPlans,
+    mentorships,
+    preparation: normalizeManagerPreparationState(saved.preparation),
     performanceCamps: saved.performanceCamps ?? [],
     casinoVisits: saved.casinoVisits ?? [],
     boardObjective: saved.boardObjective
@@ -2511,6 +4624,26 @@ export function normalizeManagerCareer(
     },
     inbox: saved.inbox ?? base.inbox,
     ledger,
+  };
+  const normalizedWorldEvents = normalized.worldVrs.events.map((result) => managerWorldEventSnapshot(normalized, result));
+  const officialFields = new Map(normalizedWorldEvents.map((result) => [
+    `${result.eventId}:${result.completedOn}`,
+    new Set(result.placements.map((placement) => placement.teamId)),
+  ]));
+  const removeNonParticipantEvidence = (profile: VrsProfile, teamId: string): VrsProfile => ({
+    ...profile,
+    events: profile.events.filter((evidence) => {
+      const official = officialFields.get(`${evidence.eventId}:${evidence.completedOn}`);
+      return !official || official.has(teamId);
+    }),
+  });
+  normalized.vrsProfile = removeNonParticipantEvidence(normalized.vrsProfile, normalized.organizationId);
+  normalized.worldVrs = {
+    teams: normalized.worldVrs.teams.map((team) => ({
+      ...team,
+      profile: removeNonParticipantEvidence(team.profile, team.id),
+    })),
+    events: normalizedWorldEvents,
   };
   const activeMajor = activeEventId ? managerEventById(activeEventId) : undefined;
   const migrated = (saved.version ?? 0) < MANAGER_CAREER_VERSION && activeMajor?.majorCycle && activeMajorStage
@@ -2611,6 +4744,19 @@ export function evaluateManagerContractRenewal(
       reasons: ["Renewal talks open in the final Major cycle of the contract"],
     };
   }
+  const currentCycles = contract.status === "expired" ? 0 : contract.majorCyclesRemaining;
+  if (
+    terms.majorCycles < 1
+    || terms.majorCycles > MANAGER_MAX_CONTRACT_CYCLES
+    || currentCycles + terms.majorCycles > MANAGER_MAX_CONTRACT_CYCLES
+  ) {
+    return {
+      accepted: false,
+      score: 0,
+      askingSalary: managerRecommendedSalary(player, state),
+      reasons: ["The renewed contract cannot exceed five years in total"],
+    };
+  }
   const marketSalary = managerRecommendedSalary(player, state);
   const askingSalary = roundTo(marketSalary * (contract.status === "expired" ? 1.05 : 1), 250);
   const normalizedTerms = {
@@ -2661,6 +4807,7 @@ export function releaseManagerPlayerContract(
     cash: state.cash - releaseCost,
     contracts: state.contracts.filter((item) => item.playerId !== playerId),
     trainingPlans: state.trainingPlans.filter((plan) => plan.playerId !== playerId),
+    mentorships: state.mentorships.filter((pair) => pair.mentorId !== playerId && pair.menteeId !== playerId),
     registrations: state.registrations.map((registration) => ({
       ...registration,
       lockedRosterIds: registration.lockedRosterIds.filter((id) => id !== playerId),
@@ -2697,13 +4844,16 @@ export function renewManagerPlayerContract(
 ): ManagerCareerState {
   const contract = state.contracts.find((item) => item.playerId === player.id);
   const activeContracts = state.contracts.filter((item) => item.status !== "expired");
+  const currentCycles = contract?.status === "expired" ? 0 : (contract?.majorCyclesRemaining ?? 0);
+  const renewedCycles = currentCycles + terms.majorCycles;
   if (
     !contract
     || (contract.status !== "expired" && contract.majorCyclesRemaining > 1)
     || (contract.status === "expired" && activeContracts.length >= 8)
     || terms.monthlySalary < 1_000
     || terms.majorCycles < 1
-    || terms.majorCycles > 4
+    || terms.majorCycles > MANAGER_MAX_CONTRACT_CYCLES
+    || renewedCycles > MANAGER_MAX_CONTRACT_CYCLES
   ) return state;
 
   const evaluation = evaluateManagerContractRenewal(state, contract, player, terms);
@@ -2744,9 +4894,9 @@ export function renewManagerPlayerContract(
   const renewedContract: ManagerPlayerContract = {
     ...contract,
     signedOn: state.date,
-    majorCyclesRemaining: terms.majorCycles,
+    majorCyclesRemaining: renewedCycles,
     monthlySalary: terms.monthlySalary,
-    buyout: Math.max(25_000, roundTo(terms.monthlySalary * terms.majorCycles * 10, 5_000)),
+    buyout: Math.max(25_000, roundTo(terms.monthlySalary * renewedCycles * 10, 5_000)),
     squadRole: terms.squadRole,
     status: contract.status === "active" ? "active" : "bench",
     salaryModelVersion: MANAGER_SALARY_MODEL_VERSION,
@@ -2808,7 +4958,7 @@ export function submitManagerFreeAgentOffer(
     || activeContracts.length >= 8
     || terms.monthlySalary < 1_000
     || terms.majorCycles < 1
-    || terms.majorCycles > 4
+    || terms.majorCycles > MANAGER_MAX_CONTRACT_CYCLES
   ) return state;
   const evaluation = evaluateManagerOffer(state, player, terms);
   const signingBonus = terms.monthlySalary;
@@ -2985,9 +5135,9 @@ export function managerPlayerTradeValue(player: ManagerCareerPlayerSeed) {
   return playerValue(player);
 }
 
-function managerIncomingOfferTransferAllowed(state: ManagerCareerState, playerId: string, onDate = state.date) {
+function managerIncomingOfferTransferAllowed(state: ManagerCareerState, playerId: string, onDate = state.date, isTrade = false) {
   const eligibleContracts = state.contracts.filter((contract) => contract.status !== "expired");
-  return eligibleContracts.length > 5
+  return (eligibleContracts.length > 5 || isTrade)
     && eligibleContracts.some((contract) => contract.playerId === playerId)
     && !managerTradeLockingEvent(state, playerId, onDate);
 }
@@ -3016,29 +5166,83 @@ export function createManagerIncomingOffer(
     .map((contract) => contract.playerId));
   const contractByPlayer = new Map(state.contracts.map((contract) => [contract.playerId, contract]));
   const targets = managedPlayers.filter((player) => contractedIds.has(player.id));
-  const candidates = worldTeams.flatMap((team) => team.players.flatMap((displacedPlayer) => targets
-    .filter((targetPlayer) => (
-      targetPlayer.role === displacedPlayer.role
-      && targetPlayer.id !== displacedPlayer.id
-      && targetPlayer.ovr >= displacedPlayer.ovr - 2
-    ))
-    .map((targetPlayer) => {
+  if (!targets.length) return state;
+
+  const candidates = worldTeams.flatMap((team) => {
+    const teamRoles: Record<string, number> = { AWP: 0, IGL: 0, Support: 0, Entry: 0, Lurker: 0, Rifler: 0 };
+    team.players.forEach((p) => {
+      teamRoles[p.role] = (teamRoles[p.role] ?? 0) + 1;
+    });
+
+    const isTopTeam = (team.rank ?? 64) <= 5;
+    const missingAwp = teamRoles.AWP === 0;
+    const missingIgl = teamRoles.IGL === 0;
+    const missingSupport = teamRoles.Support === 0;
+    const missingEntry = teamRoles.Entry === 0;
+    const missingLurker = teamRoles.Lurker === 0 && teamRoles.Rifler === 0;
+
+    return team.players.flatMap((displacedPlayer) => targets.map((targetPlayer) => {
+      const isRoleSolution =
+        (targetPlayer.role === "AWP" && missingAwp) ||
+        (targetPlayer.role === "IGL" && missingIgl) ||
+        (targetPlayer.role === "Support" && missingSupport) ||
+        (targetPlayer.role === "Entry" && missingEntry) ||
+        (targetPlayer.role === "Lurker" && missingLurker);
+
+      const isSameRoleUpgrade = targetPlayer.role === displacedPlayer.role && targetPlayer.ovr >= displacedPlayer.ovr - 1;
+      if (!isRoleSolution && !isSameRoleUpgrade) return null;
+
+      let roleNeedScore = 0;
+      if (isRoleSolution) {
+        if (targetPlayer.role === "AWP") roleNeedScore = 95;
+        else if (targetPlayer.role === "IGL") roleNeedScore = 90;
+        else if (targetPlayer.role === "Support") roleNeedScore = 75;
+        else if (targetPlayer.role === "Entry") roleNeedScore = 65;
+        else roleNeedScore = 60;
+
+        if (isTopTeam) roleNeedScore -= 30; // top teams are already working well
+      } else {
+        roleNeedScore = (targetPlayer.ovr - displacedPlayer.ovr) * 15;
+      }
+
       const contract = contractByPlayer.get(targetPlayer.id);
-      const value = Math.max(managerPlayerTradeValue(targetPlayer), contract?.buyout ?? 0);
-      const clubPremium = (team.rank ?? 64) <= 8 ? 1.2 : (team.rank ?? 64) <= 20 ? 1.08 : 1;
-      const buyerLimit = Math.max(25_000, roundTo(value * clubPremium * (1.02 + (stableHash(`${state.seed}:${onDate}:${team.id}:${targetPlayer.id}:limit`) % 15) / 100), 5_000));
-      const openingRatio = 0.78 + (stableHash(`${state.seed}:${onDate}:${team.id}:${targetPlayer.id}:opening`) % 13) / 100;
+      const targetValue = Math.max(managerPlayerTradeValue(targetPlayer), contract?.buyout ?? 0);
+      const clubPremium = (team.rank ?? 64) <= 8 ? 1.25 : (team.rank ?? 64) <= 20 ? 1.12 : 1;
+      const buyerLimit = Math.max(25_000, roundTo(targetValue * clubPremium * (1.05 + (stableHash(`${state.seed}:${onDate}:${team.id}:${targetPlayer.id}:limit`) % 15) / 100), 5_000));
+
+      const hasSurplusInRole = (teamRoles[displacedPlayer.role] ?? 0) > 1;
+      const wantsPlayerTrade = hasSurplusInRole || (stableHash(`${state.seed}:${onDate}:${team.id}:${targetPlayer.id}:trade`) % 100) < 20;
+      let cashOffered = 0;
+      let offeredPlayer: ManagerCareerPlayerSeed | undefined = undefined;
+
+      if (wantsPlayerTrade && displacedPlayer && displacedPlayer.id !== targetPlayer.id) {
+        offeredPlayer = displacedPlayer;
+        const displacedValue = managerPlayerTradeValue(displacedPlayer);
+        const diff = targetValue - displacedValue;
+        cashOffered = diff > 5_000 ? Math.max(10_000, roundTo(diff * 0.85, 5_000)) : 0;
+      } else {
+        const openingRatio = 0.82 + (stableHash(`${state.seed}:${onDate}:${team.id}:${targetPlayer.id}:opening`) % 12) / 100;
+        cashOffered = Math.max(20_000, roundTo(buyerLimit * openingRatio, 5_000));
+      }
+
+      const totalScore = roleNeedScore + (targetPlayer.ovr - 80) * 8 + Math.max(0, 32 - (team.rank ?? 64)) + (stableHash(`${state.seed}:${onDate}:${team.id}:${targetPlayer.id}:rnd`) % 25);
+
       return {
         team,
         displacedPlayer,
         targetPlayer,
+        offeredPlayer,
+        isTrade: Boolean(offeredPlayer),
         buyerLimit,
-        cashOffered: Math.max(20_000, roundTo(buyerLimit * openingRatio, 5_000)),
-        score: (targetPlayer.ovr - displacedPlayer.ovr) * 20
-          + Math.max(0, 30 - (team.rank ?? 64))
-          + stableHash(`${state.seed}:${onDate}:${team.id}:${targetPlayer.id}:score`) % 35,
+        cashOffered,
+        score: totalScore,
+        reason: isRoleSolution
+          ? `${team.name} urgently needs a proven ${targetPlayer.role} to balance their lineup`
+          : `${team.name} wants an upgrade at ${targetPlayer.role} (${targetPlayer.ovr} OVR)`,
       };
-    })));
+    })).filter((c): c is NonNullable<typeof c> => c !== null);
+  });
+
   const selected = candidates.sort((left, right) => right.score - left.score || left.team.id.localeCompare(right.team.id))[0];
   if (!selected) return state;
 
@@ -3049,16 +5253,21 @@ export function createManagerIncomingOffer(
     buyerTeamName: selected.team.name,
     targetPlayer: selected.targetPlayer,
     displacedPlayer: selected.displacedPlayer,
+    offeredPlayer: selected.offeredPlayer,
+    isTrade: selected.isTrade,
     createdOn: onDate,
     expiresOn,
     cashOffered: selected.cashOffered,
     buyerLimit: selected.buyerLimit,
     status: "pending",
     reasons: [
-      `${selected.team.name} wants an upgrade at ${selected.targetPlayer.role}`,
-      `${selected.targetPlayer.handle}'s current level and contract control shaped the valuation`,
+      selected.reason,
+      selected.isTrade
+        ? `Offer includes ${selected.offeredPlayer?.handle} (${selected.offeredPlayer?.role} / ${selected.offeredPlayer?.ovr} OVR)${selected.cashOffered > 0 ? ` plus $${selected.cashOffered.toLocaleString()} cash` : ""}`
+        : `${selected.targetPlayer.handle}'s current level and contract control shaped the valuation`,
     ],
   };
+
   return {
     ...state,
     market: {
@@ -3070,8 +5279,12 @@ export function createManagerIncomingOffer(
         id: inboxId(state, `incoming-offer:${offer.id}`),
         kind: "market",
         createdOn: onDate,
-        title: `${selected.team.name} bid for ${selected.targetPlayer.handle}`,
-        body: `The club has offered $${selected.cashOffered.toLocaleString()}. Accept, counter, or decline before ${expiresOn}.`,
+        title: selected.isTrade
+          ? `${selected.team.name} proposes trade for ${selected.targetPlayer.handle}`
+          : `${selected.team.name} bid for ${selected.targetPlayer.handle}`,
+        body: selected.isTrade
+          ? `${selected.team.name} wants to acquire ${selected.targetPlayer.handle} in exchange for ${selected.offeredPlayer?.handle}${selected.cashOffered > 0 ? ` + $${selected.cashOffered.toLocaleString()}` : ""}.`
+          : `The club has offered $${selected.cashOffered.toLocaleString()}. Accept, counter, or decline before ${expiresOn}.`,
         offerId: offer.id,
         deadline: expiresOn,
         mandatory: true,
@@ -3089,14 +5302,46 @@ function applyManagerIncomingOffer(
   appliedOn: string,
 ): ManagerCareerState {
   const offer = state.market.incomingOffers.find((item) => item.id === offerId);
-  if (!offer || offer.appliedOn || !managerIncomingOfferTransferAllowed(state, offer.targetPlayer.id, appliedOn)) return state;
-  const contracts = state.contracts.filter((contract) => contract.playerId !== offer.targetPlayer.id);
+  if (!offer || offer.appliedOn || !managerIncomingOfferTransferAllowed(state, offer.targetPlayer.id, appliedOn, Boolean(offer.offeredPlayer))) return state;
+
+  let contracts = state.contracts.filter((contract) => contract.playerId !== offer.targetPlayer.id);
+  let playerDynamics = state.playerDynamics.filter((item) => item.playerId !== offer.targetPlayer.id);
+
+  if (offer.offeredPlayer) {
+    const newSalary = managerRecommendedSalary(offer.offeredPlayer);
+    const newContract: ManagerPlayerContract = {
+      id: `${state.seed}:contract:${offer.offeredPlayer.id}`,
+      playerId: offer.offeredPlayer.id,
+      playerHandle: offer.offeredPlayer.handle,
+      playerRole: offer.offeredPlayer.role,
+      signedOn: appliedOn,
+      majorCyclesRemaining: 2,
+      monthlySalary: newSalary,
+      buyout: Math.max(25_000, roundTo(newSalary * 20, 5_000)),
+      squadRole: "starter",
+      status: "active",
+      salaryModelVersion: MANAGER_SALARY_MODEL_VERSION,
+    };
+    contracts = [...contracts, newContract];
+    playerDynamics = [
+      ...playerDynamics,
+      {
+        playerId: offer.offeredPlayer.id,
+        morale: 76,
+        familiarity: 68,
+        form: 50,
+        lastUpdatedOn: appliedOn,
+      },
+    ];
+  }
+
   const next: ManagerCareerState = {
     ...state,
     cash: state.cash + cash,
     contracts,
+    playerDynamics,
     trainingPlans: state.trainingPlans.filter((plan) => plan.playerId !== offer.targetPlayer.id),
-    playerDynamics: state.playerDynamics.filter((item) => item.playerId !== offer.targetPlayer.id),
+    mentorships: state.mentorships.filter((pair) => pair.mentorId !== offer.targetPlayer.id && pair.menteeId !== offer.targetPlayer.id),
     registrations: state.registrations.map((registration) => {
       const event = managerEventById(registration.eventId);
       if (
@@ -3109,7 +5354,9 @@ function applyManagerIncomingOffer(
     }),
     market: {
       ...state.market,
-      signedPlayerIds: state.market.signedPlayerIds.filter((id) => id !== offer.targetPlayer.id),
+      signedPlayerIds: offer.offeredPlayer
+        ? [...state.market.signedPlayerIds.filter((id) => id !== offer.targetPlayer.id), offer.offeredPlayer.id]
+        : state.market.signedPlayerIds.filter((id) => id !== offer.targetPlayer.id),
       unavailablePlayerIds: Array.from(new Set([...state.market.unavailablePlayerIds, offer.targetPlayer.id])),
       incomingOffers: state.market.incomingOffers.map((item) => item.id === offerId
         ? { ...item, status: "accepted" as const, appliedOn, cashOffered: cash, responseOn: undefined }
@@ -3131,7 +5378,9 @@ function applyManagerIncomingOffer(
         id: ledgerId(state, `incoming-transfer:${offer.targetPlayer.id}`),
         date: appliedOn,
         category: "transfer",
-        description: `${offer.targetPlayer.handle} sold to ${offer.buyerTeamName}`,
+        description: offer.offeredPlayer
+          ? `${offer.targetPlayer.handle} traded to ${offer.buyerTeamName} for ${offer.offeredPlayer.handle}${cash > 0 ? ` + $${cash.toLocaleString()}` : ""}`
+          : `${offer.targetPlayer.handle} sold to ${offer.buyerTeamName}`,
         amount: cash,
       },
     ],
@@ -3140,8 +5389,12 @@ function applyManagerIncomingOffer(
         id: inboxId(state, `incoming-complete:${offer.id}`),
         kind: "market",
         createdOn: appliedOn,
-        title: `${offer.targetPlayer.handle} joins ${offer.buyerTeamName}`,
-        body: `${offer.buyerTeamName} paid $${cash.toLocaleString()}. The transfer is complete and the player has left the contracted squad.`,
+        title: offer.offeredPlayer
+          ? `Trade Complete: ${offer.targetPlayer.handle} ↔ ${offer.offeredPlayer.handle}`
+          : `${offer.targetPlayer.handle} joins ${offer.buyerTeamName}`,
+        body: offer.offeredPlayer
+          ? `${offer.buyerTeamName} completed the trade. ${offer.offeredPlayer.handle} joins your squad${cash > 0 ? ` with $${cash.toLocaleString()} cash` : ""}.`
+          : `${offer.buyerTeamName} paid $${cash.toLocaleString()}. The transfer is complete and the player has left the contracted squad.`,
         offerId: offer.id,
         mandatory: false,
         read: false,
@@ -3296,6 +5549,7 @@ function applyManagerTrade(state: ManagerCareerState, offerId: string, appliedOn
       ...state.trainingPlans.filter((plan) => plan.playerId !== offer.outgoing.id && plan.playerId !== offer.incoming.id),
       createManagerTrainingPlan(offer.incoming, appliedOn),
     ],
+    mentorships: state.mentorships.filter((pair) => pair.mentorId !== offer.outgoing.id && pair.menteeId !== offer.outgoing.id),
     playerDynamics: [
       ...state.playerDynamics.filter((item) => item.playerId !== offer.incoming.id && item.playerId !== offer.outgoing.id),
       {
@@ -3834,6 +6088,15 @@ export function managerEventEligibility(
       ),
     );
   if (conflict) reasons.push(`Schedule conflict with ${conflict.shortName}`);
+  const scrimConflict = state.preparation.scrims.find((scrim) => (
+    scrim.status === "scheduled"
+    && rangesOverlap(schedule.startsOn, schedule.endsOn, scrim.scheduledFor, scrim.scheduledFor)
+  ));
+  if (scrimConflict) reasons.push(`Schedule conflict with the ${scrimConflict.opponentName} scrim`);
+  const campConflict = state.performanceCamps.find((camp) => (
+    camp.status === "active" && rangesOverlap(schedule.startsOn, schedule.endsOn, camp.startsOn, camp.endsOn)
+  ));
+  if (campConflict) reasons.push("Schedule conflict with the active performance camp");
   return { eligible: reasons.length === 0, reasons, totalCost };
 }
 
@@ -4074,25 +6337,36 @@ export function completeManagerEvent(
   placement: PlacementTier,
   playerRatings: Record<string, number> = {},
   vrsEvidence?: VrsEventEvidence,
+  worldSeries: ManagerWorldPlayedSeries[] = [],
+  completedOnOverride?: string,
 ): ManagerCareerState {
   const event = managerEventById(eventId);
   const registration = state.registrations.find((item) => item.eventId === eventId);
   if (!event || !registration || registration.status !== "active" || state.activeEventId !== eventId) return state;
   const prize = event.prizes[placement];
   const boardDelta = placement === "champion" ? 8 : placement === "runner-up" ? 5 : placement === "top4" ? 3 : placement === "top8" ? 1 : -3;
-  const completedOn = event.majorCycle && state.activeMajorStage
-    ? managerMajorStageEnd(state.activeMajorStage, state.season)
-    : managerEventSchedule(event, state.season).endsOn;
+  const completedOn = completedOnOverride
+    ?? (event.majorCycle && state.activeMajorStage
+      ? managerMajorStageEnd(state.activeMajorStage, state.season)
+      : managerEventSchedule(event, state.season).endsOn);
   const stickerState = event.majorCycle && state.activeMajorStage && placement === "champion"
     ? awardManagerMajorStickerRevenue(state, event, state.activeMajorStage, completedOn, true)
     : state;
   const working = resolveManagerTradeTimeline(stickerState, completedOn);
   const payroll = settlePayroll(working, completedOn);
-  const worldReady = simulateManagerWorldEventsThrough(
+  const simulatedWorld = simulateManagerWorldEventsThrough(
     working,
     completedOn,
     { [eventId]: placement },
     eventId,
+  );
+  const worldReady = integrateManagerWorldSeries(
+    simulatedWorld,
+    eventId,
+    worldSeries,
+    completedOn,
+    working.season,
+    placement,
   );
   const evidence: VrsEventEvidence = {
     id: vrsEvidence?.id ?? `${working.seed}:${working.season}:${eventId}`,
@@ -4147,6 +6421,22 @@ export function completeManagerEvent(
   const boardObjective = objectiveCompleted
     ? { ...worldReady.boardObjective, status: "completed" as const }
     : worldReady.boardObjective;
+  const qualificationEvent = managerPlacementEarnsQualification(event, placement)
+    ? managerEventById(event.qualifiesToEventId)
+    : undefined;
+  const completedRegistrations = worldReady.registrations.map((item) =>
+    item.eventId === eventId ? { ...item, status: "completed" as const, placement } : item,
+  );
+  const qualificationRegistration: ManagerRegistration | undefined = qualificationEvent
+    && !completedRegistrations.some((item) => item.eventId === qualificationEvent.id && item.status !== "withdrawn")
+    ? {
+        eventId: qualificationEvent.id,
+        status: "confirmed",
+        registeredOn: completedOn,
+        feePaid: 0,
+        lockedRosterIds: registration.lockedRosterIds.slice(0, 5),
+      }
+    : undefined;
   const completedState: ManagerCareerState = {
     ...ranked,
     date: completedOn,
@@ -4160,9 +6450,9 @@ export function completeManagerEvent(
     activeMajorStage: undefined,
     activeEventStage: undefined,
     completedEventIds: Array.from(new Set([...worldReady.completedEventIds, eventId])),
-    registrations: worldReady.registrations.map((item) =>
-      item.eventId === eventId ? { ...item, status: "completed", placement } : item,
-    ),
+    registrations: qualificationRegistration
+      ? [...completedRegistrations, qualificationRegistration]
+      : completedRegistrations,
     playerDynamics,
     boardObjective,
     ledger: [
@@ -4177,6 +6467,19 @@ export function completeManagerEvent(
       },
     ],
     inbox: [
+      ...(qualificationRegistration && qualificationEvent
+        ? [{
+            id: inboxId(working, `qualified:${eventId}:${qualificationEvent.id}`),
+            kind: "event" as const,
+            createdOn: completedOn,
+            title: `Qualified for ${qualificationEvent.shortName}`,
+            body: `${placementLabel(placement)} secured a protected place in ${managerEventName(qualificationEvent, working.season)}. The qualifier berth is registered automatically with the same locked five.`,
+            eventId: qualificationEvent.id,
+            deadline: managerEventSchedule(qualificationEvent, working.season).rosterLockOn,
+            mandatory: false,
+            read: false,
+          }]
+        : []),
       ...(objectiveCompleted
         ? [{
             id: inboxId(working, `board-objective:${boardObjective.id}`),
@@ -4301,7 +6604,8 @@ export function advanceManagerDate(state: ManagerCareerState, nextDate: string):
       ...recoveredState.inbox,
     ],
   };
-  const resolvedCamps = resolveManagerPerformanceCamps(advanced, nextDate);
+  const resolvedScrims = resolveManagerScrims(advanced, recoveredState.date, nextDate);
+  const resolvedCamps = resolveManagerPerformanceCamps(resolvedScrims, nextDate);
   const resolvedTimeline = resolveManagerTradeTimeline(resolvedCamps, nextDate);
   const resolvedWorld = simulateManagerWorldEventsThrough(resolvedTimeline, nextDate);
   const resolvedTrades = recalculateManagerVrs(resolvedWorld, nextDate);
@@ -4388,6 +6692,18 @@ export function startNextManagerSeason(state: ManagerCareerState): ManagerCareer
     registrations: [automaticManagerMajorRegistration(nextDate, contracts)],
     completedEventIds: [],
     contracts,
+    mentorships: resolved.mentorships.filter((pair) => activePlayerIds.has(pair.mentorId) && activePlayerIds.has(pair.menteeId)),
+    preparation: {
+      ...resolved.preparation,
+      fatigue: 0,
+      mastery: Object.fromEntries(managerPreparationPlans.map((plan) => [
+        plan.id,
+        Math.max(5, resolved.preparation.mastery[plan.id] - 8),
+      ])) as Record<ManagerPreparationPlan, number>,
+      scrims: resolved.preparation.scrims.map((scrim) => scrim.status === "scheduled"
+        ? { ...scrim, status: "cancelled" as const }
+        : scrim),
+    },
     playerDynamics: resolved.playerDynamics.map((item) => activePlayerIds.has(item.playerId)
       ? {
           ...item,
@@ -4399,7 +6715,9 @@ export function startNextManagerSeason(state: ManagerCareerState): ManagerCareer
     boardObjective: createBoardObjective(resolved.seed, resolved.vrsRank, nextSeason),
     market: {
       ...resolved.market,
-      unavailablePlayerIds: [],
+      unavailablePlayerIds: Array.from(new Set(
+        resolved.revivedOrganizations.flatMap((organization) => organization.players.map((player) => player.id)),
+      )),
     },
     ledger: payroll.ledger,
     inbox: [
@@ -4448,6 +6766,9 @@ export function nextManagerCheckpoint(state: ManagerCareerState) {
   const campDates = state.performanceCamps
     .filter((camp) => camp.status === "active" && camp.endsOn > state.date)
     .map((camp) => camp.endsOn);
+  const scrimDates = state.preparation.scrims
+    .filter((scrim) => scrim.status === "scheduled" && scrim.scheduledFor > state.date)
+    .map((scrim) => scrim.scheduledFor);
   const worldEventDates = state.worldVrs.teams.length
     ? managerEvents.flatMap((event) => {
         const endsOn = managerEventSchedule(event, state.season).endsOn;
@@ -4455,7 +6776,7 @@ export function nextManagerCheckpoint(state: ManagerCareerState) {
         return !completed && endsOn > state.date ? [endsOn] : [];
       })
     : [];
-  return [...dates, ...tradeDates, ...incomingOfferDates, ...objectiveDates, ...campDates, ...worldEventDates].sort()[0];
+  return [...dates, ...tradeDates, ...incomingOfferDates, ...objectiveDates, ...campDates, ...scrimDates, ...worldEventDates].sort()[0];
 }
 
 export function managerPlacementLabel(placement: PlacementTier) {

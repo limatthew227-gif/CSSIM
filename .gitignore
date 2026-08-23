@@ -1,5 +1,23 @@
 node_modules/
+dist/
+.DS_Store
+
+# Local environment and credential files
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Python and generated analysis output
+__pycache__/
+*.py[cod]
+scratch/
+
 # CS2 demo files used for calibration are local-only (large, not app assets)
 *.dem
-scratch/*.dem
 data/demos/
+
+# Saved source pages used for one-off data calibration
+deko_stats.html
+donk_matches.html

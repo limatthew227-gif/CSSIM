@@ -93,6 +93,19 @@ test("careerMetaForPlayer migrates legacy ceilings once without compounding them
   assert.deepEqual(reloaded, migrated, "loading a migrated save does not add the bonus again");
 });
 
+test("careerMetaForPlayer repairs a stale ceiling that was saved at the player's current OVR", () => {
+  const stale = {
+    ...mk("xkacpersky", "Entry", 74),
+    age: 19,
+    potential: 74,
+    potentialModelVersion: 2,
+  };
+  const migrated = careerMetaForPlayer(stale, 3);
+
+  assert.equal(migrated.potential, 84, "19-year-old top prospect receives age and prospect headroom");
+  assert.equal(migrated.potentialModelVersion, POTENTIAL_MODEL_VERSION);
+});
+
 test("players age six months after a Major and source data stays unchanged", () => {
   const source = { ...mk("young", "Rifler", 80), age: 18 };
   const saveCopy = { ...source, ...careerMetaForPlayer(source, 3) };

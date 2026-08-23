@@ -34,12 +34,15 @@ import {
   lossBonusForStreak,
   getAutoBuyState,
   getKillReward,
+  getPlayoffNervesPenalty,
   spendMoney,
   utilityRating,
   utilFactor,
+  preparationRoundModifier,
 } from "../src/sim";
 import type { FieldTeam } from "../src/sim";
 import { getNavGrid, hasLineOfSight } from "../src/mapGeometry";
+import { buildEventAwardLeaders } from "../src/eventAwards";
 
 // ---------------------------------------------------------------------------
 // Seeded RNG
@@ -109,6 +112,76 @@ function makeTeam(id: string, ovr: number, rank = 10): FieldTeam {
     ],
   };
 }
+
+test("prepared plans reward the intended matchup and practice fatigue cuts the edge", () => {
+  const opponent = makeTeam("aggressive-opponent", 80);
+  const weapons = Object.fromEntries(opponent.players.map((player) => [player.id, player.role === "AWP" ? "AWP" : "AK-47"]));
+  const fresh = preparationRoundModifier(
+    { plan: "anti-awp", targetSite: "A", mastery: 80, fatigue: 0, leaked: false },
+    "T",
+    opponent,
+    weapons,
+    5,
+    4,
+    "mirage",
+  );
+  const tiredAndLeaked = preparationRoundModifier(
+    { plan: "anti-awp", targetSite: "A", mastery: 80, fatigue: 55, leaked: true },
+    "T",
+    opponent,
+    weapons,
+    5,
+    4,
+    "mirage",
+  );
+  assert.ok(fresh > 0.02, "anti-AWP preparation should matter against a real AWP");
+  assert.ok(tiredAndLeaked < fresh, "fatigue and leaked information should reduce the plan edge");
+  assert.ok(preparationRoundModifier(
+    { plan: "heavy-utility", targetSite: "A", mastery: 70, fatigue: 0, leaked: false },
+    "T",
+    opponent,
+    weapons,
+    5,
+    4,
+    "inferno",
+  ) > 0, "heavy utility should reward a healthy grenade inventory");
+});
+
+test("event awards choose the champion's best player as MVP and retain event ratings", () => {
+  const champion = makeTeam("champion", 86);
+  const runnerUp = makeTeam("runner", 86);
+  const line = (kills: number, deaths: number, damage: number) => ({
+    kills,
+    deaths,
+    assists: 5,
+    damage,
+    adr: damage / 20,
+    kastRounds: 14,
+    rounds: 20,
+    impact: 1,
+    firstKills: 3,
+    firstDeaths: 2,
+    multiKills: 4,
+    clutchWins: 1,
+    rating: 1,
+  });
+  const championStar = champion.players[0];
+  const runnerStar = runnerUp.players[0];
+  const leaders = buildEventAwardLeaders([
+    {
+      left: champion,
+      right: runnerUp,
+      maps: [{
+        leftStats: { [championStar.id]: line(23, 15, 1_900) },
+        rightStats: { [runnerStar.id]: line(29, 13, 2_250) },
+      }],
+    },
+  ], champion.id);
+  assert.equal(leaders.mvp?.player.id, championStar.id, "the MVP must come from the champion");
+  assert.equal(leaders.evps[0]?.player.id, runnerStar.id, "the best non-MVP should receive the first EVP");
+  assert.ok((leaders.mvp?.line.rating ?? 0) > 1);
+  assert.ok((leaders.evps[0]?.line.rating ?? 0) > (leaders.mvp?.line.rating ?? 0));
+});
 
 function playMatch(seed: number, you: FieldTeam, opp: FieldTeam, map: MapId = "mirage") {
   return withSeed(seed, () => {
@@ -205,6 +278,17 @@ test("initMatch: player form starts neutral, with no random cold-player flags", 
     assert.deepEqual(s.context.coldPlayers, []);
     assert.deepEqual(s.context.peakingPlayers, []);
   }
+});
+
+test("playoff nerves fade as a player gains career experience", () => {
+  const player = makePlayer("pressured", "Rifler", 82);
+  player.age = 23;
+  player.playoffNerves = { initialPenalty: 0.08, baselineAge: 23, fadePerYear: 0.02 };
+
+  assert.equal(getPlayoffNervesPenalty(player), 0.08);
+  assert.equal(getPlayoffNervesPenalty({ ...player, age: 24 }), 0.06);
+  assert.equal(getPlayoffNervesPenalty({ ...player, age: 25.5 }), 0.03);
+  assert.equal(getPlayoffNervesPenalty({ ...player, age: 27 }), 0);
 });
 
 test("duplicate player ids on opposite teams do not share death/loadout state", () => {

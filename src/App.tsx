@@ -22,9 +22,11 @@ import {
   Eye,
   FastForward,
   FileSearch,
+  FlaskConical,
   Flame,
   Footprints,
   Gauge,
+  Handshake,
   LayoutDashboard,
   Mail,
   Minus,
@@ -77,6 +79,7 @@ import {
   MatchState,
   Tactic,
   type BuyCall,
+  type MatchPreparationContext,
   type RoundStyleCall,
   VetoState,
   applyOpponentVeto,
@@ -86,6 +89,7 @@ import {
   composition,
   createVeto,
   draftedTeam,
+  getPlayoffNervesPenalty,
   initMatch,
   mapEdge,
   mapName,
@@ -104,6 +108,7 @@ import {
   type RoundScenario,
 } from "./sim";
 import {
+  OVR_CAP,
   STARTING_BANKROLL,
   type PlacementTier,
   playerValue,
@@ -138,11 +143,11 @@ import {
   type CircuitEvent,
   type CircuitEventId,
 } from "./circuit";
-import { hltvTop20Coaches, hltvTop20Rosters } from "./hltvTop20";
-import { hltvRanked27To50Coaches, hltvRanked27To50Rosters } from "./hltvRanked27To50";
+import { hltvCurrentCoaches2026, hltvCurrentRosters2026 } from "./hltvCurrentRosters2026";
 import { playerPhoto } from "./playerPhotos";
 import { mapArtImages } from "./mapArt";
 import { decideAutoCoach } from "./autoCoach";
+import { estimateSeriesWinProbability, matchRevealScore } from "./matchChoice";
 import { simulateRadarPlayers, MAP_LAYOUTS, getStepDelay } from "./radarSim";
 import { mapGeometries, hasPixelNav } from "./mapGeometry";
 import {
@@ -168,6 +173,7 @@ import {
   type PlayerAnalytics,
 } from "./matchAnalytics";
 import { canonicalPlayerKey, playerInstanceKey, playerVersionKey } from "./playerIdentity";
+import { buildEventAwardLeaders, type EventAwardCandidate } from "./eventAwards";
 import { validateRoster, validateDataset, type ValidationIssue } from "./validation";
 import {
   MatchDatabase,
@@ -187,6 +193,8 @@ import {
 } from "./matchDatabase";
 import {
   acceptManagerIncomingOffer,
+  assignManagerMentorship,
+  cancelManagerScrim,
   advanceManagerEventStage,
   advanceManagerMajorStage,
   acceptManagerTradeCounter,
@@ -206,22 +214,36 @@ import {
   managerEventStartForRank,
   managerFormatDate,
   managerEventEligibility,
+  managerEventAwardsEligible,
+  managerEventPrestige,
+  managerQualifiedTeamIdsForEvent,
   managerContractDurationLabel,
   managerContractReleaseCost,
   MANAGER_CASINO_STAKES,
+  MANAGER_MAX_CONTRACT_CYCLES,
+  MANAGER_MAX_MENTORSHIPS,
   managerTrainingPlan,
   managerActivePerformanceCamp,
   managerPerformanceCampEligibility,
   managerPerformanceCampPrograms,
+  managerPreparationPlans,
   managerRenewalBonus,
   managerPlacementLabel,
   managerMonthlyPayroll,
   managerPotentialCoinResult,
   managerPotentialLabCost,
+  managerOvrDiceResult,
+  managerOvrLabCost,
   managerCasinoCoinResult,
   managerCasinoVisitAllowed,
   managerRecommendedSalary,
   managerFinancialStatus,
+  managerMatchPreparation,
+  managerMentorshipEligibility,
+  managerMentorshipTrainingBonus,
+  managerScrimDateOptions,
+  managerScrimEligibility,
+  managerScrimIntensityProfiles,
   managerFamiliarityLabel,
   managerFormLabel,
   managerMoraleLabel,
@@ -232,24 +254,32 @@ import {
   managerMajorStageStakes,
   managerMajorProjection,
   managerMajorStageHasPlayoffs,
+  managerMajorStageEnd,
   managerMajorStageLabel,
   markManagerInboxRead,
   managerLineupEditLocked,
+  managerLfoSnapshotOrganization,
   managerSeasonLabel,
   isCurrentManagerWorldRoster,
   managerClubRelationship,
   managerClubRelationshipLabel,
   managerTradeRoundsRemaining,
   managerWorldVrsTeam,
+  managerWorldEventSnapshot,
+  managerWorldTeamEligibleForEvent,
+  integrateManagerWorldSeries,
   resolveManagerOrganization,
   nextManagerCheckpoint,
   normalizeManagerCareer,
   registerManagerEvent,
   releaseManagerPlayerContract,
+  endManagerMentorship,
   resolveManagerTrainingCycle,
   resolveManagerPotentialInvestment,
+  resolveManagerOvrInvestment,
   resolveManagerCasinoVisit,
   scheduleManagerPerformanceCamp,
+  scheduleManagerScrim,
   scoutManagerCandidate,
   submitManagerFreeAgentOffer,
   renewManagerPlayerContract,
@@ -260,7 +290,9 @@ import {
   evaluateManagerTradeProposal,
   submitManagerTradeOffer,
   setManagerStartingLineup,
+  setManagerPreparationPlan,
   setManagerTrainingFocus,
+  synchronizeManagerLfoTeam,
   startNextManagerSeason,
   withdrawManagerTradeOffer,
   type ManagerOfferTerms,
@@ -271,23 +303,44 @@ import {
   type ManagerEventStage,
   type ManagerMajorStage,
   type ManagerCoinSide,
+  type ManagerOvrDiceResult,
   type ManagerCasinoStake,
   type ManagerPerformanceCampFocus,
+  type ManagerPreparationPlan,
+  type ManagerScrimInput,
+  type ManagerScrimIntensity,
+  type ManagerScrimPrivacy,
   type ManagerTrainingFocus,
   type ManagerInboxItem,
   type ManagerIncomingOffer,
   type ManagerWorldTeamSeed,
+  type ManagerLfoTeam,
+  type ManagerWorldEventResult,
+  type ManagerWorldPlayedSeries,
+  type ManagerRevivedOrganization,
+  type ManagerOrganizationTransferTarget,
 } from "./managerCareer";
-import { calculateVrs, vrsPointsForRank, type VrsEventEvidence } from "./vrs";
+import { calculateVrs, vrsAgeWeight, vrsPointsForRank, type VrsEventEvidence, type VrsProfile } from "./vrs";
 import {
   applyManagerRosterMoves,
   createManagerAiTransferActivity,
   createManagerFreeAgentPool,
+  createManagerReleasedFreeAgentPool,
   createManagerTransferList,
   managerScoutingRange,
   type ManagerMarketCandidate,
   type ManagerRecentPlayerPerformance,
 } from "./managerMarket";
+import {
+  buildColognePlayoffSeeds,
+  buildCologneRoundPairs,
+  cologneOverviewResults,
+  cologneStageStatus,
+  cologneTeamFinished,
+  type CologneStage,
+} from "./cologneFormat";
+import { MatchVoxelView } from "./MatchVoxelView";
+import { useAnimatedStep } from "./useAnimatedStep";
 import "./styles.css";
 
 import mirageRadar from "./assets/radar/mirage.png";
@@ -296,6 +349,9 @@ import dust2Radar from "./assets/radar/dust2.png";
 import nukeRadar from "./assets/radar/nuke.png";
 import ancientRadar from "./assets/radar/ancient.png";
 import trainRadar from "./assets/radar/train.png";
+import northLogo from "./assets/team-logos/north.png";
+import sentinelsLogo from "./assets/team-logos/sentinels.png";
+import godsentLogo from "./assets/team-logos/godsent.png";
 
 const radarImages: Record<string, string> = {
   mirage: mirageRadar,
@@ -357,14 +413,14 @@ const utilityLabels: Record<string, string> = {
 };
 
 const COACH_SHORTLIST_SIZE = 5;
-const builtInHltvRosters = rankRostersByVrs([...hltvTop20Rosters, ...hltvRanked27To50Rosters]).map((roster) => ({
+const builtInHltvRosters = rankRostersByVrs(hltvCurrentRosters2026).map((roster) => ({
   ...roster,
   tagline:
     roster.rank && roster.vrsPoints != null
       ? `Mixed-era VRS #${roster.rank} with ${roster.vrsPoints} points. Source profile: ${roster.tagline}`
       : roster.tagline,
 }));
-const builtInHltvCoaches = [...hltvTop20Coaches, ...hltvRanked27To50Coaches];
+const builtInHltvCoaches = hltvCurrentCoaches2026;
 const ROUND_STYLE_OPTIONS: Array<{ id: RoundStyleCall; label: string }> = [
   { id: "standard", label: "Standard" },
   { id: "aggressive", label: "Aggro" },
@@ -376,7 +432,7 @@ const BUY_CALL_OPTIONS: Array<{ id: BuyCall; label: string }> = [
   { id: "save", label: "Save" },
 ];
 
-type Screen = "setup" | "teams" | "draft" | "coach" | "manager-select" | "manager-home" | "manager-inbox" | "manager-calendar" | "manager-roster" | "manager-market" | "manager-history" | "manager-event-overview" | "swiss" | "playoffs" | "veto" | "match" | "result" | "universe" | "overview" | "stats" | "results" | "series-detail" | "player-detail" | "team-detail" | "balance-lab" | "vault" | "vault-replay" | "vault-team" | "compare" | "transfer";
+type Screen = "setup" | "teams" | "draft" | "coach" | "manager-select" | "manager-home" | "manager-inbox" | "manager-calendar" | "manager-preparation" | "manager-roster" | "manager-market" | "manager-history" | "manager-event-overview" | "manager-world-event-overview" | "swiss" | "playoffs" | "veto" | "match" | "result" | "universe" | "overview" | "stats" | "results" | "series-detail" | "player-detail" | "team-detail" | "balance-lab" | "vault" | "vault-replay" | "vault-team" | "compare" | "transfer";
 type Mode = "classic" | "random" | "circuit" | "manager" | "spectator";
 type RunKind = "player" | "spectator";
 type SwissRecord = { wins: number; losses: number };
@@ -388,7 +444,7 @@ type SeriesStage = "swiss" | PlayoffRound;
 type StatsSideFilter = "both" | "T" | "CT";
 type StatsMapFilter = "all" | number;
 type StatsScope = "all" | "mine";
-type LiveFeedView = "feed" | "map";
+type LiveFeedView = "feed" | "map" | "voxel";
 type TeamLabView = "builder" | "scout" | "integrity";
 type ScoutSortKey = "ovr" | "hltv" | "audit" | "aim" | "clutch" | "consistency" | "awp" | "igl" | "team";
 type ScoutAuditSeverity = "danger" | "warn" | "info";
@@ -399,6 +455,11 @@ interface ManagerVrsStanding {
   points: number;
   movement: number;
   managed: boolean;
+  evidence?: {
+    eventName: string;
+    record: string;
+    bestWin?: string;
+  };
 }
 
 function managerRosterVrsPoints(team: Pick<Roster | FieldTeam, "rank">) {
@@ -418,6 +479,97 @@ function managerWorldTeamSeeds(rosters: Roster[]): ManagerWorldTeamSeed[] {
     vrsPoints: vrsPointsForRank(roster.sourceRank ?? roster.rank ?? 64),
     strength: averageOvr(roster.players),
   }));
+}
+
+function managerVrsEvidenceSummary(profile: VrsProfile, asOf: string): ManagerVrsStanding["evidence"] {
+  const latest = [...profile.events]
+    .filter((event) => event.completedOn <= asOf && vrsAgeWeight(event.completedOn, asOf) > 0)
+    .sort((left, right) => right.completedOn.localeCompare(left.completedOn))[0];
+  if (!latest) return undefined;
+  const wins = latest.matches.filter((match) => match.won);
+  const bestWin = [...wins].sort((left, right) => right.opponentPoints - left.opponentPoints)[0];
+  return {
+    eventName: latest.eventName,
+    record: `${wins.length}-${latest.matches.length - wins.length}`,
+    bestWin: bestWin ? `Best win: ${bestWin.opponentName} (${bestWin.opponentPoints} pts)` : "No wins in this result",
+  };
+}
+
+function managerLfoRoster(team: ManagerLfoTeam, career: ManagerCareerState): Roster {
+  const standing = managerWorldVrsTeam(career, team.id, team.name);
+  const lfoMapPool = mapPool.reduce((values, map) => {
+    values[map.id] = Math.round(team.players.reduce((sum, player) => sum + player.maps[map.id], 0) / team.players.length);
+    return values;
+  }, {} as Record<MapId, number>);
+  return {
+    id: team.id,
+    tag: team.tag,
+    name: team.name,
+    country: "INT",
+    era: "CS2",
+    year: "2026",
+    accent: "#f2c96d",
+    tagline: `Looking for organization — unsigned Generation ${team.generation} is proving itself through the open circuit.`,
+    players: team.players,
+    mapPool: lfoMapPool,
+    sourceRank: 64,
+    rank: standing?.rank ?? 64,
+    vrsPoints: standing?.points ?? 420,
+  };
+}
+
+const managerRevivalLogos: Record<ManagerRevivedOrganization["id"], string> = {
+  "manager-north": northLogo,
+  "manager-sentinels": sentinelsLogo,
+  "manager-godsent": godsentLogo,
+};
+
+function managerRevivedOrganizationRoster(
+  organization: ManagerRevivedOrganization,
+  career: ManagerCareerState,
+): Roster {
+  const standing = managerWorldVrsTeam(career, organization.id, organization.name);
+  const organizationMapPool = mapPool.reduce((values, map) => {
+    values[map.id] = Math.round(
+      organization.players.reduce((sum, player) => sum + player.maps[map.id], 0)
+      / organization.players.length,
+    );
+    return values;
+  }, {} as Record<MapId, number>);
+  return {
+    id: organization.id,
+    tag: organization.tag,
+    name: organization.name,
+    country: organization.country,
+    era: "CS2",
+    year: "2026",
+    accent: organization.accent,
+    logo: managerRevivalLogos[organization.id],
+    tagline: organization.formation === "lfo-signing"
+      ? `Revived after signing LFO Generation ${organization.lfoGeneration ?? 1} as a complete five.`
+      : "A revived organization built through free transfers and targeted player purchases.",
+    players: organization.players,
+    mapPool: organizationMapPool,
+    sourceRank: standing?.initialRank ?? 64,
+    rank: standing?.rank ?? 64,
+    vrsPoints: standing?.points ?? 420,
+  };
+}
+
+function buildManagerWorldRosters(sourceRosters: Roster[], career?: ManagerCareerState) {
+  if (!career) return sourceRosters;
+  const revived = career.revivedOrganizations.map((organization) => (
+    managerRevivedOrganizationRoster(organization, career)
+  ));
+  const revivedIds = new Set(revived.map((roster) => roster.id));
+  const baseWorld = [...sourceRosters.filter((roster) => !revivedIds.has(roster.id)), ...revived];
+  const world = applyManagerRosterMoves(baseWorld, career.market.rosterMoves).map((roster) => {
+    const standing = managerWorldVrsTeam(career, roster.id, roster.name);
+    return standing ? { ...roster, rank: standing.rank, vrsPoints: standing.points } : roster;
+  });
+  return career.lfoTeam
+    ? [...world.filter((roster) => roster.id !== career.lfoTeam!.id), managerLfoRoster(career.lfoTeam, career)]
+    : world;
 }
 
 interface TeamFormPlayer {
@@ -555,15 +707,24 @@ interface ActiveSeries {
   mapResults: SeriesMapResult[];
 }
 
-interface PlayerDatabaseRow {
-  databaseKey: string;
-  canonicalKey: string;
-  versionKey: string;
-  player: Player;
-  team: FieldTeam;
-  matches: number;
-  line: MatchState["yourStats"][string];
+interface AutoCoachedSeries {
+  series: ActiveSeries;
+  finalMatch: MatchState;
+  matches: MatchState[];
+  veto: VetoState;
+  coachCalls: number;
 }
+
+interface SimMatchReveal {
+  maps: SeriesMapResult[];
+  visibleMaps: number;
+  complete: boolean;
+  bestOf: number;
+  label: string;
+  coachCalls: number;
+}
+
+interface PlayerDatabaseRow extends EventAwardCandidate {}
 
 interface ScoutRow {
   player: Player;
@@ -1028,6 +1189,7 @@ function App() {
   const [transferTrade, setTransferTrade] = useState<{ incoming: Player; outgoing: Player; delta: number } | null>(null); // one trade per window
   const [progressionSummary, setProgressionSummary] = useState<Array<{ handle: string; before: number; after: number; iglDelta: number }>>([]);
   const [managerCareer, setManagerCareer] = useState<ManagerCareerState>();
+  const [managerViewedEventId, setManagerViewedEventId] = useState<string>();
   const [managerMarketRole, setManagerMarketRole] = useState<Role | "all">("all");
   const [autosave, setAutosave] = useState(() => readAutosave<RunSnapshot>()); // last-session snapshot, read once at mount
   const [navStack, setNavStack] = useState<Screen[]>([]); // back-stack for the detail pages
@@ -1049,6 +1211,9 @@ function App() {
   const [liveFeedView, setLiveFeedView] = useState<LiveFeedView>("feed");
   const [autoCoach, setAutoCoach] = useState(false);
   const [autoCoachStatus, setAutoCoachStatus] = useState("Watching the server");
+  const [matchChoiceOpen, setMatchChoiceOpen] = useState(false);
+  const [matchChoiceSimulating, setMatchChoiceSimulating] = useState(false);
+  const [simMatchReveal, setSimMatchReveal] = useState<SimMatchReveal>();
   const lastAutoCoachRoundRef = useRef<string | undefined>(undefined);
   const liveTimeoutRef = useRef(false);
   const builtInRosterCount = builtInHltvRosters.length;
@@ -1065,6 +1230,12 @@ function App() {
   const activeCall = parseTactic(tactic);
   const circuitEvent = circuitEventById(circuitEventId);
   const managerActiveEvent = managerEventById(managerCareer?.activeEventId);
+  const activeMatchPreparation = mode === "manager" && managerCareer
+    ? managerMatchPreparation(managerCareer, opponent.id)
+    : undefined;
+  const activeMatchPreparationPlan = activeMatchPreparation
+    ? managerPreparationPlans.find((plan) => plan.id === activeMatchPreparation.plan)
+    : undefined;
   const managerMajorActive = mode === "manager" && Boolean(managerActiveEvent?.majorCycle);
   const managerMajorStageId = managerCareer?.activeMajorStage
     ?? managerMajorEntryStage(managerCareer?.vrsRank ?? 64);
@@ -1078,10 +1249,7 @@ function App() {
     .trim()
     .toLowerCase();
   const managerWorldRosters = useMemo(
-    () => applyManagerRosterMoves(rosterPool, managerCareer?.market?.rosterMoves ?? []).map((roster) => {
-      const standing = managerWorldVrsTeam(managerCareer, roster.id, roster.name);
-      return standing ? { ...roster, rank: standing.rank, vrsPoints: standing.points } : roster;
-    }),
+    () => buildManagerWorldRosters(rosterPool, managerCareer),
     [managerCareer, rosterPool],
   );
   const managerAuthoritativeVrsRank = managerCareer?.vrsRank ?? 64;
@@ -1108,23 +1276,45 @@ function App() {
       && roster.name.trim().toLowerCase() !== managerControlledOrganizationName
     ));
   }, [managerCareer, managerControlledOrganizationId, managerControlledOrganizationName, managerWorldRosters]);
-  const managerFreeAgents = useMemo(
-    () => createManagerFreeAgentPool(managerCareer?.seed ?? vaultRunId, 18, {
+  const managerFreeAgents = useMemo(() => {
+    const rosteredPlayers = [
+      ...managerWorldRosters
+        .filter((roster) => roster.id !== "manager-lfo")
+        .flatMap((roster) => roster.players),
+      ...selected,
+    ];
+    const rosteredPlayerIds = new Set(rosteredPlayers.map((player) => player.id));
+    const rosteredPlayerKeys = new Set(rosteredPlayers.map(canonicalPlayerKey));
+    const salaryContext = {
       vrsRank: managerCareer?.vrsRank,
       organizationCountry: managerCareer?.organizationCountry,
-    }),
-    [managerCareer?.organizationCountry, managerCareer?.seed, managerCareer?.vrsRank, vaultRunId],
-  );
+    };
+    const releasedPlayers = managerCareer
+      ? createManagerReleasedFreeAgentPool(
+          managerCareer.seed,
+          managerCareer.market.rosterMoves,
+          managerCareer.date,
+          salaryContext,
+        )
+      : [];
+    return [...releasedPlayers, ...createManagerFreeAgentPool(managerCareer?.seed ?? vaultRunId, undefined, salaryContext)]
+      .filter((candidate, index, candidates) => candidates.findIndex((item) => item.id === candidate.id) === index)
+      .filter((candidate) => (
+        !rosteredPlayerIds.has(candidate.id)
+        && !rosteredPlayerKeys.has(canonicalPlayerKey(candidate.player))
+        && !managerCareer?.market.unavailablePlayerIds.includes(candidate.id)
+      ));
+  }, [managerCareer, managerWorldRosters, selected, vaultRunId]);
   const managerRecentPerformance = useMemo(
     () => buildManagerRecentPlayerPerformance(matchResults),
     [matchResults],
   );
   const managerTransferList = useMemo(
-    () => createManagerTransferList(managerCareer?.seed ?? vaultRunId, managerWorldRosters, managerControlledOrganizationId ?? "", 18, {
+    () => createManagerTransferList(managerCareer?.seed ?? vaultRunId, managerWorldRosters.filter((roster) => roster.id !== "manager-lfo"), managerControlledOrganizationId ?? "", undefined, {
       vrsRank: managerCareer?.vrsRank,
       organizationCountry: managerCareer?.organizationCountry,
-    }, managerRecentPerformance),
-    [managerCareer?.organizationCountry, managerCareer?.seed, managerCareer?.vrsRank, managerControlledOrganizationId, managerRecentPerformance, managerWorldRosters, vaultRunId],
+    }, managerRecentPerformance, managerCareer?.market.rosterMoves ?? [], managerCareer?.date),
+    [managerCareer?.date, managerCareer?.market.rosterMoves, managerCareer?.organizationCountry, managerCareer?.seed, managerCareer?.vrsRank, managerControlledOrganizationId, managerRecentPerformance, managerWorldRosters, vaultRunId],
   );
   const managerContractPlayers = useMemo(() => {
     const knownPlayers = new Map<string, Player>();
@@ -1136,12 +1326,11 @@ function App() {
     });
     selected.forEach((player) => knownPlayers.set(player.id, player));
     return managerCareer?.contracts
-      .map((contract) => {
+      .map((contract): Player | undefined => {
         const player = knownPlayers.get(contract.playerId);
-        const plan = managerCareer.trainingPlans.find((item) => item.playerId === contract.playerId);
-        return player && plan
-          ? { ...player, ovr: plan.currentOvr, potential: plan.potentialOvr, stats: plan.currentStats ?? player.stats }
-          : player;
+        if (!player) return undefined;
+        const plan = managerTrainingPlan(managerCareer, player);
+        return { ...player, ovr: plan.currentOvr, potential: plan.potentialOvr, stats: plan.currentStats ?? player.stats };
       })
       .filter((player): player is Player => Boolean(player)) ?? selected;
   }, [managerCareer?.contracts, managerCareer?.market.tradeOffers, managerCareer?.trainingPlans, managerFreeAgents, managerTransferList, rosterPool, selected]);
@@ -1210,22 +1399,25 @@ function App() {
       points: number;
       baselineRank: number;
       managed: boolean;
+      evidence?: ManagerVrsStanding["evidence"];
     }> = world.map((team) => {
       const standing = managerWorldVrsTeam(managerCareer, team.id, team.name);
       return {
         team,
         rank: standing?.rank ?? team.sourceRank ?? team.rank ?? 64,
         points: standing?.points ?? managerRosterVrsPoints(team),
-        baselineRank: standing?.initialRank ?? team.sourceRank ?? team.rank ?? 64,
+        baselineRank: Math.min(64, standing?.initialRank ?? team.sourceRank ?? team.rank ?? 64),
         managed: false,
+        evidence: standing ? managerVrsEvidenceSummary(standing.profile, managerCareer.date) : undefined,
       };
     });
     rows.push({
       team: yourTeam,
       rank: managerCareer.vrsRank,
       points: managerCareer.vrsPoints,
-      baselineRank: managerCareer.boardObjective.startingRank,
+      baselineRank: Math.min(64, managerCareer.boardObjective.startingRank),
       managed: true,
+      evidence: managerVrsEvidenceSummary(managerCareer.vrsProfile, managerCareer.date),
     });
     rows.sort((left, right) => (
       left.rank - right.rank
@@ -1239,6 +1431,7 @@ function App() {
       points: row.points,
       movement: row.baselineRank - row.rank,
       managed: row.managed,
+      evidence: row.evidence,
     }));
   }, [managerCareer, managerControlledOrganizationId, managerWorldRosters, yourTeam]);
   const bonuses = useMemo(() => composition(selected, settings, true), [selected, settings]);
@@ -1256,11 +1449,92 @@ function App() {
   const recordStageWinTarget = managerDoubleEliminationRules?.winTarget ?? 3;
   const recordStageLossTarget = managerDoubleEliminationRules?.lossTarget ?? 3;
   const recordStageQualifiers = managerDoubleEliminationRules?.qualifiers ?? SWISS_FIELD_SIZE / 2;
+  const managerCologneStage: CologneStage | undefined = managerDoubleEliminationActive
+    ? managerCareer?.activeEventStage === "stage-1" ? "stage-1" : "stage-2"
+    : undefined;
+  const managerCologneTeams = managerCologneStage ? [yourTeam, ...swissField] : [];
+  const managerCologneStatus = managerCologneStage
+    ? cologneStageStatus(managerCologneTeams, managerCologneStage, matchResults)
+    : undefined;
+  const managerCologneStageOneQualifiers = useMemo(() => {
+    const stageOneResults = circuitMajorResults.filter((result) => result.eventId === "stage-1");
+    const stageOneTeams = teamsFromResults(stageOneResults);
+    return stageOneTeams.length >= 16
+      ? cologneStageStatus(stageOneTeams, "stage-1", stageOneResults, "__neutral__").advanced
+      : [];
+  }, [circuitMajorResults]);
+  const managerCologneOtherTeams = useMemo(
+    () => managerCologneStage === "stage-2" && managerActiveEvent
+      ? buildManagerDoubleEliminationOtherGroup(
+          managerEventRosters,
+          managerActiveEvent,
+          managerControlledOrganizationId,
+          swissField,
+          yourTeam,
+          managerCologneStageOneQualifiers,
+        )
+      : [],
+    [
+      managerActiveEvent,
+      managerCologneStage,
+      managerControlledOrganizationId,
+      managerEventRosters,
+      managerCologneStageOneQualifiers,
+      swissField,
+      yourTeam,
+    ],
+  );
+  const managerCologneOtherResults = useMemo(
+    () => {
+      if (managerCologneStage !== "stage-2") return [];
+      const otherTeamIds = new Set(managerCologneOtherTeams.map((team) => team.id));
+      const teamResults = circuitMajorResults.filter((result) => (
+        result.eventId === "stage-2"
+        && otherTeamIds.has(result.left.id)
+        && otherTeamIds.has(result.right.id)
+      ));
+      return cologneResultsForField(managerCologneOtherTeams, "stage-2", teamResults);
+    },
+    [circuitMajorResults, managerCologneOtherTeams, managerCologneStage],
+  );
+  const managerCologneOtherStatus = managerCologneOtherTeams.length
+    ? cologneStageStatus(
+        managerCologneOtherTeams,
+        "stage-2",
+        managerCologneOtherResults,
+        "__neutral__",
+      )
+    : undefined;
+  const managerCologneOtherRound = managerCologneOtherStatus?.resolved
+    ? null
+    : Math.max(0, ...managerCologneOtherResults.map((result) => result.round)) + 1;
+  const managerCologneOtherPairs = managerCologneOtherRound && managerCologneOtherRound <= 4
+    ? buildCologneRoundPairs(
+        managerCologneOtherTeams,
+        "stage-2",
+        managerCologneOtherRound,
+        managerCologneOtherResults,
+        "__neutral__",
+      )
+    : [];
+  const managerCologneUserAdvanced = Boolean(
+    managerCologneStatus?.advanced.some((team) => team.id === "user"),
+  );
+  const managerCologneUserEliminated = Boolean(
+    managerCologneStatus?.eliminated.some((team) => team.id === "user"),
+  );
   const managerRoundRobinRounds = managerRoundRobinActive ? Math.max(1, managerActiveEvent.capacity - 1) : 0;
   const managerRoundRobinRound = record.wins + record.losses + 1;
   const swissPairs = useMemo(
     () => managerRoundRobinActive
       ? buildRoundRobinRoundPairs(yourTeam, swissField, managerRoundRobinRound)
+      : managerCologneStage
+        ? buildCologneRoundPairs(
+            [yourTeam, ...swissField],
+            managerCologneStage,
+            record.wins + record.losses + 1,
+            matchResults,
+          )
       : buildSwissPairs(
           yourTeam,
           opponent,
@@ -1274,6 +1548,8 @@ function App() {
     [
       managerRoundRobinActive,
       managerRoundRobinRound,
+      managerCologneStage,
+      matchResults,
       opponent,
       record,
       recordStageLossTarget,
@@ -1286,9 +1562,13 @@ function App() {
   );
   const swissUserFinished = runKind === "player" && phase === "swiss" && (managerRoundRobinActive
     ? record.wins + record.losses >= managerRoundRobinRounds
+    : managerCologneStage
+      ? cologneTeamFinished(managerCologneTeams, managerCologneStage, matchResults, "user")
     : record.wins >= recordStageWinTarget || record.losses >= recordStageLossTarget);
   const swissStageResolved = phase === "swiss" && (managerRoundRobinActive
     ? record.wins + record.losses >= managerRoundRobinRounds
+    : managerCologneStatus
+      ? managerCologneStatus.resolved
     : isRecordStageResolved(
         swissField,
         swissRecords,
@@ -1305,7 +1585,7 @@ function App() {
   const managerMajorStageCleared = managerMajorStageOnly && record.wins >= 3 && swissStageResolved;
   const managerMajorNextStage = managerMajorStage ? nextCircuitEvent(managerMajorStage) : undefined;
   const managerDoubleEliminationStageCleared = managerDoubleEliminationActive
-    && record.wins >= recordStageWinTarget
+    && managerCologneUserAdvanced
     && swissStageResolved;
   const neutralSwissRun = runKind === "spectator" || circuitObserver;
   const spectatorSwissResolved = neutralSwissRun && phase === "swiss" && isNeutralSwissStageResolved(swissField, swissRecords);
@@ -1320,6 +1600,13 @@ function App() {
     () => (swissUserFinished
       ? managerRoundRobinActive
         ? []
+        : managerCologneStage
+          ? buildCologneRoundPairs(
+              [yourTeam, ...swissField],
+              managerCologneStage,
+              record.wins + record.losses + 1,
+              matchResults,
+            )
         : buildRemainingSwissPairs(
             swissField,
             swissRecords,
@@ -1331,6 +1618,8 @@ function App() {
       : swissPairs),
     [
       managerRoundRobinActive,
+      managerCologneStage,
+      matchResults,
       record,
       recordStageLossTarget,
       recordStageWinTarget,
@@ -1339,6 +1628,7 @@ function App() {
       swissRecords,
       swissUserFinished,
       swissHistory,
+      yourTeam,
     ],
   );
   // Swiss round navigation: the live round (the one being picked/played) plus every past round that
@@ -1399,9 +1689,30 @@ function App() {
   const majorRunResults = useMemo(
     () => mode === "circuit" || managerMajorActive
       ? [...normalizedCircuitArchive, ...tagCircuitResults(matchResults, activeMajorStageEvent)]
-      : matchResults,
-    [activeMajorStageEvent, managerMajorActive, matchResults, mode, normalizedCircuitArchive],
+      : mode === "manager" && managerActiveEvent?.format === "double-elimination" && managerCareer?.activeEventStage
+        ? [
+            ...circuitMajorResults,
+            ...tagManagerDoubleEliminationResults(
+              matchResults,
+              managerActiveEvent,
+              managerCareer.activeEventStage,
+            ),
+          ]
+        : matchResults,
+    [
+      activeMajorStageEvent,
+      circuitMajorResults,
+      managerActiveEvent,
+      managerCareer?.activeEventStage,
+      managerMajorActive,
+      matchResults,
+      mode,
+      normalizedCircuitArchive,
+    ],
   );
+  const managerReturnLabel = managerActiveEvent?.hasPlayoffs && !winnerFromFinal(majorRunResults)
+    ? "Sim event & return to HQ"
+    : "Return to Manager HQ";
   const managerArchivedEvent = managerHistoryEntry?.archive;
   const managerArchivedDefinition = managerHistoryEntry ? managerEventForHistory(managerHistoryEntry) : undefined;
   const archivedMajorStage = managerArchivedEvent?.majorStage
@@ -1415,14 +1726,46 @@ function App() {
   const overviewIsCurrentEvent = !managerArchivedEvent && (!overviewCircuitEvent || overviewCircuitEvent.id === activeMajorStageEvent.id);
   const overviewAllResults = managerArchivedEvent?.results ?? majorRunResults;
   const overviewResults = useMemo(
-    () => managerArchivedEvent
-      ? archivedMajorStage
-        ? managerArchivedEvent.results.filter((result) => result.eventId === archivedMajorStage.id)
-        : managerArchivedEvent.results
-      : overviewCircuitEvent
-        ? majorRunResults.filter((result) => result.eventId === overviewCircuitEvent.id)
-        : matchResults,
-    [archivedMajorStage, majorRunResults, managerArchivedEvent, matchResults, overviewCircuitEvent],
+    () => {
+      if (managerArchivedEvent) {
+        if (archivedMajorStage) {
+          return managerArchivedEvent.results.filter((result) => result.eventId === archivedMajorStage.id);
+        }
+        return managerArchivedDefinition?.format === "double-elimination"
+          ? cologneOverviewResults(managerArchivedEvent.results)
+          : managerArchivedEvent.results;
+      }
+      if (overviewCircuitEvent) {
+        return majorRunResults.filter((result) => result.eventId === overviewCircuitEvent.id);
+      }
+      if (managerActiveEvent?.format !== "double-elimination") return matchResults;
+
+      const stageResults = cologneOverviewResults(majorRunResults, managerCareer?.activeEventStage);
+      if (managerCareer?.activeEventStage !== "stage-2") return stageResults;
+      const managedGroupIds = new Set([yourTeam.id, ...swissField.map((team) => team.id)]);
+      const otherResultIds = new Set(managerCologneOtherResults.map((result) => result.id));
+      return stageResults.filter((result) => (
+        (
+          managedGroupIds.has(result.left.id)
+          && managedGroupIds.has(result.right.id)
+        )
+        || otherResultIds.has(result.id)
+      ));
+    },
+    [
+      archivedMajorStage,
+      managerActiveEvent,
+      managerArchivedDefinition,
+      managerArchivedEvent,
+      managerCareer?.activeEventStage,
+      majorRunResults,
+      matchResults,
+      managerCologneOtherTeams,
+      managerCologneOtherResults,
+      overviewCircuitEvent,
+      swissField,
+      yourTeam.id,
+    ],
   );
   const overviewTeams = useMemo(() => {
     if (managerArchivedEvent) {
@@ -1430,23 +1773,56 @@ function App() {
       return resultTeams.length ? resultTeams : managerArchivedEvent.teams;
     }
     if (overviewIsCurrentEvent) {
+      const currentTeams = neutralSwissRun ? swissField : [yourTeam, ...swissField];
+      const resultTeams = managerActiveEvent?.format === "double-elimination"
+        ? teamsFromResults(overviewResults)
+        : [];
+      const activeTeams = managerActiveEvent?.format === "double-elimination"
+        && managerCareer?.activeEventStage === "stage-2"
+        ? [...currentTeams, ...managerCologneOtherTeams]
+        : currentTeams;
       return Array.from(
         new Map(
-          (neutralSwissRun ? swissField : [yourTeam, ...swissField]).map((team) => [team.id, team]),
+          [...resultTeams, ...activeTeams].map((team) => [team.id, team]),
         ).values(),
       );
     }
     return teamsFromResults(overviewResults);
-  }, [managerArchivedEvent, neutralSwissRun, overviewIsCurrentEvent, overviewResults, swissField, yourTeam]);
+  }, [
+    managerActiveEvent?.format,
+    managerArchivedEvent,
+    managerCareer?.activeEventStage,
+    managerCologneOtherTeams,
+    neutralSwissRun,
+    overviewIsCurrentEvent,
+    overviewResults,
+    swissField,
+    yourTeam,
+  ]);
   const overviewRecords = useMemo(
     () => managerArchivedEvent && !archivedMajorStage
-      ? managerArchivedEvent.records
+      ? managerArchivedDefinition?.format === "double-elimination"
+        ? recordsFromResults(overviewTeams, overviewResults)
+        : managerArchivedEvent.records
       : overviewIsCurrentEvent
-      ? neutralSwissRun
-        ? swissRecords
-        : { ...swissRecords, user: record }
+      ? managerActiveEvent?.format === "double-elimination"
+        ? recordsFromResults(overviewTeams, overviewResults)
+        : neutralSwissRun
+          ? swissRecords
+          : { ...swissRecords, user: record }
       : recordsFromResults(overviewTeams, overviewResults),
-    [archivedMajorStage, managerArchivedEvent, neutralSwissRun, overviewIsCurrentEvent, overviewResults, overviewTeams, record, swissRecords],
+    [
+      archivedMajorStage,
+      managerActiveEvent?.format,
+      managerArchivedDefinition?.format,
+      managerArchivedEvent,
+      neutralSwissRun,
+      overviewIsCurrentEvent,
+      overviewResults,
+      overviewTeams,
+      record,
+      swissRecords,
+    ],
   );
   const overviewAvailableEventIds = useMemo(() => {
     const ids = new Set<CircuitEventId>([
@@ -1475,6 +1851,17 @@ function App() {
       : tournamentWinner
     : winnerFromFinal(overviewResults);
   const overviewPlayoffRound = managerArchivedEvent?.playoffRound ?? (overviewIsCurrentEvent ? playoffRound : latestPlayoffRound(overviewResults));
+  const overviewName = managerArchivedEvent
+    ? archivedMajorStage
+      ? `${managerArchivedEvent.eventName} / ${archivedMajorStage.shortName}`
+      : managerArchivedDefinition?.doubleElimination
+        ? `${managerArchivedEvent.eventName} / Main Stage`
+        : managerArchivedEvent.eventName
+    : managerMajorActive && overviewCircuitEvent
+      ? `${managerActiveEvent ? managerEventName(managerActiveEvent, managerCareer?.season ?? 1) : "Major"} / ${overviewCircuitEvent.shortName}`
+      : managerActiveEvent?.doubleElimination
+        ? `${tournamentName} / ${managerCareer?.activeEventStage === "stage-1" ? "Stage 1" : "Main Stage"}`
+        : overviewCircuitEvent?.name ?? tournamentName;
   const overviewPlayerDatabase = useMemo(() => buildPlayerDatabase(overviewResults), [overviewResults]);
   const playerDatabase = useMemo(() => buildPlayerDatabase(matchResults), [matchResults]);
   const selectedResult = useMemo(
@@ -1526,6 +1913,10 @@ function App() {
   const strength = strengthBreakdown.total;
   const opponentStrength = opponentStrengthBreakdown.total;
   const paperEdge = strength - opponentStrength;
+  const estimatedMatchWinPercent = Math.round(estimateSeriesWinProbability(paperEdge, currentBestOf) * 100);
+  const averageCurrentForm = selected.length
+    ? selected.reduce((sum, player) => sum + (playerForm[player.id] ?? 0), 0) / selected.length
+    : 0;
   const resultMapResults = match
     ? series
       ? [...series.mapResults, mapResultFromState(match.map, match, series.left, series.right)]
@@ -1588,6 +1979,53 @@ function App() {
     if (entry) openManagerHistoryEntry(entry);
   }
 
+  function openManagerCalendarEvent(eventId: string) {
+    const attendedEntry = [...careerHistory].reverse().find((item) => (
+      item.archive
+      && (
+        item.managerEventId === eventId
+        || item.archive.eventId === eventId
+        || managerEventForHistory(item)?.id === eventId
+      )
+    ));
+    if (attendedEntry) {
+      openManagerHistoryEntry(attendedEntry);
+      return;
+    }
+    const event = managerEventById(eventId);
+    const savedResult = managerCareer && event
+      ? [...managerCareer.worldVrs.events].reverse().find((result) => (
+          result.eventId === eventId && result.season === managerCareer.season
+        ))
+      : undefined;
+    if (managerCareer && event && savedResult) {
+      const snapshot = managerWorldEventSnapshot(managerCareer, savedResult);
+      const archive = managerWorldResultArchive(event, snapshot, [yourTeam, ...managerWorldRosters]);
+      setManagerViewedEventId(eventId);
+      setManagerHistoryEntry({
+        event: 0,
+        tier: snapshot.placements.find((placement) => placement.managed)?.placement ?? "swiss",
+        prize: snapshot.placements.find((placement) => placement.managed)?.prizeWon ?? 0,
+        record: snapshot.placements.find((placement) => placement.managed)
+          ? {
+              wins: snapshot.placements.find((placement) => placement.managed)!.wins,
+              losses: snapshot.placements.find((placement) => placement.managed)!.losses,
+            }
+          : { wins: 0, losses: 0 },
+        eventName: snapshot.eventName,
+        season: snapshot.season,
+        managerEventId: event.id,
+        archive,
+      });
+      setOverviewEventId(null);
+      pushScreen("overview");
+      return;
+    }
+    setManagerHistoryEntry(null);
+    setManagerViewedEventId(eventId);
+    pushScreen("manager-world-event-overview");
+  }
+
   function openSaveUniverse() {
     if (!hasSaveUniverse || screen === "universe") return;
     if (mode === "manager") {
@@ -1640,6 +2078,30 @@ function App() {
   }, [settings.accent]);
 
   useEffect(() => {
+    if (managerCologneStage !== "stage-2" || !managerCologneOtherTeams.length) return;
+    const completedManagedRound = Math.max(0, ...matchResults.map((result) => result.round));
+    const validOtherResultIds = new Set(managerCologneOtherResults.map((result) => result.id));
+    setCircuitMajorResults((current) => {
+      const hasInvalidGroupResults = current.some((result) => (
+        result.eventId === "stage-2"
+        && (
+          result.round > completedManagedRound
+          || !validOtherResultIds.has(result.id)
+        )
+      ));
+      return hasInvalidGroupResults
+        ? current.filter((result) => (
+            result.eventId !== "stage-2"
+            || (
+              result.round <= completedManagedRound
+              && validOtherResultIds.has(result.id)
+            )
+          ))
+        : current;
+    });
+  }, [managerCologneOtherResults, managerCologneOtherTeams, managerCologneStage, matchResults]);
+
+  useEffect(() => {
     window.scrollTo({ top: 0, left: 0 });
   }, [screen]);
 
@@ -1666,13 +2128,60 @@ function App() {
   // Manager fields are save snapshots, so older careers can still carry archival opponents or the
   // retired standalone MRQ bracket. Repair only an untouched event and preserve every played result.
   useEffect(() => {
-    if (mode !== "manager" || !managerActiveEvent) return;
+    if (mode !== "manager" || !managerCareer) return;
+
+    // An LFO signing can happen while a tournament snapshot is still open. Since every LFO
+    // generation shares the same id, use the five-player core to rebrand the signed lineup in
+    // every live bracket/result while leaving the replacement generation as LFO.
+    const identitySnapshotTeams = [
+      ...swissField,
+      opponent,
+      ...playoffPairs.flatMap((pair) => [pair.left, pair.right]),
+      ...matchResults.flatMap((result) => [result.left, result.right]),
+      ...(series ? [series.left, series.right] : []),
+      ...(tournamentWinner ? [tournamentWinner] : []),
+      ...careerHistory.flatMap((entry) => entry.archive
+        ? [
+            ...entry.archive.teams,
+            ...(entry.archive.winner ? [entry.archive.winner] : []),
+            ...entry.archive.results.flatMap((result) => [result.left, result.right]),
+            ...entry.archive.playoffPairs.flatMap((pair) => [pair.left, pair.right]),
+          ]
+        : []),
+    ];
+    const signedLfoIdRemap = managerSnapshotIdRemap(identitySnapshotTeams, managerWorldRosters, managerCareer);
+    if (signedLfoIdRemap.size) {
+      const nextField = swissField.map((team) => syncManagerSnapshotTeam(team, managerWorldRosters, managerCareer));
+      setSwissField(nextField);
+      setSwissRecords((records) => remapSnapshotRecords(records, swissField, nextField));
+      setPlayoffPairs((pairs) => pairs.map((pair) => syncManagerSnapshotPair(pair, managerWorldRosters, managerCareer)));
+      setOpponent((team) => syncManagerSnapshotTeam(team, managerWorldRosters, managerCareer));
+      setSeries((active) => active ? syncManagerSnapshotSeries(active, managerWorldRosters, managerCareer) : active);
+      setMatchResults((results) => results.map((result) => syncManagerSnapshotResult(result, managerWorldRosters, managerCareer)));
+      setTournamentWinner((winner) => winner ? syncManagerSnapshotTeam(winner, managerWorldRosters, managerCareer) : winner);
+      setPlayedOpponentIds((ids) => ids.map((id) => signedLfoIdRemap.get(id) ?? id));
+      setPickems((picks) => Object.fromEntries(
+        Object.entries(picks).map(([pairId, teamId]) => [pairId, signedLfoIdRemap.get(teamId) ?? teamId]),
+      ));
+      setCareerHistory((history) => history.map((entry) => entry.archive
+        ? { ...entry, archive: syncManagerSnapshotArchive(entry.archive, managerWorldRosters, managerCareer) }
+        : entry));
+      setManagerHistoryEntry((entry) => entry?.archive
+        ? { ...entry, archive: syncManagerSnapshotArchive(entry.archive, managerWorldRosters, managerCareer) }
+        : entry);
+      return;
+    }
+    if (!managerActiveEvent) return;
     if (managerActiveEvent.format === "double-elimination" && managerCareer?.activeEventStage === "playoffs") return;
 
     const activeDoubleEliminationRules = managerEventStageRules(
       managerActiveEvent,
       managerCareer?.activeEventStage,
     );
+    const activeQualifierIds = managerCareer
+      ? managerQualifiedTeamIdsForEvent(managerCareer, managerActiveEvent, managerCareer.season)
+      : [];
+    const activeQualifierSet = new Set(activeQualifierIds);
     const expectedOpponentCount = managerActiveEvent.majorCycle
       ? SWISS_OPPONENT_COUNT
       : activeDoubleEliminationRules
@@ -1683,7 +2192,28 @@ function App() {
       Boolean(managerControlledOrganizationId && team.id === managerControlledOrganizationId)
       || Boolean(managerControlledOrganizationName && team.name.trim().toLowerCase() === managerControlledOrganizationName)
     );
+    const invalidCologneStageOneField = Boolean(
+      managerActiveEvent.doubleElimination
+      && managerCareer?.activeEventStage === "stage-1"
+      && swissField.some((team) => (
+        !activeQualifierSet.has(team.id)
+        && (
+          (team.rank ?? 99) < managerActiveEvent.doubleElimination!.stageOneRankMin
+          || (team.rank ?? 99) > managerActiveEvent.doubleElimination!.stageOneRankMax
+        )
+      )),
+    );
+    const invalidEventEligibility = Boolean(
+      !managerActiveEvent.majorCycle
+      && !managerActiveEvent.doubleElimination
+      && swissField.some((team) => (
+        !activeQualifierSet.has(team.id)
+        && !managerWorldTeamEligibleForEvent(managerActiveEvent, team)
+      )),
+    );
     const fieldIsCurrent = swissField.length === expectedOpponentCount
+      && !invalidCologneStageOneField
+      && !invalidEventEligibility
       && swissField.every((team) => currentOpponentIds.has(team.id) && !isManagedOrganization(team));
     const duplicateManagedOrganization = swissField.find(isManagedOrganization);
     const invalidMajorBracket = managerActiveEvent.majorCycle
@@ -1700,9 +2230,11 @@ function App() {
               managerActiveEvent,
               managerCareer.activeEventStage,
               managerControlledOrganizationId,
-              managerCareer.vrsRank,
+              yourTeam,
+              [],
+              activeQualifierIds,
             )
-          : buildManagerField(managerEventRosters, managerActiveEvent, managerControlledOrganizationId);
+          : buildManagerField(managerEventRosters, managerActiveEvent, managerControlledOrganizationId, activeQualifierIds);
       const occupiedIds = new Set(swissField.map((team) => team.id));
       const replacement = candidateField.find((team) => !occupiedIds.has(team.id));
       if (replacement) {
@@ -1749,9 +2281,11 @@ function App() {
             managerActiveEvent,
             managerCareer.activeEventStage,
             managerControlledOrganizationId,
-            managerCareer.vrsRank,
+            yourTeam,
+            [],
+            activeQualifierIds,
           )
-        : buildManagerField(managerEventRosters, managerActiveEvent, managerControlledOrganizationId);
+        : buildManagerField(managerEventRosters, managerActiveEvent, managerControlledOrganizationId, activeQualifierIds);
     const repairedRecords = initialSwissRecords(repairedField);
 
     if (!managerActiveEvent.majorCycle && managerActiveEvent.format === "single-elimination") {
@@ -1772,7 +2306,15 @@ function App() {
     const pairs = managerActiveEvent.format === "round-robin"
       ? buildRoundRobinRoundPairs(yourTeam, repairedField, 1)
       : [];
-    const active = pairs.find((pair) => pair.active);
+    const colognePairs = managerActiveEvent.format === "double-elimination" && managerCareer?.activeEventStage !== "playoffs"
+      ? buildCologneRoundPairs(
+          [yourTeam, ...repairedField],
+          managerCareer?.activeEventStage === "stage-1" ? "stage-1" : "stage-2",
+          1,
+          [],
+        )
+      : [];
+    const active = pairs.find((pair) => pair.active) ?? colognePairs.find((pair) => pair.active);
     const expectedOpponent = active
       ? active.left.id === "user" ? active.right : active.left
       : selectOpponentForRecord(
@@ -1796,21 +2338,28 @@ function App() {
     setLastPickemDelta(0);
     if (["playoffs", "swiss", "veto", "result"].includes(screen)) setScreen("swiss");
   }, [
+    careerHistory,
     managerActiveEvent,
     managerCareer?.activeEventStage,
+    managerCareer?.season,
     managerCareer?.vrsRank,
     managerControlledOrganizationId,
     managerControlledOrganizationName,
     managerEventRosters,
+    managerCareer,
     managerMajorStage,
+    managerWorldRosters,
     match,
-    matchResults.length,
+    matchResults,
     mode,
     opponent.id,
     phase,
+    playoffPairs,
     screen,
+    series,
     swissField,
     swissRecords,
+    tournamentWinner,
     yourTeam,
   ]);
 
@@ -1950,6 +2499,7 @@ function App() {
   // results/career changes), NOT during the live round drip, to avoid spamming localStorage.
   useEffect(() => {
     if (runKind !== "player") return;
+    if (simMatchReveal) return;
     // Skip the pre-run flow and pure-viewer screens so the autosave reflects the last resumable game
     // state (swiss / playoffs / match / result / veto / transfer), not a transient sub-view.
     const transient: Screen[] = [
@@ -1976,7 +2526,7 @@ function App() {
     const saved = writeAutosave(buildRunSnapshot(), buildRunSummary());
     if (saved) setAutosave(saved);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [screen, phase, record, swissField, matchResults, careerMoney, careerEvent, selected, tournamentOutcome, circuitEventId, circuitSeason, circuitPoints, circuitMajorResults, circuitObserver, circuitOffseasonTarget, autoCoach, managerCareer]);
+  }, [screen, phase, record, swissField, matchResults, careerMoney, careerEvent, selected, tournamentOutcome, circuitEventId, circuitSeason, circuitPoints, circuitMajorResults, circuitObserver, circuitOffseasonTarget, autoCoach, managerCareer, simMatchReveal]);
 
   useEffect(() => {
     if (screen !== "veto" || !veto.pendingOpponent) return;
@@ -1985,6 +2535,22 @@ function App() {
     }, 1000);
     return () => window.clearTimeout(timer);
   }, [screen, veto.pendingOpponent?.action, veto.pendingOpponent?.map, opponent]);
+
+  useEffect(() => {
+    if (!simMatchReveal || simMatchReveal.complete) return;
+    const timer = window.setTimeout(() => {
+      setSimMatchReveal((current) => {
+        if (!current || current.complete) return current;
+        const visibleMaps = Math.min(current.maps.length, current.visibleMaps + 1);
+        return {
+          ...current,
+          visibleMaps,
+          complete: visibleMaps >= current.maps.length,
+        };
+      });
+    }, simMatchReveal.visibleMaps === 0 ? 700 : 1050);
+    return () => window.clearTimeout(timer);
+  }, [simMatchReveal]);
 
   useEffect(() => {
     if (!autoCoach) {
@@ -2040,7 +2606,7 @@ function App() {
     const activeRound = match.pendingEvents?.[0]?.round ?? match.feed[0]?.round ?? match.round;
     const completedEvents = match.feed.filter((e) => e.round === activeRound);
     const nextStepIndex = completedEvents.length + 1;
-    const delay = getStepDelay(match, yourTeam, opponent, nextStepIndex, speed, liveFeedView);
+    const delay = getStepDelay(match, yourTeam, opponent, nextStepIndex, speed, liveFeedView === "feed" ? "feed" : "map");
 
     const timer = window.setTimeout(() => {
       setMatch((current) => {
@@ -2189,12 +2755,65 @@ function App() {
     rollRoster([]);
   }
 
+  function synchronizeManagerLfo(
+    nextCareer: ManagerCareerState,
+    sourceRosters: Roster[],
+    managedPlayers: Player[] = managerSquad,
+  ) {
+    const revived = nextCareer.revivedOrganizations.map((organization) => (
+      managerRevivedOrganizationRoster(organization, nextCareer)
+    ));
+    const revivedIds = new Set(revived.map((roster) => roster.id));
+    const movedWorld = applyManagerRosterMoves(
+      [...sourceRosters.filter((roster) => !revivedIds.has(roster.id)), ...revived],
+      nextCareer.market.rosterMoves,
+    ).filter(isCurrentManagerWorldRoster);
+    const rosteredPlayers = [
+      ...movedWorld.flatMap((roster) => roster.players),
+      ...managedPlayers,
+    ].filter((player, index, players) => (
+      players.findIndex((item) => canonicalPlayerKey(item) === canonicalPlayerKey(player)) === index
+    ));
+    const rosteredIds = new Set(rosteredPlayers.map((player) => player.id));
+    const rosteredKeys = new Set(rosteredPlayers.map(canonicalPlayerKey));
+    const salaryContext = { vrsRank: nextCareer.vrsRank, organizationCountry: nextCareer.organizationCountry };
+    const marketCandidates = createManagerTransferList(
+      nextCareer.seed,
+      movedWorld,
+      nextCareer.organizationId,
+      undefined,
+      salaryContext,
+      [],
+      nextCareer.market.rosterMoves,
+      nextCareer.date,
+    );
+    const benched = marketCandidates.filter((candidate) => candidate.priority);
+    const transferTargets = marketCandidates.flatMap((candidate): ManagerOrganizationTransferTarget[] => (
+      candidate.kind === "transfer-listed" && candidate.currentTeam
+        ? [{ player: candidate.player, clubId: candidate.currentTeam.id, clubName: candidate.currentTeam.name }]
+        : []
+    ));
+    const candidates = [
+      ...benched,
+      ...createManagerReleasedFreeAgentPool(nextCareer.seed, nextCareer.market.rosterMoves, nextCareer.date, salaryContext),
+      ...createManagerFreeAgentPool(nextCareer.seed, undefined, salaryContext),
+    ]
+      .filter((candidate, index, pool) => (
+        pool.findIndex((item) => canonicalPlayerKey(item.player) === canonicalPlayerKey(candidate.player)) === index
+      ))
+      .filter((candidate) => (
+        !rosteredIds.has(candidate.id) && !rosteredKeys.has(canonicalPlayerKey(candidate.player))
+      ))
+      .map((candidate) => candidate.player);
+    return synchronizeManagerLfoTeam(nextCareer, candidates, transferTargets, managedPlayers);
+  }
+
   function activateManagerOrganization(roster: Roster, players: Player[], nextCoach?: Coach) {
     const worldTeams = managerWorldTeamSeeds(rosterPool);
     const organizationSeed = worldTeams.find((team) => (
       team.id === roster.id || team.name.trim().toLowerCase() === roster.name.trim().toLowerCase()
     ));
-    const nextCareer = createManagerCareer(vaultRunId, {
+    const createdCareer = createManagerCareer(vaultRunId, {
       organizationId: roster.id,
       organizationName: roster.name,
       organizationCountry: roster.country,
@@ -2203,6 +2822,7 @@ function App() {
       players,
       worldTeams,
     });
+    const nextCareer = synchronizeManagerLfo(createdCareer, rosterPool, players);
     const idlePool = rosterPool.filter((item) => item.id !== roster.id);
     const idleField = buildSwissField(idlePool.length ? idlePool : rosterPool);
     setCurrentRoster(roster);
@@ -2331,9 +2951,83 @@ function App() {
 
   function startVeto() {
     if (runDone || swissUserFinished) return;
+    setMatchChoiceOpen(false);
     setViewedSwissRound(null); // snap back to the live round when starting a match
     setVeto(createVeto(currentBestOf));
     setScreen("veto");
+  }
+
+  function openMatchChoice() {
+    if (runDone || swissUserFinished) return;
+    setViewedSwissRound(null);
+    setMatchChoiceOpen(true);
+  }
+
+  function simulateChosenMatch() {
+    if (matchChoiceSimulating || runDone || swissUserFinished) return;
+    setMatchChoiceSimulating(true);
+
+    window.setTimeout(() => {
+      const activePair = phase === "playoffs"
+        ? playoffPairs.find((pair) => pair.active)
+        : swissPairs.find((pair) => pair.active);
+      const pair: SwissPair = {
+        id: activePair?.id ?? `${phase}-${recordKey(record)}-user`,
+        left: yourTeam,
+        right: opponent,
+        active: true,
+      };
+      const round = phase === "playoffs"
+        ? playoffRoundNumber(playoffRound)
+        : record.wins + record.losses + 1;
+      const stage: SeriesStage = phase === "playoffs" ? playoffRound : "swiss";
+      const simulation = simulateAutoCoachedSeries(
+        pair,
+        round,
+        stage,
+        currentSeriesLabel,
+        currentBestOf,
+        settings,
+        difficulty,
+        phase === "swiss" ? laneKeyForRecord(record) : undefined,
+        activeMatchPreparation,
+      );
+
+      setVeto(simulation.veto);
+      setSeries(simulation.series);
+      setMatch(simulation.finalMatch);
+      setPlayerForm((current) => simulation.matches.reduce(
+        (form, completedMatch) => shiftPlayerForm(form, selected, completedMatch),
+        current,
+      ));
+      setTimeouts(0);
+      setTimeoutPlan({ boost: 0, rounds: 0 });
+      setTactic("standard");
+      setAutoCoach(true);
+      setAutoCoachStatus(
+        simulation.coachCalls
+          ? `Series simulated / ${simulation.coachCalls} automatic timeout${simulation.coachCalls === 1 ? "" : "s"}`
+          : "Series simulated / Auto Coach held both timeouts",
+      );
+      setSimMatchReveal({
+        maps: simulation.matches.map((completedMatch) => (
+          mapResultFromState(completedMatch.map, completedMatch, pair.left, pair.right)
+        )),
+        visibleMaps: 0,
+        complete: false,
+        bestOf: currentBestOf,
+        label: currentSeriesLabel,
+        coachCalls: simulation.coachCalls,
+      });
+      setMatchChoiceOpen(false);
+      setMatchChoiceSimulating(false);
+    }, 40);
+  }
+
+  function continueSimulatedMatch() {
+    if (!simMatchReveal?.complete) return;
+    setSimMatchReveal(undefined);
+    continueSeries();
   }
 
   function ban(map: MapId) {
@@ -2362,7 +3056,7 @@ function App() {
     liveTimeoutRef.current = false;
     setTactic("standard");
     setSeries(nextSeries);
-    setMatch(initMatch(maps[0], yourTeam, opponent, { stage: nextSeries.stage }));
+    setMatch(initMatch(maps[0], yourTeam, opponent, { stage: nextSeries.stage, preparation: activeMatchPreparation }));
     setScreen("match");
   }
 
@@ -2429,7 +3123,7 @@ function App() {
       setTimeouts(2);
       setTimeoutPlan({ boost: 0, rounds: 0 });
       setTactic("standard");
-      setMatch(initMatch(nextMap, activeSeries.left, activeSeries.right, { stage: activeSeries.stage }));
+      setMatch(initMatch(nextMap, activeSeries.left, activeSeries.right, { stage: activeSeries.stage, preparation: activeMatchPreparation }));
       setScreen("match");
       return;
     }
@@ -2452,7 +3146,7 @@ function App() {
       setTimeouts(2);
       setTimeoutPlan({ boost: 0, rounds: 0 });
       setTactic("standard");
-      setMatch(initMatch(nextMap, yourTeam, opponent, { stage: series.stage }));
+      setMatch(initMatch(nextMap, yourTeam, opponent, { stage: series.stage, preparation: activeMatchPreparation }));
       setScreen("match");
       return;
     }
@@ -2545,6 +3239,29 @@ function App() {
           : undefined,
       ));
     const roundResults = [playedResult, ...outsideResults];
+    const savedOtherGroupResults = managerCologneStage === "stage-2"
+      ? managerCologneOtherResults
+      : [];
+    const otherGroupRoundResults = managerCologneStage === "stage-2" && managerActiveEvent
+      ? simulateCologneStageTwoRound(
+          buildManagerDoubleEliminationOtherGroup(
+            managerEventRosters,
+            managerActiveEvent,
+            managerControlledOrganizationId,
+            swissField,
+            yourTeam,
+            managerCologneStageOneQualifiers,
+          ),
+          roundNumber,
+          savedOtherGroupResults,
+          settings,
+          difficulty,
+        )
+      : [];
+    const taggedOtherGroupRoundResults = managerCologneStage === "stage-2" && managerActiveEvent
+      ? tagManagerDoubleEliminationResults(otherGroupRoundResults, managerActiveEvent, "stage-2")
+      : [];
+    const nextOtherGroupResults = [...savedOtherGroupResults, ...taggedOtherGroupRoundResults];
     const pickemScore = outsideResults.reduce((sum, result) => sum + (pickems[result.pairId] === result.winnerId ? 1 : 0), 0);
     const nextSwissRecords = applyResultsToSwissRecords(swissRecords, roundResults);
     const nextPlayedOpponentIds = [...playedOpponentIds, opponent.id];
@@ -2560,6 +3277,53 @@ function App() {
     setSwissRecords(nextSwissRecords);
     setPlayedOpponentIds(nextPlayedOpponentIds);
     setRecord(nextRecord);
+    if (taggedOtherGroupRoundResults.length) {
+      setCircuitMajorResults((current) => [...current, ...taggedOtherGroupRoundResults]);
+    }
+    if (managerCologneStage) {
+      const nextStageResults = [...matchResults, ...roundResults];
+      const nextStageStatus = cologneStageStatus(
+        [yourTeam, ...swissField],
+        managerCologneStage,
+        nextStageResults,
+      );
+      const userAdvanced = nextStageStatus.advanced.some((team) => team.id === "user");
+      const userEliminated = nextStageStatus.eliminated.some((team) => team.id === "user");
+
+      if (userEliminated) {
+        setTournamentOutcome("eliminated");
+        setPlayerFinish("swiss");
+      }
+      if (nextStageStatus.resolved) {
+        if (managerCologneStage === "stage-2") {
+          enterManagerDoubleEliminationPlayoffs(
+            nextSwissRecords,
+            nextStageResults,
+            nextRecord,
+            nextOtherGroupResults,
+            true,
+          );
+          return;
+        }
+        setScreen("swiss");
+        return;
+      }
+      if (!userAdvanced && !userEliminated) {
+        const nextPairs = buildCologneRoundPairs(
+          [yourTeam, ...swissField],
+          managerCologneStage,
+          roundNumber + 1,
+          nextStageResults,
+        );
+        const nextActive = nextPairs.find((pair) => pair.active);
+        if (nextActive) {
+          setOpponent(nextActive.left.id === "user" ? nextActive.right : nextActive.left);
+          setVeto(createVeto());
+        }
+      }
+      setScreen("swiss");
+      return;
+    }
     if (nextRecord.wins >= recordStageWinTarget) {
       if (isRecordStageResolved(
         swissField,
@@ -2645,34 +3409,31 @@ function App() {
       || record.wins < recordStageWinTarget
       || !swissStageResolved
     ) return;
-    const qualified = swissField
-      .filter((team) => (swissRecords[team.id]?.wins ?? 0) >= recordStageWinTarget)
-      .sort((left, right) => {
-        const leftRecord = swissRecords[left.id] ?? { wins: 0, losses: 0 };
-        const rightRecord = swissRecords[right.id] ?? { wins: 0, losses: 0 };
-        return rightRecord.wins - leftRecord.wins
-          || leftRecord.losses - rightRecord.losses
-          || teamStrength(right, settings, difficulty) - teamStrength(left, settings, difficulty);
-      })
-      .slice(0, managerActiveEvent.doubleElimination.stageOneAdvances - 1);
+    const qualified = cologneStageStatus(
+      [yourTeam, ...swissField],
+      "stage-1",
+      matchResults,
+    ).advanced.filter((team) => team.id !== "user");
     const nextCareer = advanceManagerEventStage(managerCareer, "stage-2");
     const nextField = buildManagerDoubleEliminationField(
       managerEventRosters,
       managerActiveEvent,
       "stage-2",
       managerControlledOrganizationId,
-      managerCareer.vrsRank,
+      yourTeam,
       qualified,
     );
     const nextRecords = initialSwissRecords(nextField);
-    const nextOpponent = selectOpponentForRecord(
-      { wins: 0, losses: 0 },
-      nextField,
-      nextRecords,
+    const openingPairs = buildCologneRoundPairs(
+      [yourTeam, ...nextField],
+      "stage-2",
+      1,
       [],
-      3,
-      2,
     );
+    const openingPair = openingPairs.find((pair) => pair.active);
+    const nextOpponent = openingPair
+      ? openingPair.left.id === "user" ? openingPair.right : openingPair.left
+      : nextField[0];
     commitManagerCareer(nextCareer);
     setCircuitMajorResults((current) => [
       ...current,
@@ -2696,53 +3457,95 @@ function App() {
     setScreen("swiss");
   }
 
-  function enterManagerDoubleEliminationPlayoffs(nextSwissRecords: Record<string, SwissRecord>) {
+  function enterManagerDoubleEliminationPlayoffs(
+    nextSwissRecords: Record<string, SwissRecord>,
+    stageResults: SwissResult[] = matchResults,
+    userStageRecord: SwissRecord = record,
+    otherStageResultsOverride?: SwissResult[],
+    observeIfEliminated = false,
+  ) {
     if (
       !managerCareer
       || !managerActiveEvent?.doubleElimination
       || managerCareer.activeEventStage !== "stage-2"
-      || record.wins < recordStageWinTarget
     ) return;
-    const recordFor = (team: FieldTeam) => team.id === "user"
-      ? record
-      : nextSwissRecords[team.id] ?? { wins: 0, losses: 0 };
-    const userGroup = [yourTeam, ...swissField]
-      .filter((team) => recordFor(team).wins >= recordStageWinTarget)
-      .sort((left, right) => {
-        const leftRecord = recordFor(left);
-        const rightRecord = recordFor(right);
-        return leftRecord.losses - rightRecord.losses
-          || rightRecord.wins - leftRecord.wins
-          || teamStrength(right, settings, difficulty) - teamStrength(left, settings, difficulty);
-      })
-      .slice(0, managerActiveEvent.doubleElimination.stageTwoAdvancesPerGroup);
-    if (!userGroup.some((team) => team.id === "user")) userGroup[userGroup.length - 1] = yourTeam;
-    if (record.losses === 0) {
-      const userIndex = userGroup.findIndex((team) => team.id === "user");
-      if (userIndex > 0) [userGroup[0], userGroup[userIndex]] = [userGroup[userIndex], userGroup[0]];
-    }
-    const otherGroup = buildManagerDoubleEliminationOtherGroup(
-      managerEventRosters,
-      managerActiveEvent,
-      managerControlledOrganizationId,
-      swissField,
+    const userGroupStatus = cologneStageStatus(
+      [yourTeam, ...swissField],
+      "stage-2",
+      stageResults,
     );
-    if (userGroup.length < 3 || otherGroup.length < 3) return;
+    const userQualified = userGroupStatus.advanced.some((team) => team.id === "user");
+    if (!userGroupStatus.resolved || (!userQualified && !observeIfEliminated)) return;
 
-    const quarterfinals = buildCologneQuarterfinalPairs(userGroup, otherGroup, yourTeam);
-    const byeTeams = [userGroup[0], otherGroup[0]];
+    const otherGroupTeams = managerCologneOtherTeams.length
+      ? managerCologneOtherTeams
+      : buildManagerDoubleEliminationOtherGroup(
+          managerEventRosters,
+          managerActiveEvent,
+          managerControlledOrganizationId,
+          swissField,
+          yourTeam,
+          managerCologneStageOneQualifiers,
+        );
+    let otherGroupResults = cologneResultsForField(
+      otherGroupTeams,
+      "stage-2",
+      otherStageResultsOverride ?? managerCologneOtherResults,
+    );
+    const generatedOtherGroupResults: SwissResult[] = [];
+    for (let round = 1; round <= 4; round += 1) {
+      const otherStatus = cologneStageStatus(
+        otherGroupTeams,
+        "stage-2",
+        otherGroupResults,
+        "__neutral__",
+      );
+      if (otherStatus.resolved) break;
+      const roundResults = simulateCologneStageTwoRound(
+        otherGroupTeams,
+        round,
+        otherGroupResults,
+        settings,
+        difficulty,
+      );
+      if (!roundResults.length) continue;
+      generatedOtherGroupResults.push(...roundResults);
+      otherGroupResults = [...otherGroupResults, ...roundResults];
+    }
+    const otherGroupStatus = cologneStageStatus(
+      otherGroupTeams,
+      "stage-2",
+      otherGroupResults,
+      "__neutral__",
+    );
+    const playoffSeeds = buildColognePlayoffSeeds(userGroupStatus, otherGroupStatus);
+    if (!playoffSeeds) return;
+
+    const quarterfinals = playoffSeeds.quarterfinals.map(([left, right], index) => ({
+      id: `cologne-quarterfinal-${index}-${left.id}-${right.id}`,
+      left,
+      right,
+      active: left.id === "user" || right.id === "user",
+    }));
+    const byeTeams = playoffSeeds.byes;
     const nextCareer = advanceManagerEventStage(managerCareer, "playoffs");
-    const archivedStage = tagManagerDoubleEliminationResults(matchResults, managerActiveEvent, "stage-2");
+    const archivedStage = tagManagerDoubleEliminationResults(stageResults, managerActiveEvent, "stage-2");
+    const generatedArchivedGroup = tagManagerDoubleEliminationResults(
+      generatedOtherGroupResults,
+      managerActiveEvent,
+      "stage-2",
+    );
     const playoffField = [...byeTeams, ...quarterfinals.flatMap((pair) => [pair.left, pair.right])]
       .filter((team, index, teams) => team.id !== "user" && teams.findIndex((candidate) => candidate.id === team.id) === index);
 
     commitManagerCareer(nextCareer);
-    setCircuitMajorResults((current) => [...current, ...archivedStage]);
+    setCircuitMajorResults((current) => [...current, ...generatedArchivedGroup, ...archivedStage]);
+    setRecord(userStageRecord);
     setSwissField(playoffField);
     setSwissRecords(initialSwissRecords(playoffField));
     setPhase("playoffs");
-    setTournamentOutcome("running");
-    setPlayerFinish(null);
+    setTournamentOutcome(userQualified ? "running" : "eliminated");
+    setPlayerFinish(userQualified ? null : "swiss");
     setTournamentWinner(undefined);
     setSeries(undefined);
     setMatch(undefined);
@@ -2790,6 +3593,90 @@ function App() {
     setViewedSwissRound(null); // snap back to the live round when simming
     let nextSwissRecords = { ...swissRecords };
     const simulatedResults: SwissResult[] = [];
+    if (managerCologneStage) {
+      const allTeams = [yourTeam, ...swissField];
+      const maxRound = managerCologneStage === "stage-1" ? 3 : 4;
+      let nextRound = Math.max(0, ...matchResults.map((result) => result.round)) + 1;
+      let allStageResults = [...matchResults];
+      let nextStatus = cologneStageStatus(allTeams, managerCologneStage, allStageResults);
+      const otherGroupTeams = managerCologneStage === "stage-2" && managerActiveEvent
+        ? buildManagerDoubleEliminationOtherGroup(
+            managerEventRosters,
+            managerActiveEvent,
+            managerControlledOrganizationId,
+            swissField,
+            yourTeam,
+            managerCologneStageOneQualifiers,
+          )
+        : [];
+      let otherStageResults = managerCologneStage === "stage-2"
+        ? managerCologneOtherResults
+        : [];
+      const otherSimulatedResults: SwissResult[] = [];
+
+      while (nextRound <= maxRound && !nextStatus.resolved) {
+        const pairs = buildCologneRoundPairs(
+          allTeams,
+          managerCologneStage,
+          nextRound,
+          allStageResults,
+        );
+        if (!pairs.length) break;
+        const roundResults = pairs.map((pair) => simulateSwissSeries(
+          pair,
+          nextRound,
+          settings,
+          difficulty,
+          nextSwissRecords,
+          managerActiveEvent?.groupBestOf,
+          `${managerCologneStage === "stage-1" ? "Stage 1" : "Stage 2 group"} double elimination`,
+        ));
+        simulatedResults.push(...roundResults);
+        allStageResults = [...allStageResults, ...roundResults];
+        nextSwissRecords = applyResultsToSwissRecords(nextSwissRecords, roundResults);
+        if (managerCologneStage === "stage-2" && managerActiveEvent) {
+          const otherRoundResults = simulateCologneStageTwoRound(
+            otherGroupTeams,
+            nextRound,
+            otherStageResults,
+            settings,
+            difficulty,
+          );
+          const taggedOtherRoundResults = tagManagerDoubleEliminationResults(
+            otherRoundResults,
+            managerActiveEvent,
+            "stage-2",
+          );
+          otherSimulatedResults.push(...taggedOtherRoundResults);
+          otherStageResults = [...otherStageResults, ...taggedOtherRoundResults];
+        }
+        nextStatus = cologneStageStatus(allTeams, managerCologneStage, allStageResults);
+        nextRound += 1;
+      }
+
+      setSwissRecords(nextSwissRecords);
+      setPickems({});
+      setLastPickemDelta(0);
+      if (simulatedResults.length) {
+        setMatchResults((current) => [...current, ...simulatedResults]);
+        setSelectedResultId(simulatedResults[simulatedResults.length - 1].id);
+      }
+      if (otherSimulatedResults.length) {
+        setCircuitMajorResults((current) => [...current, ...otherSimulatedResults]);
+      }
+      if (managerCologneStage === "stage-2" && nextStatus.resolved) {
+        enterManagerDoubleEliminationPlayoffs(
+          nextSwissRecords,
+          allStageResults,
+          record,
+          otherStageResults,
+          true,
+        );
+        return;
+      }
+      setScreen("swiss");
+      return;
+    }
     let nextRound = Math.min(record.wins + record.losses + 1, 5);
 
     while (nextRound <= 5 && !isRecordStageResolved(
@@ -3186,7 +4073,14 @@ function App() {
       true,
       archivedResults,
     );
-    const nextCareer = advanceManagerMajorStage(managerCareer, managerMajorNextStage.id as ManagerMajorStage);
+    const evidencedCareer = integrateManagerWorldSeries(
+      managerCareer,
+      managerCareer.activeEventId!,
+      managerWorldSeriesFromResults(archivedResults, managerCareer),
+      managerMajorStageEnd(managerMajorStage.id as ManagerMajorStage, managerCareer.season),
+      managerCareer.season,
+    );
+    const nextCareer = advanceManagerMajorStage(evidencedCareer, managerMajorNextStage.id as ManagerMajorStage);
     if (nextCareer === managerCareer) return;
     setCircuitMajorResults(archivedResults);
     commitManagerCareer(nextCareer);
@@ -3420,13 +4314,38 @@ function App() {
       inbox: rankingInbox,
     };
     const crossedTime = current && rankedNext.date > current.date;
+    const releasedAiFreeAgents = crossedTime
+      ? createManagerReleasedFreeAgentPool(
+          rankedNext.seed,
+          rankedNext.market.rosterMoves,
+          rankedNext.date,
+        )
+      : [];
+    const aiFreeAgentCandidates = crossedTime
+      ? [...releasedAiFreeAgents, ...createManagerFreeAgentPool(rankedNext.seed)]
+          .filter((candidate, index, candidates) => candidates.findIndex((item) => item.id === candidate.id) === index)
+          .filter((candidate) => (
+            !rankedNext.market.signedPlayerIds.includes(candidate.id)
+            && !rankedNext.market.unavailablePlayerIds.includes(candidate.id)
+            && !rankedNext.contracts.some((contract) => contract.playerId === candidate.id && contract.status !== "expired")
+          ))
+      : [];
     const aiTransferActivity = crossedTime
       ? createManagerAiTransferActivity({
           seed: rankedNext.seed,
-          rosters: applyManagerRosterMoves(rosterPool, rankedNext.market.rosterMoves).filter(isCurrentManagerWorldRoster),
+          rosters: applyManagerRosterMoves([
+            ...rosterPool.filter((roster) => !rankedNext.revivedOrganizations.some((organization) => organization.id === roster.id)),
+            ...rankedNext.revivedOrganizations.map((organization) => managerRevivedOrganizationRoster(organization, rankedNext)),
+          ], rankedNext.market.rosterMoves).filter(isCurrentManagerWorldRoster),
           fromDate: current.date,
           toDate: rankedNext.date,
           existingMoves: rankedNext.market.rosterMoves,
+          freeAgents: aiFreeAgentCandidates.map((candidate) => candidate.player),
+          freeAgentAvailableOn: Object.fromEntries(
+            aiFreeAgentCandidates
+              .filter((candidate) => candidate.availableOn)
+              .map((candidate) => [candidate.id, candidate.availableOn!]),
+          ),
           excludedOrganizationId: managerControlledOrganizationId,
           excludedOrganizationName: managerOrganization?.name ?? rankedNext.organizationName,
           recentPerformance: managerRecentPerformance,
@@ -3457,7 +4376,10 @@ function App() {
       ? createManagerIncomingOffer(
           transferSynchronized,
           managerSquad,
-          applyManagerRosterMoves(rosterPool, transferSynchronized.market.rosterMoves)
+          applyManagerRosterMoves([
+            ...rosterPool.filter((roster) => !transferSynchronized.revivedOrganizations.some((organization) => organization.id === roster.id)),
+            ...transferSynchronized.revivedOrganizations.map((organization) => managerRevivedOrganizationRoster(organization, transferSynchronized)),
+          ], transferSynchronized.market.rosterMoves)
             .filter((roster) => (
               isCurrentManagerWorldRoster(roster)
               && roster.id !== managerControlledOrganizationId
@@ -3466,8 +4388,9 @@ function App() {
           rankedNext.date,
         )
       : transferSynchronized;
-    setManagerCareer(synchronized);
-    setCareerMoney(synchronized.cash);
+    const lfoSynchronized = synchronizeManagerLfo(synchronized, rosterPool);
+    setManagerCareer(lfoSynchronized);
+    setCareerMoney(lfoSynchronized.cash);
   }
 
   function commitManagerTradeCareer(next: ManagerCareerState) {
@@ -3538,6 +4461,20 @@ function App() {
     commitManagerCareer(next);
   }
 
+  function startManagerMentorship(mentorId: string, menteeId: string) {
+    if (!managerCareer) return;
+    const next = assignManagerMentorship(managerCareer, managerContractPlayers, mentorId, menteeId);
+    if (next === managerCareer) return;
+    commitManagerCareer(next);
+  }
+
+  function stopManagerMentorship(mentorshipId: string) {
+    if (!managerCareer) return;
+    const next = endManagerMentorship(managerCareer, mentorshipId);
+    if (next === managerCareer) return;
+    commitManagerCareer(next);
+  }
+
   function investManagerPlayerPotential(player: Player, choice: ManagerCoinSide, result: ManagerCoinSide) {
     if (!managerCareer) return;
     const next = resolveManagerPotentialInvestment(managerCareer, player, choice, result);
@@ -3546,6 +4483,22 @@ function App() {
       const potential = managerTrainingPlan(next, player).potentialOvr;
       setSelected((current) => current.map((item) => item.id === player.id ? { ...item, potential } : item));
     }
+    commitManagerCareer(next);
+  }
+
+  function investManagerPlayerOvr(player: Player, result: ManagerOvrDiceResult) {
+    if (!managerCareer) return;
+    const next = resolveManagerOvrInvestment(managerCareer, player, result);
+    if (next === managerCareer) return;
+    const plan = managerTrainingPlan(next, player);
+    setSelected((current) => current.map((item) => item.id === player.id
+      ? {
+          ...item,
+          ovr: plan.currentOvr,
+          potential: plan.potentialOvr,
+          stats: plan.currentStats ?? item.stats,
+        }
+      : item));
     commitManagerCareer(next);
   }
 
@@ -3559,6 +4512,27 @@ function App() {
   function scheduleManagerCamp(focus: ManagerPerformanceCampFocus) {
     if (!managerCareer) return;
     const next = scheduleManagerPerformanceCamp(managerCareer, focus);
+    if (next === managerCareer) return;
+    commitManagerCareer(next);
+  }
+
+  function chooseManagerPreparation(plan: ManagerPreparationPlan, targetSite: "A" | "B") {
+    if (!managerCareer) return;
+    const next = setManagerPreparationPlan(managerCareer, plan, targetSite);
+    if (next === managerCareer) return;
+    commitManagerCareer(next);
+  }
+
+  function bookManagerScrim(input: ManagerScrimInput) {
+    if (!managerCareer) return;
+    const next = scheduleManagerScrim(managerCareer, input);
+    if (next === managerCareer) return;
+    commitManagerCareer(next);
+  }
+
+  function removeManagerScrim(scrimId: string) {
+    if (!managerCareer) return;
+    const next = cancelManagerScrim(managerCareer, scrimId);
     if (next === managerCareer) return;
     commitManagerCareer(next);
   }
@@ -3612,6 +4586,7 @@ function App() {
     const majorEntryRoute = majorStage
       ? simulateManagerMajorEntryRoute(managerEventRosters, majorStage, settings, difficulty)
       : undefined;
+    const qualifierIds = managerQualifiedTeamIdsForEvent(nextCareer, event, nextCareer.season);
     const nextSwissField = majorEntryRoute?.field
       ?? (event.format === "double-elimination" && nextCareer.activeEventStage
         ? buildManagerDoubleEliminationField(
@@ -3619,9 +4594,11 @@ function App() {
             event,
             nextCareer.activeEventStage,
             managerControlledOrganizationId,
-            nextCareer.vrsRank,
+            yourTeam,
+            [],
+            qualifierIds,
           )
-        : buildManagerField(managerEventRosters, event, managerControlledOrganizationId));
+        : buildManagerField(managerEventRosters, event, managerControlledOrganizationId, qualifierIds));
     const nextSwissRecords = initialSwissRecords(nextSwissField);
     const directPairs = event.format === "single-elimination"
       ? buildPlayoffPairs("quarterfinal", [yourTeam, ...nextSwissField.slice(0, 7)], yourTeam)
@@ -3629,13 +4606,23 @@ function App() {
     const groupPairs = event.format === "round-robin"
       ? buildRoundRobinRoundPairs(yourTeam, nextSwissField, 1)
       : [];
-    const activePair = directPairs.find((pair) => pair.active) ?? groupPairs.find((pair) => pair.active);
+    const colognePairs = event.format === "double-elimination" && nextCareer.activeEventStage !== "playoffs"
+      ? buildCologneRoundPairs(
+          [yourTeam, ...nextSwissField],
+          nextCareer.activeEventStage === "stage-1" ? "stage-1" : "stage-2",
+          1,
+          [],
+        )
+      : [];
+    const activePair = directPairs.find((pair) => pair.active)
+      ?? groupPairs.find((pair) => pair.active)
+      ?? colognePairs.find((pair) => pair.active);
     const rival = activePair
       ? activePair.left.id === yourTeam.id ? activePair.right : activePair.left
       : selectOpponentForRecord({ wins: 0, losses: 0 }, nextSwissField, nextSwissRecords, []);
     commitManagerCareer(nextCareer);
     if (majorStage) setCircuitEventId(majorStage.id);
-    setCircuitMajorResults(majorEntryRoute?.archivedResults ?? []);
+    setCircuitMajorResults([...(majorEntryRoute?.archivedResults ?? [])]);
     setRecord({ wins: 0, losses: 0 });
     setPhase(event.format === "single-elimination" ? "playoffs" : "swiss");
     setPlayoffRound("quarterfinal");
@@ -3674,18 +4661,81 @@ function App() {
       reachedPlayoffs: phase === "playoffs",
       playoffRound,
     });
-    const completedResults = event.majorCycle
-      ? [...normalizedCircuitArchive, ...tagCircuitResults(matchResults, managerMajorStage ?? circuitEvent)]
+    let completedResults = event.majorCycle
+      ? mergeTournamentResults(
+          normalizedCircuitArchive,
+          tagCircuitResults(matchResults, managerMajorStage ?? circuitEvent),
+        )
       : event.format === "double-elimination"
-        ? [
-            ...circuitMajorResults,
-            ...tagManagerDoubleEliminationResults(
+        ? mergeTournamentResults(
+            circuitMajorResults,
+            tagManagerDoubleEliminationResults(
               matchResults,
               event,
               managerCareer.activeEventStage ?? "playoffs",
             ),
-          ]
-        : matchResults;
+          )
+        : [...matchResults];
+    let resolvedWinner = winnerFromFinal(completedResults) ?? tournamentWinner;
+
+    // Leaving after an elimination must settle the tournament, not freeze the world at the
+    // managed team's last match. Preserve every played series, then simulate only the neutral
+    // stages and playoff rounds that remain before archiving and recalculating VRS.
+    if (!resolvedWinner && event.majorCycle && managerMajorStage) {
+      const remainder = simulateCircuitRemainder(
+        managerMajorStage,
+        swissField,
+        swissRecords,
+        matchResults,
+        normalizedCircuitArchive,
+        managerEventRosters,
+        settings,
+        difficulty,
+      );
+      completedResults = mergeTournamentResults(normalizedCircuitArchive, remainder.results);
+      resolvedWinner = remainder.winner;
+    } else if (
+      !resolvedWinner
+      && event.format === "double-elimination"
+      && managerCareer.activeEventStage !== "playoffs"
+    ) {
+      const remainder = simulateManagerCologneRemainder({
+        event,
+        activeStage: managerCareer.activeEventStage ?? "stage-1",
+        currentField: swissField,
+        currentResults: matchResults,
+        archivedResults: circuitMajorResults,
+        rosterPool: managerEventRosters,
+        controlledOrganizationId: managerControlledOrganizationId,
+        user: yourTeam,
+        settings,
+        difficulty,
+      });
+      completedResults = remainder.results;
+      resolvedWinner = remainder.winner;
+    } else if (!resolvedWinner && event.format === "round-robin" && phase === "swiss") {
+      const standings = [yourTeam, ...swissField].sort((left, right) => {
+        const leftRecord = left.id === "user" ? record : swissRecords[left.id] ?? { wins: 0, losses: 0 };
+        const rightRecord = right.id === "user" ? record : swissRecords[right.id] ?? { wins: 0, losses: 0 };
+        return rightRecord.wins - leftRecord.wins
+          || leftRecord.losses - rightRecord.losses
+          || teamStrength(right, settings, difficulty) - teamStrength(left, settings, difficulty);
+      });
+      const semifinals = buildRoundRobinPlayoffPairs(standings.slice(0, 4), yourTeam);
+      const semifinalResults = semifinals.map((pair) =>
+        simulatePlayoffSeries(pair, "semifinal", settings, difficulty, 3));
+      const finalists = semifinalResults.map((result) =>
+        result.winnerId === result.left.id ? result.left : result.right);
+      const finalPairs = buildNeutralNextPlayoffPairs("final", finalists);
+      const finalResults = finalPairs.map((pair) =>
+        simulatePlayoffSeries(pair, "final", settings, difficulty, 5));
+      completedResults = mergeTournamentResults(matchResults, semifinalResults, finalResults);
+      resolvedWinner = winnerFromFinal(completedResults);
+    } else if (!resolvedWinner && event.format === "swiss" && phase === "swiss") {
+      const playoffs = simulateNeutralPlayoffs(swissField, swissRecords, settings, difficulty);
+      completedResults = mergeTournamentResults(matchResults, playoffs.results);
+      resolvedWinner = playoffs.winner;
+    }
     const playerRatings = Object.fromEntries(
       buildPlayerDatabase(completedResults)
         .filter((row) => row.team.id === yourTeam.id)
@@ -3702,14 +4752,16 @@ function App() {
     const archivedTeams = archivedResultTeams.length
       ? archivedResultTeams
       : Array.from(new Map([yourTeam, ...swissField].map((team) => [team.id, team])).values());
-    const archivedWinner = winnerFromFinal(archivedResults) ?? tournamentWinner ?? (tier === "champion" ? yourTeam : undefined);
+    const archivedWinner = winnerFromFinal(archivedResults) ?? resolvedWinner ?? (tier === "champion" ? yourTeam : undefined);
     const archive: ManagerEventArchive = {
       id: `manager:${managerCareer.season}:${event.id}:${managerCareer.activeMajorStage ?? managerCareer.activeEventStage ?? "event"}`,
       eventId: event.id,
       eventName: managerEventName(event, managerCareer.season),
       season: managerCareer.season,
       completedOn: managerCareer.date,
-      majorStage: event.majorCycle ? managerCareer.activeMajorStage : undefined,
+      majorStage: event.majorCycle
+        ? winnerFromFinal(archivedResults) ? "stage-3" : managerCareer.activeMajorStage
+        : undefined,
       phase: event.hasPlayoffs && archivedResults.some((result) => result.stage !== "swiss") ? "playoffs" : "swiss",
       playoffRound: latestPlayoffRound(archivedResults),
       outcome: tier === "champion" ? "champion" : "complete",
@@ -3726,7 +4778,15 @@ function App() {
       managerCareer.season,
       managerCareer.date,
     );
-    const completedCareer = completeManagerEvent(managerCareer, event.id, tier, playerRatings, vrsEvidence);
+    const completedCareer = completeManagerEvent(
+      managerCareer,
+      event.id,
+      tier,
+      playerRatings,
+      vrsEvidence,
+      managerWorldSeriesFromResults(completedResults, managerCareer),
+      managerEventSchedule(event, managerCareer.season).endsOn,
+    );
     if (completedCareer === managerCareer) return;
     const training = resolveManagerTrainingCycle(completedCareer, managerContractPlayers, playerRatings, tier);
     const nextCareer = training.state;
@@ -3895,6 +4955,8 @@ function App() {
         ? `Inbox / ${managerCareer.inbox.filter((item) => !item.read).length} unread`
         : screen === "manager-calendar"
           ? `Calendar / ${managerFormatDate(managerCareer.date)}`
+          : screen === "manager-preparation"
+            ? `Preparation / ${managerPreparationPlans.find((plan) => plan.id === managerCareer.preparation.activePlan)?.shortName ?? "Match plan"}`
           : screen === "manager-roster"
             ? `Roster / ${selected.length} starters`
             : screen === "manager-market"
@@ -3939,10 +5001,6 @@ function App() {
     const loadedCurrentRoster = snapshot.currentRoster
       ? currentVrsRoster(snapshot.currentRoster.id, rosterPool) ?? snapshot.currentRoster
       : builtInHltvRosters[0];
-    const loadedOpponent = syncFieldTeamVrs(
-      snapshot.opponent ?? toTournamentTeam(builtInHltvRosters[1] ?? builtInHltvRosters[0]),
-      rosterPool,
-    );
     const loadedSelected = (snapshot.selected ?? []).map(withCareerMeta);
     const savedManagerOrganization = snapshot.managerCareer
       ? resolveManagerOrganization(rosterPool, snapshot.managerCareer.organizationId, snapshot.managerCareer.organizationName)
@@ -3964,7 +5022,7 @@ function App() {
       players: loadedSelected,
       worldTeams: managerWorldTeams,
     });
-    const loadedManagerCareer = normalizedManagerCareer && savedManagerOrganization
+    const loadedManagerCareerBase = normalizedManagerCareer && savedManagerOrganization
       ? {
           ...normalizedManagerCareer,
           organizationId: savedManagerOrganization.id,
@@ -3972,6 +5030,54 @@ function App() {
           organizationCountry: savedManagerOrganization.country,
         }
       : normalizedManagerCareer;
+    const loadedManagerCareerWithLfo = loadedManagerCareerBase
+      ? synchronizeManagerLfo(loadedManagerCareerBase, rosterPool, loadedSelected)
+      : loadedManagerCareerBase;
+    const preliminaryManagerWorldRosters = buildManagerWorldRosters(rosterPool, loadedManagerCareerWithLfo);
+    const preliminaryCareerHistory = (snapshot.careerHistory ?? []).map((entry) => {
+      const normalizedEntry = entry.eventId
+        ? { ...entry, eventId: normalizeCircuitEventId(entry.eventId) }
+        : entry;
+      if (!entry.archive) return normalizedEntry;
+      const normalizedArchive = {
+        ...entry.archive,
+        majorStage: entry.archive.majorStage ? normalizeCircuitEventId(entry.archive.majorStage) as ManagerMajorStage : undefined,
+      };
+      return {
+        ...normalizedEntry,
+        archive: syncManagerSnapshotArchive(
+          normalizedArchive,
+          preliminaryManagerWorldRosters,
+          loadedManagerCareerWithLfo,
+        ),
+      };
+    });
+    const loadedManagerCareer = loadedManagerCareerWithLfo
+      ? reconcileManagerHistoryVrs(loadedManagerCareerWithLfo, preliminaryCareerHistory)
+      : loadedManagerCareerWithLfo;
+    const loadedManagerWorldRosters = buildManagerWorldRosters(rosterPool, loadedManagerCareer);
+    const loadedCareerHistory = preliminaryCareerHistory.map((entry) => entry.archive
+      ? { ...entry, archive: syncManagerSnapshotArchive(entry.archive, loadedManagerWorldRosters, loadedManagerCareer) }
+      : entry);
+    const sourceOpponent = snapshot.opponent
+      ?? toTournamentTeam(builtInHltvRosters[1] ?? builtInHltvRosters[0]);
+    const sourceField = snapshot.swissField ?? buildSwissField(rosterPool);
+    const sourcePairs = snapshot.playoffPairs ?? [];
+    const sourceResults = snapshot.matchResults ?? [];
+    const sourceSeries = snapshot.series;
+    const sourceWinner = snapshot.tournamentWinner;
+    const snapshotIdRemap = managerSnapshotIdRemap([
+      ...sourceField,
+      sourceOpponent,
+      ...sourcePairs.flatMap((pair) => [pair.left, pair.right]),
+      ...sourceResults.flatMap((result) => [result.left, result.right]),
+      ...(sourceSeries ? [sourceSeries.left, sourceSeries.right] : []),
+      ...(sourceWinner ? [sourceWinner] : []),
+    ], loadedManagerWorldRosters, loadedManagerCareer);
+    const loadedOpponent = syncManagerSnapshotTeam(sourceOpponent, loadedManagerWorldRosters, loadedManagerCareer);
+    const loadedSwissField = sourceField.map((team) => (
+      syncManagerSnapshotTeam(team, loadedManagerWorldRosters, loadedManagerCareer)
+    ));
     const loadedManagerMajorStage = loadedManagerCareer?.activeMajorStage;
     const forceManagerSwissStage = snapshot.mode === "manager"
       && Boolean(loadedManagerCareer?.activeEventId)
@@ -3980,14 +5086,12 @@ function App() {
       && snapshot.phase !== "swiss";
     const loadedPairs = forceManagerSwissStage
       ? []
-      : (snapshot.playoffPairs ?? []).map((pair) => syncPairVrs(pair, rosterPool));
-    const loadedResults = (snapshot.matchResults ?? []).map((result) => syncResultVrs(result, rosterPool));
-    const loadedSeries = snapshot.series
-      ? {
-          ...snapshot.series,
-          left: syncFieldTeamVrs(snapshot.series.left, rosterPool),
-          right: syncFieldTeamVrs(snapshot.series.right, rosterPool),
-      }
+      : sourcePairs.map((pair) => syncManagerSnapshotPair(pair, loadedManagerWorldRosters, loadedManagerCareer));
+    const loadedResults = sourceResults.map((result) => (
+      syncManagerSnapshotResult(result, loadedManagerWorldRosters, loadedManagerCareer)
+    ));
+    const loadedSeries = sourceSeries
+      ? syncManagerSnapshotSeries(sourceSeries, loadedManagerWorldRosters, loadedManagerCareer)
       : undefined;
     setSettings(snapshot.settings ?? defaultSettings);
     setRealTimeRounds(snapshot.realTimeRounds ?? true);
@@ -4012,16 +5116,20 @@ function App() {
     setPlayoffRound(snapshot.playoffRound ?? "quarterfinal");
     setPlayoffPairs(loadedPairs);
     setTournamentOutcome(snapshot.tournamentOutcome ?? "running");
-    setTournamentWinner(snapshot.tournamentWinner ? syncFieldTeamVrs(snapshot.tournamentWinner, rosterPool) : undefined);
-    setSwissField((snapshot.swissField ?? buildSwissField(rosterPool)).map((team) => syncFieldTeamVrs(team, rosterPool)));
-    setSwissRecords(snapshot.swissRecords ?? {});
+    setTournamentWinner(sourceWinner
+      ? syncManagerSnapshotTeam(sourceWinner, loadedManagerWorldRosters, loadedManagerCareer)
+      : undefined);
+    setSwissField(loadedSwissField);
+    setSwissRecords(remapSnapshotRecords(snapshot.swissRecords ?? {}, sourceField, loadedSwissField));
     setSpectatorSwissRound(snapshot.spectatorSwissRound ?? 1);
-    setPlayedOpponentIds(snapshot.playedOpponentIds ?? []);
+    setPlayedOpponentIds((snapshot.playedOpponentIds ?? []).map((id) => snapshotIdRemap.get(id) ?? id));
     setMatchResults(loadedResults);
     setSelectedResultId(snapshot.selectedResultId);
     setStatsScope(snapshot.statsScope ?? "all");
     setRecord(snapshot.record ?? { wins: 0, losses: 0 });
-    setPickems(snapshot.pickems ?? {});
+    setPickems(Object.fromEntries(
+      Object.entries(snapshot.pickems ?? {}).map(([pairId, teamId]) => [pairId, snapshotIdRemap.get(teamId) ?? teamId]),
+    ));
     setPickemScore(snapshot.pickemScore ?? 0);
     setLastPickemDelta(snapshot.lastPickemDelta ?? 0);
     setViewedSwissRound(snapshot.viewedSwissRound ?? null);
@@ -4039,29 +5147,7 @@ function App() {
     setCareerActive(snapshot.careerActive ?? false);
     setCareerMoney(snapshot.careerMoney ?? 0);
     setCareerEvent(snapshot.careerEvent ?? 1);
-    setCareerHistory(
-      (snapshot.careerHistory ?? []).map((entry) => {
-        const normalizedEntry = entry.eventId
-          ? { ...entry, eventId: normalizeCircuitEventId(entry.eventId) }
-          : entry;
-        if (!entry.archive) return normalizedEntry;
-        return {
-          ...normalizedEntry,
-          archive: {
-            ...entry.archive,
-            majorStage: entry.archive.majorStage ? normalizeCircuitEventId(entry.archive.majorStage) as ManagerMajorStage : undefined,
-            teams: entry.archive.teams.map((team) => syncFieldTeamVrs(team, rosterPool)),
-            winner: entry.archive.winner ? syncFieldTeamVrs(entry.archive.winner, rosterPool) : undefined,
-            results: entry.archive.results.map((result) => syncResultVrs(result, rosterPool)),
-            playoffPairs: entry.archive.playoffPairs.map((pair) => ({
-              ...pair,
-              left: syncFieldTeamVrs(pair.left, rosterPool),
-              right: syncFieldTeamVrs(pair.right, rosterPool),
-            })),
-          },
-        };
-      }),
-    );
+    setCareerHistory(loadedCareerHistory);
     setManagerHistoryEntry(null);
     const loadedCircuitEventId = normalizeCircuitEventId(snapshot.circuitEventId);
     setCircuitEventId(loadedCircuitEventId);
@@ -4181,6 +5267,10 @@ function App() {
               <button className="icon-button manager-top-link top-utility-button" disabled={screen === "manager-calendar"} onClick={() => pushScreen("manager-calendar")} title="Tournament calendar">
                 <CalendarDays size={18} />
                 <span>Calendar</span>
+              </button>
+              <button className="icon-button manager-top-link top-utility-button" disabled={screen === "manager-preparation"} onClick={() => pushScreen("manager-preparation")} title="Preparation hub and scrim network">
+                <Target size={18} />
+                <span>Prep</span>
               </button>
               <button className="icon-button manager-top-link top-utility-button" disabled={screen === "manager-roster"} onClick={() => pushScreen("manager-roster")} title="Roster and contracts">
                 <Users size={18} />
@@ -4418,6 +5508,7 @@ function App() {
           record={record}
           results={matchResults}
           onOpenCalendar={() => pushScreen("manager-calendar")}
+          onOpenPreparation={() => pushScreen("manager-preparation")}
           onOpenRoster={() => pushScreen("manager-roster")}
           onOpenMarket={() => pushScreen("manager-market")}
           onOpenInbox={() => pushScreen("manager-inbox")}
@@ -4455,6 +5546,30 @@ function App() {
           onLaunch={launchRegisteredManagerEvent}
           onReturnEvent={() => setScreen(phase === "playoffs" ? "playoffs" : "swiss")}
           onOpenCompletedEvent={openCompletedManagerEvent}
+          onOpenEvent={openManagerCalendarEvent}
+        />
+      )}
+
+      {screen === "manager-world-event-overview" && mode === "manager" && managerCareer && managerViewedEventId && managerEventById(managerViewedEventId) && (
+        <ManagerWorldEventOverviewPage
+          event={managerEventById(managerViewedEventId)!}
+          career={managerCareer}
+          rosters={managerEventRosters}
+          onBack={goBackScreen}
+          onOpenTeam={openTeamDetail}
+        />
+      )}
+
+      {screen === "manager-preparation" && mode === "manager" && managerCareer && (
+        <ManagerPreparationPage
+          team={yourTeam}
+          career={managerCareer}
+          opponents={managerWorldRosters}
+          onBack={() => setScreen("manager-home")}
+          onSelectPlan={chooseManagerPreparation}
+          onScheduleScrim={bookManagerScrim}
+          onCancelScrim={removeManagerScrim}
+          onAdvance={advanceManagerCareer}
         />
       )}
 
@@ -4495,7 +5610,10 @@ function App() {
           onReleaseContract={releaseManagerContract}
           onOpenRecruitment={openManagerRecruitment}
           onSetTrainingFocus={updateManagerTrainingFocus}
+          onAssignMentorship={startManagerMentorship}
+          onEndMentorship={stopManagerMentorship}
           onPotentialInvestment={investManagerPlayerPotential}
+          onOvrInvestment={investManagerPlayerOvr}
           onCasinoVisit={playManagerCasinoNight}
           onSchedulePerformanceCamp={scheduleManagerCamp}
           onAdvanceDate={advanceManagerCareer}
@@ -4673,7 +5791,7 @@ function App() {
                   {managerRoundRobinActive
                     ? `${tournamentName} - Round robin - ${swissUserFinished ? "Complete" : `Matchday ${managerRoundRobinRound} of ${managerRoundRobinRounds}`}`
                     : managerDoubleEliminationActive
-                      ? `${tournamentName} - ${managerCareer?.activeEventStage === "stage-1" ? "Stage 1" : "Stage 2 group"} - ${record.wins >= recordStageWinTarget ? "Advanced" : record.losses >= recordStageLossTarget ? "Eliminated" : record.losses === 0 ? "Upper bracket" : "Lower bracket"}`
+                      ? `${tournamentName} - ${managerCareer?.activeEventStage === "stage-1" ? "Stage 1" : "Stage 2 group"} - ${managerCologneUserAdvanced ? "Advanced" : managerCologneUserEliminated ? "Eliminated" : record.losses === 0 ? "Upper bracket" : "Lower bracket"}`
                     : `${tournamentName} - Swiss - ${record.wins >= 3 ? "Qualified" : record.losses >= 3 ? "Eliminated" : `Round ${record.wins + record.losses + 1}`}`}
                 </span>
               </div>
@@ -4713,6 +5831,11 @@ function App() {
                     <ArrowRight size={17} />
                     Build Cologne playoffs
                   </button>
+                ) : managerCologneStage === "stage-2" && swissStageResolved && managerCologneUserEliminated ? (
+                  <button className="primary" onClick={() => enterManagerDoubleEliminationPlayoffs(swissRecords, matchResults, record, undefined, true)}>
+                    <FastForward size={17} />
+                    Watch Cologne playoffs
+                  </button>
                 ) : circuitStageCleared ? (
                   <button className="primary" onClick={advanceCircuitStage}>
                     <ArrowRight size={17} />
@@ -4739,7 +5862,7 @@ function App() {
                     <>
                       <button className="primary" onClick={mode === "manager" ? finishManagerTournament : enterTransferWindow}>
                         <ArrowRight size={17} />
-                        {mode === "manager" ? "Return to Manager HQ" : careerActive ? `Continue to Major ${careerEvent + 1}` : "Continue career"}
+                        {mode === "manager" ? managerReturnLabel : careerActive ? `Continue to Major ${careerEvent + 1}` : "Continue career"}
                       </button>
                       {!managerMajorStageOnly && !managerDoubleEliminationActive && (
                         <button className="secondary" onClick={() => enterNeutralPlayoffs(swissRecords, "eliminated")}>
@@ -4759,7 +5882,7 @@ function App() {
                   <>
                     <button className="primary" onClick={mode === "manager" ? finishManagerTournament : enterTransferWindow}>
                       <ArrowRight size={17} />
-                      {mode === "manager" ? "Return to Manager HQ" : mode === "circuit" ? "Circuit HQ" : careerActive ? `Continue to Major ${careerEvent + 1}` : "Continue career"}
+                      {mode === "manager" ? managerReturnLabel : mode === "circuit" ? "Circuit HQ" : careerActive ? `Continue to Major ${careerEvent + 1}` : "Continue career"}
                     </button>
                     <button className="secondary" onClick={restartRun}>
                       <RefreshCcw size={17} />
@@ -4767,7 +5890,7 @@ function App() {
                     </button>
                   </>
                 ) : (
-                  <button className="primary" onClick={startVeto}>
+                  <button className="primary" onClick={openMatchChoice}>
                     <Play size={17} />
                     Play my match
                   </button>
@@ -4775,13 +5898,13 @@ function App() {
               </div>
             </div>
             {swissUserFinished && (
-              <div className={managerRoundRobinActive ? "run-status eliminated" : record.wins >= recordStageWinTarget ? "run-status qualified" : "run-status eliminated"}>
-                <strong>{managerRoundRobinActive ? "Group stage complete" : record.wins >= recordStageWinTarget ? managerDoubleEliminationActive ? "Advanced" : "Qualified" : "Eliminated"}</strong>
+              <div className={managerRoundRobinActive ? "run-status eliminated" : managerDoubleEliminationActive ? managerCologneUserAdvanced ? "run-status qualified" : "run-status eliminated" : record.wins >= recordStageWinTarget ? "run-status qualified" : "run-status eliminated"}>
+                <strong>{managerRoundRobinActive ? "Group stage complete" : managerDoubleEliminationActive ? managerCologneUserAdvanced ? "Advanced" : "Eliminated" : record.wins >= recordStageWinTarget ? "Qualified" : "Eliminated"}</strong>
                 <span>
                   {managerRoundRobinActive
                     ? `The round robin finished ${record.wins}-${record.losses}, outside the top four playoff line.`
                     : managerDoubleEliminationActive
-                      ? record.wins >= recordStageWinTarget
+                      ? managerCologneUserAdvanced
                         ? swissCanSim
                           ? `Your place is secure. Sim the remaining bracket series to settle all ${recordStageQualifiers} advancing teams.`
                           : managerCareer?.activeEventStage === "stage-1"
@@ -4898,15 +6021,42 @@ function App() {
             {managerRoundRobinActive ? (
               <ManagerRoundRobinStandings user={yourTeam} field={swissField} record={record} records={swissRecords} />
             ) : managerDoubleEliminationActive ? (
-              <ManagerDoubleEliminationBoard
-                user={yourTeam}
-                field={swissField}
-                record={record}
-                records={swissRecords}
-                winTarget={recordStageWinTarget}
-                lossTarget={recordStageLossTarget}
-                onOpenTeam={openTeamDetail}
-              />
+              managerCologneStage === "stage-2" ? (
+                <div className="cologne-main-groups">
+                  <ManagerDoubleEliminationBoard
+                    user={yourTeam}
+                    field={swissField}
+                    stage="stage-2"
+                    label="Group A · Your group"
+                    results={matchResults}
+                    currentPairs={swissDisplayPairs}
+                    onOpenTeam={openTeamDetail}
+                    onOpenResult={openSeriesResult}
+                  />
+                  {managerCologneOtherTeams.length > 0 && (
+                    <ManagerDoubleEliminationBoard
+                      user={managerCologneOtherTeams[0]}
+                      field={managerCologneOtherTeams.slice(1)}
+                      stage="stage-2"
+                      label="Group B"
+                      results={managerCologneOtherResults}
+                      currentPairs={managerCologneOtherPairs}
+                      onOpenTeam={openTeamDetail}
+                      onOpenResult={openSeriesResult}
+                    />
+                  )}
+                </div>
+              ) : (
+                <ManagerDoubleEliminationBoard
+                  user={yourTeam}
+                  field={swissField}
+                  stage="stage-1"
+                  results={matchResults}
+                  currentPairs={swissDisplayPairs}
+                  onOpenTeam={openTeamDetail}
+                  onOpenResult={openSeriesResult}
+                />
+              )
             ) : (
               <SwissBoard
                 user={yourTeam}
@@ -4970,7 +6120,7 @@ function App() {
                   Results
                 </button>
                 {runKind === "player" && tournamentOutcome === "running" ? (
-                  <button className="primary" onClick={startVeto}>
+                  <button className="primary" onClick={openMatchChoice}>
                     <Play size={17} />
                     Play series
                   </button>
@@ -4983,7 +6133,7 @@ function App() {
                   <>
                     <button className="primary" onClick={mode === "manager" ? finishManagerTournament : enterTransferWindow}>
                       <ArrowRight size={17} />
-                      {mode === "manager" ? "Return to Manager HQ" : mode === "circuit" ? "Circuit HQ" : careerActive ? `Continue to Major ${careerEvent + 1}` : "Continue career"}
+                      {mode === "manager" ? managerReturnLabel : mode === "circuit" ? "Circuit HQ" : careerActive ? `Continue to Major ${careerEvent + 1}` : "Continue career"}
                     </button>
                     <button className="secondary" onClick={restartRun}>
                       <RefreshCcw size={17} />
@@ -5020,7 +6170,8 @@ function App() {
                 </span>
               </div>
             )}
-            {(tournamentOutcome === "champion" || tournamentOutcome === "complete") && (
+            {(tournamentOutcome === "champion" || tournamentOutcome === "complete")
+              && (mode !== "manager" || !managerActiveEvent || managerEventAwardsEligible(managerActiveEvent)) && (
               <MajorAwardsPanel
                 results={mode === "circuit" ? [...circuitMajorResults, ...matchResults] : matchResults}
                 championId={tournamentOutcome === "champion" ? "user" : tournamentWinner?.id}
@@ -5057,6 +6208,9 @@ function App() {
             currentRound={playoffRound}
             pairs={playoffPairs}
             results={matchResults}
+            sixTeam={mode === "manager"
+              && Boolean(managerActiveEvent?.doubleElimination)
+              && managerCareer?.activeEventStage === "playoffs"}
             quarterfinalBestOf={mode === "manager" && managerActiveEvent?.format === "single-elimination" ? 1 : 3}
             onOpenResult={openSeriesResult}
           />
@@ -5135,13 +6289,7 @@ function App() {
 
       {screen === "overview" && (
         <EventOverviewPage
-          name={managerArchivedEvent
-            ? archivedMajorStage
-              ? `${managerArchivedEvent.eventName} / ${archivedMajorStage.shortName}`
-              : managerArchivedEvent.eventName
-            : managerMajorActive && overviewCircuitEvent
-            ? `${managerActiveEvent ? managerEventName(managerActiveEvent, managerCareer?.season ?? 1) : "Major"} / ${overviewCircuitEvent.shortName}`
-            : overviewCircuitEvent?.name ?? tournamentName}
+          name={overviewName}
           phase={overviewPhase}
           outcome={overviewOutcome}
           winner={overviewWinner}
@@ -5164,6 +6312,9 @@ function App() {
           manager={mode === "manager" && (managerArchivedDefinition || managerActiveEvent) ? {
             event: managerArchivedDefinition ?? managerActiveEvent!,
             stage: managerArchivedEvent?.majorStage ? overviewCircuitEvent : managerMajorActive ? overviewCircuitEvent : undefined,
+            activeEventStage: managerArchivedEvent ? undefined : managerCareer?.activeEventStage,
+            activeStageTeams: managerArchivedEvent ? undefined : [yourTeam, ...swissField],
+            otherStageTeams: managerArchivedEvent ? undefined : managerCologneOtherTeams,
             vrsStandings: managerVrsStandings,
           } : undefined}
           onSelectCircuitEvent={setOverviewEventId}
@@ -5179,7 +6330,7 @@ function App() {
       {screen === "stats" && (
         <RunStatsPage
           rows={overviewDrilldown ? overviewPlayerDatabase : playerDatabase}
-          eventName={overviewDrilldown ? managerArchivedEvent?.eventName ?? overviewCircuitEvent?.name ?? tournamentName : universeDrilldown ? tournamentName : undefined}
+          eventName={overviewDrilldown ? overviewName : universeDrilldown ? tournamentName : undefined}
           scope={statsScope}
           onScopeChange={setStatsScope}
           onBack={overviewDrilldown || universeDrilldown ? goBackScreen : () => setScreen(phase === "playoffs" ? "playoffs" : "swiss")}
@@ -5192,7 +6343,12 @@ function App() {
         <PlayerDetailPage
           player={detailPlayer.player}
           team={detailPlayer.team}
-          results={managerArchiveDrilldown ? managerArchivedEvent?.results ?? [] : majorRunResults}
+          careerHistory={careerHistory}
+          results={navStack.includes("overview")
+            ? overviewResults
+            : managerArchiveDrilldown
+              ? managerArchivedEvent?.results ?? []
+              : majorRunResults}
           managerCareer={mode === "manager" ? managerCareer : undefined}
           onBack={goBackScreen}
           onOpenSeries={openSeriesResult}
@@ -5225,7 +6381,11 @@ function App() {
       {screen === "team-detail" && detailTeam && (
         <TeamDetailPage
           team={detailTeam}
-          results={managerArchiveDrilldown ? managerArchivedEvent?.results ?? [] : majorRunResults}
+          results={navStack.includes("overview")
+            ? overviewResults
+            : managerArchiveDrilldown
+              ? managerArchivedEvent?.results ?? []
+              : majorRunResults}
           onBack={goBackScreen}
           onOpenSeries={openSeriesResult}
           onOpenPlayer={openPlayerDetail}
@@ -5284,7 +6444,7 @@ function App() {
       {screen === "results" && (
         <RunResultsPage
           results={overviewDrilldown ? overviewResults : matchResults}
-          eventName={overviewDrilldown ? managerArchivedEvent?.eventName ?? overviewCircuitEvent?.name ?? tournamentName : universeDrilldown ? tournamentName : undefined}
+          eventName={overviewDrilldown ? overviewName : universeDrilldown ? tournamentName : undefined}
           selectedResultId={selectedResultId}
           onOpen={openSeriesResult}
           onBack={overviewDrilldown || universeDrilldown ? goBackScreen : () => setScreen(phase === "playoffs" ? "playoffs" : "swiss")}
@@ -5364,6 +6524,13 @@ function App() {
               <Target size={18} />
               <span>Pre-match</span>
             </div>
+            {activeMatchPreparation && activeMatchPreparationPlan && (
+              <section className={`manager-match-prep-card ${activeMatchPreparation.leaked ? "leaked" : ""}`}>
+                <span><Target size={17} /></span>
+                <div><small>Preparation Hub briefing</small><strong>{activeMatchPreparationPlan.name}{activeMatchPreparation.plan === "targeted-site-stack" ? ` / ${activeMatchPreparation.targetSite} site` : ""}</strong><p>{activeMatchPreparationPlan.matchEffect}</p></div>
+                <div><b>{activeMatchPreparation.mastery}%</b><small>mastery</small><em>{activeMatchPreparation.fatigue} fatigue{activeMatchPreparation.leaked ? " · exposed" : ""}</em></div>
+              </section>
+            )}
             <PaperStrengthCompare
               you={yourTeam}
               opponent={opponent}
@@ -5445,6 +6612,11 @@ function App() {
                 {realTimeRounds ? "⏱️ Real-time" : "⚡ Instant Rounds"}
               </button>
             </div>
+            {match.context.preparation && activeMatchPreparationPlan && (
+              <div className={`manager-live-prep ${match.context.preparation.leaked ? "leaked" : ""}`} title={activeMatchPreparationPlan.matchEffect}>
+                <Target size={14} /><span><small>Prepared plan</small><strong>{activeMatchPreparationPlan.shortName}{match.context.preparation.plan === "targeted-site-stack" ? ` / ${match.context.preparation.targetSite}` : ""}</strong></span><b>{match.context.preparation.mastery}%</b>
+              </div>
+            )}
           </section>
           <section className="score-hero live-scoreboard">
             <img
@@ -5485,7 +6657,7 @@ function App() {
                 <div className="feed-panel-head">
                   <div className="section-title">
                     <FastForward size={18} />
-                    <span>{liveFeedView === "feed" ? "Killfeed" : "Map view"}</span>
+                    <span>{liveFeedView === "feed" ? "Killfeed" : liveFeedView === "map" ? "Map view" : "3D arena"}</span>
                   </div>
                   <div className="segmented compact feed-view-toggle">
                     <button className={liveFeedView === "feed" ? "selected" : ""} onClick={() => setLiveFeedView("feed")}>
@@ -5494,9 +6666,14 @@ function App() {
                     <button className={liveFeedView === "map" ? "selected" : ""} onClick={() => setLiveFeedView("map")}>
                       Map
                     </button>
+                    <button className={liveFeedView === "voxel" ? "selected" : ""} onClick={() => setLiveFeedView("voxel")}>
+                      3D Arena
+                    </button>
                   </div>
                 </div>
-                {liveFeedView === "map" ? (
+                {liveFeedView === "voxel" ? (
+                  <MatchVoxelView match={match} you={yourTeam} opponent={opponent} speed={speed} />
+                ) : liveFeedView === "map" ? (
                   <MatchMapView match={match} you={yourTeam} opponent={opponent} speed={speed} />
                 ) : (
                 <div className="feed-list">
@@ -5553,6 +6730,7 @@ function App() {
                             <span className="feed-message">
                               <b className="ct-team">{feed.killer}</b> defused the bomb
                             </span>
+                            {feed.isNinjaDefuse && <span className="highlight-badge ninja-badge">🥷 NINJA DEFUSE</span>}
                           </div>
                         );
                       }
@@ -5608,10 +6786,14 @@ function App() {
                             {feed.flashAssist && (
                               <img className="util-feed-icon flash-assist" src={utilityIcons.flash} alt="flash assist" title="Flash assist" />
                             )}
+                            {feed.isWallbang && <span className="wallbang-icon" title="Wallbang penetration kill">🪵</span>}
                             {feed.isHeadshot && <Skull className="hs-icon" size={14} aria-label="Headshot" />}
                           </div>
                           <span className={`${victimSide.toLowerCase()}-team`}><b>{feed.victim}</b></span>
                           {feed.first && <span className="first-badge">first</span>}
+                          {feed.isAce && <span className="highlight-badge ace-badge">ACE 🔥</span>}
+                          {feed.clutchVs && <span className="highlight-badge clutch-badge">1v{feed.clutchVs} CLUTCH 🏆</span>}
+                          {feed.isCollateral && <span className="highlight-badge col-badge">COLLATERAL 🎯</span>}
                         </div>
                       );
                     })
@@ -5769,6 +6951,95 @@ function App() {
         </main>
       )}
 
+      {matchChoiceOpen && (
+        <div
+          className="match-choice-backdrop"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget && !matchChoiceSimulating) setMatchChoiceOpen(false);
+          }}
+        >
+          <section className="match-choice-modal" role="dialog" aria-modal="true" aria-labelledby="match-choice-title">
+            <header>
+              <div>
+                <span className="match-choice-kicker"><Swords size={14} /> Match ready</span>
+                <h2 id="match-choice-title">How do you want to play?</h2>
+                <p>{currentSeriesLabel} · Best of {currentBestOf}</p>
+              </div>
+              <span className="match-choice-form">
+                Current form
+                <strong className={averageCurrentForm > 0.05 ? "positive" : averageCurrentForm < -0.05 ? "negative" : ""}>
+                  {averageCurrentForm > 0 ? "+" : ""}{averageCurrentForm.toFixed(1)}%
+                </strong>
+              </span>
+            </header>
+
+            <div className="match-choice-projection">
+              <div className="match-choice-team">
+                <TeamLogo team={yourTeam} />
+                <span><b>{yourTeam.tag}</b><small>{yourTeam.name}</small></span>
+              </div>
+              <div className="match-choice-chance">
+                <span><Gauge size={15} /> Estimated win chance</span>
+                <strong>{estimatedMatchWinPercent}%</strong>
+                <div
+                  className="match-choice-meter"
+                  style={{ "--win-chance": `${estimatedMatchWinPercent}%` } as React.CSSProperties}
+                  aria-label={`${yourTeam.name} has an estimated ${estimatedMatchWinPercent} percent chance to win`}
+                >
+                  <i />
+                </div>
+                <small>Based on roster strength, opponent level, current form, and BO{currentBestOf}.</small>
+              </div>
+              <div className="match-choice-team opponent">
+                <TeamLogo team={opponent} />
+                <span><b>{opponent.tag}</b><small>{opponent.name}</small></span>
+              </div>
+            </div>
+
+            <div className="match-choice-options">
+              <button type="button" className="match-choice-option manual" disabled={matchChoiceSimulating} onClick={startVeto}>
+                <span className="match-choice-option-icon"><Ban size={22} /></span>
+                <span>
+                  <small>Full control</small>
+                  <strong>Go to bans</strong>
+                  <em>Choose every ban and pick, then play the series round by round.</em>
+                </span>
+                <ArrowRight size={20} />
+              </button>
+              <button type="button" className="match-choice-option simulate" disabled={matchChoiceSimulating} onClick={simulateChosenMatch}>
+                <span className="match-choice-option-icon"><FastForward size={22} /></span>
+                <span>
+                  <small><Sparkles size={12} /> Auto Coach</small>
+                  <strong>{matchChoiceSimulating ? "Simulating…" : "Simulate series"}</strong>
+                  <em>Uses a slightly randomized form-aware veto while Auto Coach handles calls and timeouts.</em>
+                </span>
+                <ArrowRight size={20} />
+              </button>
+            </div>
+
+            <footer>
+              <span>The percentage is an estimate—map form and round variance can still create an upset.</span>
+              <button type="button" className="secondary" disabled={matchChoiceSimulating} onClick={() => setMatchChoiceOpen(false)}>
+                Cancel
+              </button>
+            </footer>
+          </section>
+        </div>
+      )}
+
+      {simMatchReveal && (
+        <SimMatchRevealOverlay
+          reveal={simMatchReveal}
+          left={yourTeam}
+          right={opponent}
+          onSkip={() => setSimMatchReveal((current) => current
+            ? { ...current, visibleMaps: current.maps.length, complete: true }
+            : current)}
+          onContinue={continueSimulatedMatch}
+        />
+      )}
+
       {showSettings && (
         <SettingsDrawer
           settings={settings}
@@ -5776,6 +7047,116 @@ function App() {
           onClose={() => setShowSettings(false)}
         />
       )}
+    </div>
+  );
+}
+
+function SimMatchRevealOverlay({
+  reveal,
+  left,
+  right,
+  onSkip,
+  onContinue,
+}: {
+  reveal: SimMatchReveal;
+  left: FieldTeam;
+  right: FieldTeam;
+  onSkip: () => void;
+  onContinue: () => void;
+}) {
+  const isBestOfOne = reveal.bestOf === 1;
+  const revealScore = matchRevealScore(reveal.maps, left.id, reveal.bestOf, reveal.visibleMaps);
+  const leftScore = revealScore.left;
+  const rightScore = revealScore.right;
+  const activeMapIndex = Math.max(0, Math.min(reveal.maps.length - 1, reveal.visibleMaps));
+  const activeMap = reveal.maps[activeMapIndex] ?? reveal.maps[0];
+  const winnerId = reveal.complete
+    ? leftScore > rightScore ? left.id : right.id
+    : undefined;
+  const status = reveal.complete
+    ? "Full time"
+    : reveal.visibleMaps === 0
+      ? "Auto Coach simulating"
+      : `Map ${reveal.visibleMaps} complete`;
+
+  return (
+    <div className="sim-reveal-backdrop">
+      <section
+        className={`sim-reveal-card ${reveal.complete ? "complete" : "running"}`}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="sim-reveal-title"
+      >
+        {activeMap && (
+          <img
+            className="sim-reveal-art"
+            src={mapArtImages[activeMap.map]}
+            alt=""
+            aria-hidden="true"
+          />
+        )}
+        <header>
+          <span className="sim-reveal-live"><Radio size={13} /> Simulation feed</span>
+          <span>{reveal.label} · BO{reveal.bestOf}</span>
+        </header>
+
+        <div className="sim-reveal-stage">
+          <div className={`sim-reveal-team ${winnerId === left.id ? "winner" : ""}`}>
+            <TeamLogo team={left} />
+            <strong>{left.tag}</strong>
+            <small>{left.name}</small>
+          </div>
+
+          <div className="sim-reveal-scoreboard" aria-live="polite" aria-atomic="true">
+            <span className={reveal.complete ? "complete" : ""}>{status}</span>
+            <div className="sim-reveal-score" key={`${reveal.visibleMaps}-${leftScore}-${rightScore}`}>
+              <b>{leftScore}</b>
+              <i>:</i>
+              <b>{rightScore}</b>
+            </div>
+            <small>
+              {reveal.complete
+                ? isBestOfOne ? "Final map score" : "Final series score"
+                : activeMap ? `Simulating ${mapName(activeMap.map)}` : "Preparing server"}
+            </small>
+          </div>
+
+          <div className={`sim-reveal-team right ${winnerId === right.id ? "winner" : ""}`}>
+            <TeamLogo team={right} />
+            <strong>{right.tag}</strong>
+            <small>{right.name}</small>
+          </div>
+        </div>
+
+        <div className="sim-reveal-maps" aria-label="Simulated maps">
+          {reveal.maps.map((map, index) => {
+            const revealed = index < reveal.visibleMaps;
+            const active = !reveal.complete && index === reveal.visibleMaps;
+            return (
+              <div className={`${revealed ? "revealed" : ""} ${active ? "active" : ""}`} key={`${map.map}-${index}`}>
+                <span>{revealed ? `Map ${index + 1}` : active ? "Playing" : `Map ${index + 1}`}</span>
+                <strong>{mapName(map.map)}</strong>
+                <b>{revealed ? `${map.leftScore}:${map.rightScore}` : "—"}</b>
+              </div>
+            );
+          })}
+        </div>
+
+        <footer>
+          <span><Sparkles size={14} /> Auto Coach · {reveal.coachCalls} timeout{reveal.coachCalls === 1 ? "" : "s"} called</span>
+          {reveal.complete ? (
+            <button type="button" className="primary" onClick={onContinue}>
+              Continue
+              <ArrowRight size={17} />
+            </button>
+          ) : (
+            <button type="button" className="secondary" onClick={onSkip}>
+              <FastForward size={16} />
+              Skip animation
+            </button>
+          )}
+        </footer>
+      </section>
     </div>
   );
 }
@@ -7235,42 +8616,13 @@ function MatchMapView({ match, you, opponent, speed = 1 }: { match: MatchState; 
 
   const [smoothMovement, setSmoothMovement] = React.useState(true);
   const [showUnderlay, setShowUnderlay] = React.useState(false);
-  const [fraction, setFraction] = React.useState(1);
-  const prevStepRef = React.useRef(roundEvents.length);
-
-  // Reset the tween to 0 synchronously (pre-paint) whenever a new event arrives. Without this the
-  // stale fraction (left at 1 by the previous step) makes stepIndex overshoot to the next position
-  // for one frame and then snap back — the "teleport twitch" the dots showed.
-  React.useLayoutEffect(() => {
-    setFraction(0);
-  }, [roundEvents.length]);
-
-  React.useEffect(() => {
-    const currentStep = roundEvents.length;
-    if (currentStep !== prevStepRef.current) {
-      const startTime = performance.now();
-      const duration = getStepDelay(match, you, opponent, currentStep, speed, "map");
-      let animId: number;
-
-      const tick = () => {
-        const elapsed = performance.now() - startTime;
-        const f = Math.min(1, elapsed / duration);
-        setFraction(f);
-        if (f < 1) {
-          animId = requestAnimationFrame(tick);
-        }
-      };
-
-      animId = requestAnimationFrame(tick);
-      prevStepRef.current = currentStep;
-
-      return () => cancelAnimationFrame(animId);
-    }
-  }, [roundEvents.length, speed, match, you, opponent]);
-
-  const stepIndex = smoothMovement && roundEvents.length > 0
-    ? roundEvents.length - 1 + fraction
-    : roundEvents.length;
+  const stepIndex = useAnimatedStep(
+    activeRound,
+    roundEvents.length,
+    speed,
+    () => getStepDelay(match, you, opponent, roundEvents.length, speed, "map"),
+    smoothMovement,
+  );
 
   // Get simulated coordinates and state for all 10 players, and active firefight traces
   const { players: radarPlayers, traces: radarTraces, bomb, flashed } = simulateRadarPlayers(match, you, opponent, stepIndex);
@@ -7639,29 +8991,35 @@ function PlayoffBracket({
   currentRound,
   pairs,
   results,
+  sixTeam = false,
   quarterfinalBestOf = 3,
+  semifinalBestOf = 3,
+  finalBestOf = 5,
   onOpenResult,
 }: {
   currentRound: PlayoffRound;
   pairs: SwissPair[];
   results: SwissResult[];
+  sixTeam?: boolean;
   quarterfinalBestOf?: number;
+  semifinalBestOf?: number;
+  finalBestOf?: number;
   onOpenResult: (id: string) => void;
 }) {
   const rounds: Array<{ id: PlayoffRound; label: string; count: number; bestOf: number }> = [
-    { id: "quarterfinal", label: "Quarterfinals", count: 4, bestOf: quarterfinalBestOf },
-    { id: "semifinal", label: "Semifinals", count: 2, bestOf: 3 },
-    { id: "final", label: "Grand final", count: 1, bestOf: 5 },
+    { id: "quarterfinal", label: "Quarterfinals", count: sixTeam ? 2 : 4, bestOf: quarterfinalBestOf },
+    { id: "semifinal", label: "Semifinals", count: 2, bestOf: semifinalBestOf },
+    { id: "final", label: "Grand final", count: 1, bestOf: finalBestOf },
   ];
 
   return (
-    <section className="playoff-bracket-shell">
+    <section className={`playoff-bracket-shell${sixTeam ? " six-team" : ""}`}>
       <div className="playoff-bracket-head">
         <div className="section-title">
           <Trophy size={18} />
           <span>Champions stage</span>
         </div>
-        <span>Eight teams · single elimination</span>
+        <span>{sixTeam ? "Six teams · group winners advance to semifinals" : "Eight teams · single elimination"}</span>
       </div>
       <div className="playoff-bracket-grid">
         {rounds.map((round, roundIndex) => {
@@ -7768,74 +9126,148 @@ function ManagerRoundRobinStandings({
 function ManagerDoubleEliminationBoard({
   user,
   field,
-  record,
-  records,
-  winTarget,
-  lossTarget,
+  stage,
+  label,
+  results,
+  currentPairs,
   onOpenTeam,
+  onOpenResult,
 }: {
   user: FieldTeam;
   field: FieldTeam[];
-  record: SwissRecord;
-  records: Record<string, SwissRecord>;
-  winTarget: number;
-  lossTarget: number;
+  stage: CologneStage;
+  label?: string;
+  results: SwissResult[];
+  currentPairs: SwissPair[];
+  onOpenTeam: (team: FieldTeam) => void;
+  onOpenResult: (id: string) => void;
+}) {
+  const teams = [user, ...field];
+  const status = cologneStageStatus(teams, stage, results);
+  const advancedIds = new Set(status.advanced.map((team) => team.id));
+  const eliminatedIds = new Set(status.eliminated.map((team) => team.id));
+  const roundPairs = (round: number) => buildCologneRoundPairs(teams, stage, round, results);
+  const pairsByLane = (round: number, lane: string) => roundPairs(round)
+    .filter((pair) => pair.id.includes(`-${lane}-`));
+  const upperRounds = stage === "stage-1"
+    ? [
+        { label: "Opening round", pairs: pairsByLane(1, "opening"), slots: 8 },
+        { label: "Upper quarter-finals", pairs: pairsByLane(2, "upper-quarterfinal"), slots: 4 },
+      ]
+    : [
+        { label: "Opening round", pairs: pairsByLane(1, "opening"), slots: 4 },
+        { label: "Upper semi-finals", pairs: pairsByLane(2, "upper-semifinal"), slots: 2 },
+        { label: "Upper final", pairs: pairsByLane(3, "upper-final"), slots: 1 },
+      ];
+  const lowerRounds = stage === "stage-1"
+    ? [
+        { label: "Lower round 1", pairs: pairsByLane(2, "lower-round-1"), slots: 4 },
+        { label: "Lower round 2", pairs: pairsByLane(3, "lower-round-2"), slots: 4 },
+      ]
+    : [
+        { label: "Lower round 1", pairs: pairsByLane(2, "lower-round-1"), slots: 2 },
+        { label: "Lower semi-finals", pairs: pairsByLane(3, "lower-semifinal"), slots: 2 },
+        { label: "Lower final", pairs: pairsByLane(4, "lower-final"), slots: 1 },
+      ];
+  const resultByPairId = new Map(results.map((result) => [result.pairId, result]));
+  const currentPairIds = new Set(currentPairs.filter((pair) => pair.active).map((pair) => pair.id));
+  const renderRound = (round: { label: string; pairs: SwissPair[]; slots: number }) => (
+    <div className="cologne-bracket-round" key={round.label}>
+      <h4>{round.label}</h4>
+      <div
+        className="cologne-bracket-round-matches"
+        style={{ "--match-slots": round.slots } as React.CSSProperties}
+      >
+        {Array.from({ length: round.slots }, (_, index) => {
+          const pair = round.pairs[index];
+          if (!pair) return <div className="cologne-bracket-match placeholder" key={`${round.label}-${index}`}><span>Awaiting teams</span></div>;
+          const result = resultByPairId.get(pair.id);
+          return (
+            <div
+              className={`cologne-bracket-match${currentPairIds.has(pair.id) ? " live" : ""}${result ? " complete" : ""}`}
+              key={pair.id}
+            >
+              <CologneBracketTeamRow
+                team={pair.left}
+                result={result}
+                advanced={advancedIds.has(pair.left.id)}
+                eliminated={eliminatedIds.has(pair.left.id)}
+                onOpenTeam={onOpenTeam}
+              />
+              <CologneBracketTeamRow
+                team={pair.right}
+                result={result}
+                advanced={advancedIds.has(pair.right.id)}
+                eliminated={eliminatedIds.has(pair.right.id)}
+                onOpenTeam={onOpenTeam}
+              />
+              {result && (
+                <button className="cologne-bracket-result-link" type="button" onClick={() => onOpenResult(result.id)}>
+                  Match
+                </button>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+  return (
+    <div className={`manager-double-elim-board cologne-bracket ${stage}`}>
+      <header className="cologne-bracket-group-head">
+        <div>
+          <span>{stage === "stage-1" ? "Stage 1" : "Main stage"}</span>
+          <strong>{label ?? (stage === "stage-1" ? "Double-elimination bracket" : "Your group")}</strong>
+        </div>
+        <p>
+          <b>{status.advanced.length}</b> advanced
+          <span />
+          <b>{status.eliminated.length}</b> eliminated
+        </p>
+      </header>
+      <section className="cologne-bracket-section upper">
+        <h3><ShieldCheck size={16} /> Upper Bracket</h3>
+        <div className="cologne-bracket-rounds">{upperRounds.map(renderRound)}</div>
+      </section>
+      <section className="cologne-bracket-section lower">
+        <h3><Swords size={16} /> Lower Bracket</h3>
+        <div className="cologne-bracket-rounds">{lowerRounds.map(renderRound)}</div>
+      </section>
+    </div>
+  );
+}
+
+function CologneBracketTeamRow({
+  team,
+  result,
+  advanced,
+  eliminated,
+  onOpenTeam,
+}: {
+  team: FieldTeam;
+  result?: SwissResult;
+  advanced: boolean;
+  eliminated: boolean;
   onOpenTeam: (team: FieldTeam) => void;
 }) {
-  const rows = [user, ...field].map((team) => ({
-    team,
-    record: team.id === "user" ? record : records[team.id] ?? { wins: 0, losses: 0 },
-  }));
-  const lanes = [
-    {
-      id: "upper",
-      label: "Upper bracket",
-      detail: "Undefeated",
-      rows: rows.filter((row) => row.record.wins < winTarget && row.record.losses === 0),
-    },
-    {
-      id: "lower",
-      label: "Lower bracket",
-      detail: "Next loss eliminates",
-      rows: rows.filter((row) => row.record.wins < winTarget && row.record.losses > 0 && row.record.losses < lossTarget),
-    },
-    {
-      id: "advanced",
-      label: "Advanced",
-      detail: `${winTarget} series wins`,
-      rows: rows.filter((row) => row.record.wins >= winTarget),
-    },
-    {
-      id: "eliminated",
-      label: "Eliminated",
-      detail: `${lossTarget} bracket losses`,
-      rows: rows.filter((row) => row.record.losses >= lossTarget),
-    },
-  ];
+  const winner = result?.winnerId === team.id;
+  const score = result
+    ? result.left.id === team.id ? result.leftScore : result.rightScore
+    : undefined;
   return (
-    <div className="manager-double-elim-board">
-      {lanes.map((lane) => (
-        <section className={lane.id} key={lane.id}>
-          <header>
-            <span>{lane.id === "upper" ? <ShieldCheck size={16} /> : lane.id === "lower" ? <Swords size={16} /> : lane.id === "advanced" ? <ArrowRight size={16} /> : <Ban size={16} />}</span>
-            <div><strong>{lane.label}</strong><small>{lane.detail}</small></div>
-            <b>{lane.rows.length}</b>
-          </header>
-          <div>
-            {lane.rows
-              .sort((left, right) => right.record.wins - left.record.wins || left.record.losses - right.record.losses || (left.team.rank ?? 99) - (right.team.rank ?? 99))
-              .map(({ team, record: teamRecord }) => (
-                <button className={team.id === "user" ? "user" : ""} key={team.id} onClick={() => onOpenTeam(team)}>
-                  <TeamLogo team={team} small />
-                  <span><strong>{team.name}</strong><small>{teamRecord.losses === 0 ? "Upper path" : `${teamRecord.losses} lower-bracket life used`}</small></span>
-                  <b>{teamRecord.wins}-{teamRecord.losses}</b>
-                </button>
-              ))}
-            {!lane.rows.length && <p>No teams here yet</p>}
-          </div>
-        </section>
-      ))}
-    </div>
+    <button
+      type="button"
+      className={`${team.id === "user" ? "user " : ""}${winner ? "winner " : ""}${result && !winner ? "loser " : ""}`}
+      onClick={() => onOpenTeam(team)}
+      title={`Open ${team.name}`}
+    >
+      <i aria-hidden="true" />
+      <TeamLogo team={team} small />
+      <strong>{team.name}</strong>
+      {advanced && <em>Q</em>}
+      {eliminated && <em className="out">↓</em>}
+      <b>{score ?? "–"}</b>
+    </button>
   );
 }
 
@@ -11271,6 +12703,14 @@ type ManagerPotentialFlipState = {
   result?: ManagerCoinSide;
 };
 
+type ManagerLabMode = "potential" | "ovr";
+type ManagerOvrRollState = {
+  startingOvr: number;
+  cost: number;
+  status: "ready" | "rolling" | "settled";
+  result?: ManagerOvrDiceResult;
+};
+
 type ManagerCasinoFlipState = {
   playerId: string;
   stake: ManagerCasinoStake;
@@ -11293,7 +12733,10 @@ function ManagerRosterPage({
   onReleaseContract,
   onOpenRecruitment,
   onSetTrainingFocus,
+  onAssignMentorship,
+  onEndMentorship,
   onPotentialInvestment,
+  onOvrInvestment,
   onCasinoVisit,
   onSchedulePerformanceCamp,
   onAdvanceDate,
@@ -11310,7 +12753,10 @@ function ManagerRosterPage({
   onReleaseContract: (playerId: string) => void;
   onOpenRecruitment: (role: Role | "all") => void;
   onSetTrainingFocus: (player: Player, focus: ManagerTrainingFocus) => void;
+  onAssignMentorship: (mentorId: string, menteeId: string) => void;
+  onEndMentorship: (mentorshipId: string) => void;
   onPotentialInvestment: (player: Player, choice: ManagerCoinSide, result: ManagerCoinSide) => void;
+  onOvrInvestment: (player: Player, result: ManagerOvrDiceResult) => void;
   onCasinoVisit: (player: Player, stake: ManagerCasinoStake, choice: ManagerCoinSide, result: ManagerCoinSide) => void;
   onSchedulePerformanceCamp: (focus: ManagerPerformanceCampFocus) => void;
   onAdvanceDate: (targetDate?: string) => void;
@@ -11321,22 +12767,39 @@ function ManagerRosterPage({
   const [renewalSalary, setRenewalSalary] = useState(1_000);
   const [renewalCycles, setRenewalCycles] = useState(3);
   const [releasePlayerId, setReleasePlayerId] = useState("");
+  const [mentorId, setMentorId] = useState("");
+  const [menteeId, setMenteeId] = useState("");
   const [potentialFlip, setPotentialFlip] = useState<ManagerPotentialFlipState | null>(null);
+  const [labMode, setLabMode] = useState<ManagerLabMode>("potential");
+  const [ovrRoll, setOvrRoll] = useState<ManagerOvrRollState | null>(null);
   const [casinoPlayerId, setCasinoPlayerId] = useState("");
   const [casinoStake, setCasinoStake] = useState<ManagerCasinoStake>(MANAGER_CASINO_STAKES[0]);
   const [casinoFlip, setCasinoFlip] = useState<ManagerCasinoFlipState | null>(null);
   const potentialFlipTimer = useRef<number | undefined>(undefined);
+  const ovrRollTimer = useRef<number | undefined>(undefined);
   const casinoFlipTimer = useRef<number | undefined>(undefined);
   useEffect(() => setLineupIds(starters.map((player) => player.id)), [starters]);
   useEffect(() => () => {
     if (potentialFlipTimer.current) window.clearTimeout(potentialFlipTimer.current);
+    if (ovrRollTimer.current) window.clearTimeout(ovrRollTimer.current);
     if (casinoFlipTimer.current) window.clearTimeout(casinoFlipTimer.current);
   }, []);
   const contractByPlayer = new Map(career.contracts.map((contract) => [contract.playerId, contract]));
   const activeRoster = roster.filter((player) => contractByPlayer.get(player.id)?.status !== "expired");
+  const mentorshipPlayerIds = new Set(career.mentorships.flatMap((pair) => [pair.mentorId, pair.menteeId]));
+  const mentorCandidates = activeRoster.filter((player) => (player.age ?? 24) >= 27 && !mentorshipPlayerIds.has(player.id));
+  const menteeCandidates = activeRoster.filter((player) => (
+    (player.age ?? 24) <= 22
+    && player.ovr < (player.potential ?? player.ovr)
+    && !mentorshipPlayerIds.has(player.id)
+  ));
   useEffect(() => {
     if (activeRoster[0] && !activeRoster.some((player) => player.id === casinoPlayerId)) setCasinoPlayerId(activeRoster[0].id);
   }, [activeRoster, casinoPlayerId]);
+  useEffect(() => {
+    if (!mentorCandidates.some((player) => player.id === mentorId)) setMentorId(mentorCandidates[0]?.id ?? "");
+    if (!menteeCandidates.some((player) => player.id === menteeId)) setMenteeId(menteeCandidates[0]?.id ?? "");
+  }, [menteeCandidates, menteeId, mentorCandidates, mentorId]);
   const monthlyPayroll = managerMonthlyPayroll(career);
   const dynamicsByPlayer = new Map(career.playerDynamics.map((item) => [item.playerId, item]));
   const teamFamiliarity = managerTeamFamiliarity(career);
@@ -11358,6 +12821,9 @@ function ManagerRosterPage({
   const lineupChanged = lineupIds.join("|") !== starters.map((player) => player.id).join("|");
   const renewalPlayer = roster.find((player) => player.id === renewalPlayerId);
   const renewalContract = renewalPlayer ? contractByPlayer.get(renewalPlayer.id) : undefined;
+  const renewalCurrentCycles = renewalContract?.status === "expired" ? 0 : (renewalContract?.majorCyclesRemaining ?? 0);
+  const maxRenewalCycles = Math.max(1, MANAGER_MAX_CONTRACT_CYCLES - renewalCurrentCycles);
+  const renewalTotalCycles = renewalCurrentCycles + renewalCycles;
   const renewalTerms: ManagerOfferTerms | undefined = renewalContract
     ? { monthlySalary: renewalSalary, majorCycles: renewalCycles, squadRole: renewalContract.squadRole }
     : undefined;
@@ -11372,6 +12838,10 @@ function ManagerRosterPage({
   const potentialPlayer = potentialFlip ? activeRoster.find((player) => player.id === potentialFlip.playerId) : undefined;
   const potentialPlan = potentialPlayer ? managerTrainingPlan(career, potentialPlayer) : undefined;
   const nextPotentialCost = potentialPlayer ? managerPotentialLabCost(career, potentialPlayer) : 0;
+  const nextOvrCost = potentialPlayer ? managerOvrLabCost(career, potentialPlayer) : 0;
+  const mentorshipEligibility = mentorId && menteeId
+    ? managerMentorshipEligibility(career, activeRoster, mentorId, menteeId)
+    : { eligible: false, reasons: ["Choose an eligible veteran and prospect"], bonus: 0 };
   const casinoPlayer = activeRoster.find((player) => player.id === (casinoFlip?.playerId ?? casinoPlayerId));
   const casinoEligibility = casinoPlayer ? managerCasinoVisitAllowed(career, casinoPlayer, casinoStake) : undefined;
   const casinoNet = career.casinoVisits.reduce((total, visit) => total + visit.net, 0);
@@ -11393,7 +12863,7 @@ function ManagerRosterPage({
     setRenewalPlayerId(player.id);
     setReleasePlayerId("");
     setRenewalSalary(Math.max(1_000, Math.ceil(recommended / 250) * 250));
-    setRenewalCycles(3);
+    setRenewalCycles(Math.min(3, Math.max(1, MANAGER_MAX_CONTRACT_CYCLES - (contract.status === "expired" ? 0 : contract.majorCyclesRemaining))));
   };
   const submitRenewal = () => {
     if (!renewalPlayer || !renewalTerms || !renewalEvaluation) return;
@@ -11409,12 +12879,23 @@ function ManagerRosterPage({
     onReleaseContract(releasePlayer.id);
     setReleasePlayerId("");
   };
+  const submitMentorship = () => {
+    if (!mentorshipEligibility.eligible) return;
+    onAssignMentorship(mentorId, menteeId);
+  };
   const openPotentialLab = (player: Player) => {
+    const plan = managerTrainingPlan(career, player);
+    setLabMode("potential");
     setPotentialFlip({
       playerId: player.id,
-      startingPotential: managerTrainingPlan(career, player).potentialOvr,
+      startingPotential: plan.potentialOvr,
       cost: managerPotentialLabCost(career, player),
       status: "choosing",
+    });
+    setOvrRoll({
+      startingOvr: plan.currentOvr,
+      cost: managerOvrLabCost(career, player),
+      status: "ready",
     });
   };
   const startPotentialFlip = (choice: ManagerCoinSide) => {
@@ -11427,6 +12908,42 @@ function ManagerRosterPage({
         ? { ...current, status: current.choice === current.result ? "won" : "lost" }
         : current);
     }, 1700);
+  };
+  const startOvrRoll = () => {
+    if (!potentialPlayer || !ovrRoll || ovrRoll.status !== "ready" || career.cash < ovrRoll.cost || potentialPlan?.currentOvr === OVR_CAP) return;
+    const result = managerOvrDiceResult(career, potentialPlayer);
+    onOvrInvestment(potentialPlayer, result);
+    setOvrRoll({ ...ovrRoll, status: "rolling", result });
+    ovrRollTimer.current = window.setTimeout(() => {
+      setOvrRoll((current) => current?.status === "rolling" ? { ...current, status: "settled" } : current);
+    }, 1700);
+  };
+  const closePotentialLab = () => {
+    setPotentialFlip(null);
+    setOvrRoll(null);
+  };
+  const selectPotentialLabMode = () => {
+    if (potentialFlip?.status === "flipping" || ovrRoll?.status === "rolling") return;
+    if (potentialFlip?.status === "choosing" && potentialPlayer && potentialPlan) {
+      setPotentialFlip({
+        playerId: potentialPlayer.id,
+        startingPotential: potentialPlan.potentialOvr,
+        cost: nextPotentialCost,
+        status: "choosing",
+      });
+    }
+    setLabMode("potential");
+  };
+  const selectOvrLabMode = () => {
+    if (potentialFlip?.status === "flipping" || ovrRoll?.status === "rolling") return;
+    if (ovrRoll?.status === "ready" && potentialPlan) {
+      setOvrRoll({
+        startingOvr: potentialPlan.currentOvr,
+        cost: nextOvrCost,
+        status: "ready",
+      });
+    }
+    setLabMode("ovr");
   };
   const openCasinoTable = () => {
     if (!casinoPlayer || !casinoEligibility?.allowed) return;
@@ -11522,7 +13039,7 @@ function ManagerRosterPage({
         <section className="manager-training-desk manager-development-board" aria-label="Player training plans" role="tabpanel">
           <div className="manager-training-head">
             <span><Dumbbell size={17} /><small>Performance department</small><h2>Player development</h2></span>
-            <div className="manager-development-budget"><small>Development budget</small><b>{fmtMoney(career.cash)}</b><em>Lab price scales with player ceiling</em></div>
+            <div className="manager-development-budget"><small>Development budget</small><b>{fmtMoney(career.cash)}</b><em>Lab pricing scales with player level</em></div>
           </div>
           <section className={`manager-camp-planner ${activeCamp ? "running" : ""}`} aria-label="Performance camp planner">
             <header>
@@ -11556,6 +13073,43 @@ function ManagerRosterPage({
               </div>
             )}
           </section>
+          <section className="manager-mentorship-desk" aria-label="Mentorship program">
+            <header>
+              <span className="manager-mentorship-icon"><Handshake size={21} /></span>
+              <span><small>Knowledge transfer / persistent pairing</small><h3>Mentorship Program</h3><p>Pair an experienced veteran with a young prospect to accelerate development after every event.</p></span>
+              <div><b>{career.mentorships.length} / {MANAGER_MAX_MENTORSHIPS}</b><small>active pairings</small></div>
+            </header>
+            <div className="manager-mentorship-pairs">
+              {career.mentorships.length ? career.mentorships.map((pair) => {
+                const mentor = activeRoster.find((player) => player.id === pair.mentorId);
+                const mentee = activeRoster.find((player) => player.id === pair.menteeId);
+                if (!mentor || !mentee) return null;
+                const liveBonus = managerMentorshipTrainingBonus(mentor, mentee);
+                return (
+                  <article key={pair.id}>
+                    <div className="manager-mentorship-player">
+                      {playerPhoto(mentor.handle) ? <img src={playerPhoto(mentor.handle)} alt={mentor.handle} /> : <Avatar label={mentor.handle} accent={team.accent} />}
+                      <span><small>Mentor / age {mentor.age ?? "-"}</small><strong>{mentor.handle}</strong><em>{mentor.role}</em></span>
+                    </div>
+                    <ArrowRight size={17} />
+                    <div className="manager-mentorship-player prospect">
+                      {playerPhoto(mentee.handle) ? <img src={playerPhoto(mentee.handle)} alt={mentee.handle} /> : <Avatar label={mentee.handle} accent={team.accent} />}
+                      <span><small>Prospect / age {mentee.age ?? "-"}</small><strong>{mentee.handle}</strong><em>{mentee.role}</em></span>
+                    </div>
+                    <span className="manager-mentorship-output"><small>Event bonus</small><b>+{liveBonus} progress</b><em>{pair.cyclesCompleted} cycle{pair.cyclesCompleted === 1 ? "" : "s"} completed</em></span>
+                    <button className="secondary compact" disabled={Boolean(career.activeEventId)} onClick={() => onEndMentorship(pair.id)} title={career.activeEventId ? "Pairings are locked during an event" : "End this mentorship"}><Minus size={14} /> End</button>
+                  </article>
+                );
+              }) : <p className="manager-mentorship-empty">No pairing is active. Use one of the two slots to connect a veteran and a prospect.</p>}
+            </div>
+            <div className="manager-mentorship-builder">
+              <label><span>Veteran mentor</span><select value={mentorId} disabled={!mentorCandidates.length || career.mentorships.length >= MANAGER_MAX_MENTORSHIPS || Boolean(career.activeEventId)} onChange={(event) => setMentorId(event.target.value)}>{mentorCandidates.length ? mentorCandidates.map((player) => <option value={player.id} key={player.id}>{player.handle} / age {player.age} / {player.role}</option>) : <option value="">No eligible veteran</option>}</select></label>
+              <span className="manager-mentorship-link"><Handshake size={18} /></span>
+              <label><span>Young prospect</span><select value={menteeId} disabled={!menteeCandidates.length || career.mentorships.length >= MANAGER_MAX_MENTORSHIPS || Boolean(career.activeEventId)} onChange={(event) => setMenteeId(event.target.value)}>{menteeCandidates.length ? menteeCandidates.map((player) => <option value={player.id} key={player.id}>{player.handle} / age {player.age} / {player.role}</option>) : <option value="">No eligible prospect</option>}</select></label>
+              <span className="manager-mentorship-preview"><small>Projected benefit</small><b>+{mentorshipEligibility.bonus} progress / event</b><em>Prospect +3 familiarity · mentor +2</em></span>
+              <button className="primary" disabled={!mentorshipEligibility.eligible} onClick={submitMentorship} title={mentorshipEligibility.reasons[0] ?? "Create mentorship"}><Plus size={15} /> Assign pair</button>
+            </div>
+          </section>
           <section className="manager-casino-desk" aria-label="Casino night">
             <div className="manager-casino-intro">
               <span><Dice5 size={20} /></span>
@@ -11574,6 +13128,8 @@ function ManagerRosterPage({
               const atCeiling = player.ovr >= potential;
               const labCost = managerPotentialLabCost(career, player);
               const labDisabled = career.status !== "active" || career.cash < labCost;
+              const mentorship = career.mentorships.find((pair) => pair.menteeId === player.id);
+              const mentor = mentorship ? activeRoster.find((item) => item.id === mentorship.mentorId) : undefined;
               return (
                 <article className="manager-training-row" key={player.id}>
                   <div className="manager-training-player">
@@ -11587,6 +13143,7 @@ function ManagerRosterPage({
                       {managerTrainingFocusOptions.map((option) => <option value={option.id} key={option.id}>{option.label}</option>)}
                     </select>
                     <small>{focus.emphasis}</small>
+                    {mentor && <small className="manager-training-mentor"><Handshake size={11} /> Mentored by {mentor.handle}</small>}
                   </label>
                   <div className="manager-training-progress">
                     <span><small>Next OVR</small><b>{atCeiling ? "At ceiling" : `${plan.progress}%`}</b></span>
@@ -11594,8 +13151,8 @@ function ManagerRosterPage({
                   </div>
                   <div className="manager-training-card-footer">
                     <span><small>Last review</small><strong className={plan.lastOvrChange > 0 ? "positive" : ""}>{plan.lastOvrChange > 0 ? `+${plan.lastOvrChange} OVR` : plan.lastRating != null ? `${plan.lastRating.toFixed(2)} rating` : "No event sample"}</strong></span>
-                    <span><small>Lab record</small><strong>{plan.potentialLabWins} / {plan.potentialLabAttempts}</strong></span>
-                    <button className="secondary compact manager-potential-button" disabled={labDisabled} onClick={() => openPotentialLab(player)} title={career.cash < labCost ? "Not enough available cash" : `Open Potential Lab for ${player.handle} at ${fmtMoney(labCost)}`}><Coins size={15} /> Lab {fmtMoney(labCost)}</button>
+                    <span><small>Lab record</small><strong>{plan.potentialLabWins}/{plan.potentialLabAttempts} POT · +{plan.ovrLabGains} OVR</strong></span>
+                    <button className="secondary compact manager-potential-button" disabled={labDisabled} onClick={() => openPotentialLab(player)} title={career.cash < labCost ? "Not enough available cash" : `Open the Lab for ${player.handle}; programs start at ${fmtMoney(labCost)}`}><FlaskConical size={15} /> Open lab</button>
                   </div>
                 </article>
               );
@@ -11657,11 +13214,21 @@ function ManagerRosterPage({
           </div>
           <div className="manager-renewal-controls">
             <label><span>Monthly salary</span><div className="manager-money-stepper"><button onClick={() => setRenewalSalary(Math.max(1_000, renewalSalary - 250))} title="Reduce salary"><Minus size={14} /></button><input type="number" step="250" min="1000" value={renewalSalary} onChange={(event) => setRenewalSalary(Math.max(1_000, Number(event.target.value) || 1_000))} /><button onClick={() => setRenewalSalary(renewalSalary + 250)} title="Increase salary"><Plus size={14} /></button></div></label>
-            <label><span>New term</span><select value={renewalCycles} onChange={(event) => setRenewalCycles(Number(event.target.value))}><option value={1}>1 Major / 0.5 years</option><option value={2}>2 Majors / 1 year</option><option value={3}>3 Majors / 1.5 years</option><option value={4}>4 Majors / 2 years</option></select></label>
+            <label>
+              <span>Extension added</span>
+              <select value={Math.min(renewalCycles, maxRenewalCycles)} onChange={(event) => setRenewalCycles(Number(event.target.value))}>
+                {Array.from({ length: maxRenewalCycles }, (_, index) => index + 1).map((majorCycles) => (
+                  <option key={majorCycles} value={majorCycles}>
+                    {majorCycles} {majorCycles === 1 ? "Major" : "Majors"} / {managerContractDurationLabel({ majorCyclesRemaining: majorCycles })}
+                  </option>
+                ))}
+              </select>
+            </label>
           </div>
           <div className="manager-offer-readout">
             <span><small>Player expectation</small><b>{fmtMoney(renewalEvaluation.askingSalary)}/mo</b></span>
             <span><small>Renewal bonus</small><b>{fmtMoney(renewalBonus)}</b></span>
+            <span><small>New total</small><b>{managerContractDurationLabel({ majorCyclesRemaining: renewalTotalCycles })}</b></span>
             <span><small>Interest</small><b className={renewalEvaluation.accepted ? "positive" : "negative"}>{renewalEvaluation.score}%</b></span>
           </div>
           <div className="manager-renewal-actions">
@@ -11691,39 +13258,76 @@ function ManagerRosterPage({
 
       {potentialFlip && potentialPlayer && potentialPlan && (
         <div className="manager-coin-overlay">
-          <section className={`manager-coin-dialog ${potentialFlip.status}`} role="dialog" aria-modal="true" aria-labelledby="potential-lab-title">
+          <section className={`manager-coin-dialog manager-lab-dialog ${labMode} ${labMode === "potential" ? potentialFlip.status : ovrRoll?.status ?? "ready"}`} role="dialog" aria-modal="true" aria-labelledby="potential-lab-title">
             <header>
-              <span><Coins size={18} /><small>Performance department / experimental program</small><h2 id="potential-lab-title">Potential Lab</h2></span>
-              <button className="icon-only" disabled={potentialFlip.status === "flipping"} onClick={() => setPotentialFlip(null)} title="Close Potential Lab"><ArrowLeft size={17} /></button>
+              <span><FlaskConical size={18} /><small>Performance department / experimental programs</small><h2 id="potential-lab-title">Development Lab</h2></span>
+              <button className="icon-only" disabled={potentialFlip.status === "flipping" || ovrRoll?.status === "rolling"} onClick={closePotentialLab} title="Close Development Lab"><ArrowLeft size={17} /></button>
             </header>
             <div className="manager-coin-player">
               {playerPhoto(potentialPlayer.handle) ? <img src={playerPhoto(potentialPlayer.handle)} alt={potentialPlayer.handle} /> : <Avatar label={potentialPlayer.handle} accent={team.accent} />}
               <span><small>Selected player</small><strong><Flag country={potentialPlayer.country} /> {potentialPlayer.handle}</strong><em>{potentialPlayer.role} / age {potentialPlayer.age ?? "-"}</em></span>
-              <div><span><small>OVR</small><b>{potentialPlayer.ovr}</b></span><i /><span><small>Potential</small><b>{potentialPlan.potentialOvr}</b></span></div>
+              <div><span><small>OVR</small><b>{potentialPlan.currentOvr}</b></span><i /><span><small>Potential</small><b>{potentialPlan.potentialOvr}</b></span></div>
             </div>
-            <div className="manager-coin-stage" aria-live="polite">
-              <ManagerAnimatedCoin status={potentialFlip.status} result={potentialFlip.result} />
-            </div>
-            {potentialFlip.status === "choosing" ? (
-              <div className="manager-coin-decision">
-                <span><small>One call. One flip.</small><h3>Choose a side</h3><p>A correct call raises {potentialPlayer.handle}'s potential by one. A miss still costs the full investment.</p></span>
-                <div>
-                  <button onClick={() => startPotentialFlip("heads")}><b>H</b><span><strong>Heads</strong><small>Call the crest</small></span></button>
-                  <button onClick={() => startPotentialFlip("tails")}><b>T</b><span><strong>Tails</strong><small>Call the reverse</small></span></button>
+            <nav className="manager-lab-modes" aria-label="Development Lab program">
+              <button className={labMode === "potential" ? "selected" : ""} disabled={potentialFlip.status === "flipping" || ovrRoll?.status === "rolling"} onClick={selectPotentialLabMode}>
+                <Coins size={17} /><span><small>Potential coin</small><strong>+1 ceiling</strong></span><b>{fmtMoney(potentialFlip.cost)}</b>
+              </button>
+              <button className={labMode === "ovr" ? "selected" : ""} disabled={potentialFlip.status === "flipping" || ovrRoll?.status === "rolling"} onClick={selectOvrLabMode}>
+                <Dice5 size={17} /><span><small>OVR dice</small><strong>+0 to +3 now</strong></span><b>{fmtMoney(ovrRoll?.cost ?? nextOvrCost)}</b>
+              </button>
+            </nav>
+            {labMode === "potential" ? (
+              <>
+                <div className="manager-coin-stage" aria-live="polite">
+                  <ManagerAnimatedCoin status={potentialFlip.status} result={potentialFlip.result} />
                 </div>
-              </div>
-            ) : potentialFlip.status === "flipping" ? (
-              <div className="manager-coin-pending"><span /><b>{potentialPlayer.handle} called {potentialFlip.choice}</b><small>The investment is committed. Waiting for the coin...</small></div>
+                {potentialFlip.status === "choosing" ? (
+                  <div className="manager-coin-decision">
+                    <span><small>One call. One flip.</small><h3>Choose a side</h3><p>A correct call raises {potentialPlayer.handle}'s potential by one. A miss still costs the full investment.</p></span>
+                    <div>
+                      <button onClick={() => startPotentialFlip("heads")}><b>H</b><span><strong>Heads</strong><small>Call the crest</small></span></button>
+                      <button onClick={() => startPotentialFlip("tails")}><b>T</b><span><strong>Tails</strong><small>Call the reverse</small></span></button>
+                    </div>
+                  </div>
+                ) : potentialFlip.status === "flipping" ? (
+                  <div className="manager-coin-pending"><span /><b>{potentialPlayer.handle} called {potentialFlip.choice}</b><small>The investment is committed. Waiting for the coin...</small></div>
+                ) : (
+                  <div className={`manager-coin-result ${potentialFlip.status}`}>
+                    <span><small>The coin landed {potentialFlip.result}</small><h3>{potentialFlip.status === "won" ? "Potential unlocked" : "The call missed"}</h3><p>{potentialFlip.status === "won" ? `${potentialPlayer.handle}'s ceiling rises from ${potentialFlip.startingPotential} to ${potentialPlan.potentialOvr}.` : `${potentialPlayer.handle} stays at ${potentialPlan.potentialOvr} potential.`}</p></span>
+                    <div>
+                      <button className="secondary" disabled={career.cash < nextPotentialCost} onClick={() => setPotentialFlip({ playerId: potentialPlayer.id, startingPotential: potentialPlan.potentialOvr, cost: nextPotentialCost, status: "choosing" })}><RefreshCcw size={15} /> Run it again</button>
+                      <button className="primary" onClick={closePotentialLab}><CheckCircle2 size={15} /> Return to development</button>
+                    </div>
+                  </div>
+                )}
+                <footer><span><small>Investment</small><b>{fmtMoney(potentialFlip.cost)}</b></span><span><small>Success chance</small><b>50%</b></span><span><small>Available cash</small><b>{fmtMoney(career.cash)}</b></span><p>Cost rises with the ceiling's value. Potential can exceed 99, while OVR still has to be earned.</p></footer>
+              </>
             ) : (
-              <div className={`manager-coin-result ${potentialFlip.status}`}>
-                <span><small>The coin landed {potentialFlip.result}</small><h3>{potentialFlip.status === "won" ? "Potential unlocked" : "The call missed"}</h3><p>{potentialFlip.status === "won" ? `${potentialPlayer.handle}'s ceiling rises from ${potentialFlip.startingPotential} to ${potentialPlan.potentialOvr}.` : `${potentialPlayer.handle} stays at ${potentialPlan.potentialOvr} potential.`}</p></span>
-                <div>
-                  <button className="secondary" disabled={career.cash < nextPotentialCost} onClick={() => setPotentialFlip({ playerId: potentialPlayer.id, startingPotential: potentialPlan.potentialOvr, cost: nextPotentialCost, status: "choosing" })}><RefreshCcw size={15} /> Run it again</button>
-                  <button className="primary" onClick={() => setPotentialFlip(null)}><CheckCircle2 size={15} /> Return to development</button>
-                </div>
-              </div>
+              ovrRoll && (
+                <>
+                  <div className="manager-coin-stage manager-die-stage" aria-live="polite">
+                    <ManagerAnimatedDie status={ovrRoll.status} result={ovrRoll.result} />
+                  </div>
+                  {ovrRoll.status === "ready" ? (
+                    <div className="manager-coin-decision manager-die-decision">
+                      <span><small>Four equal outcomes / immediate growth</small><h3>Roll for OVR</h3><p>The lab die can add 0, 1, 2, or 3 OVR immediately. Every face is equally likely, and the full premium is charged even on zero.</p></span>
+                      <div><button disabled={career.cash < ovrRoll.cost || potentialPlan.currentOvr >= OVR_CAP} onClick={startOvrRoll}><Dice5 size={20} /><span><strong>{potentialPlan.currentOvr >= OVR_CAP ? "At OVR cap" : "Roll the die"}</strong><small>{fmtMoney(ovrRoll.cost)} session</small></span></button></div>
+                    </div>
+                  ) : ovrRoll.status === "rolling" ? (
+                    <div className="manager-coin-pending"><span /><b>{potentialPlayer.handle}'s session is running</b><small>The investment is committed. Calibrating the result...</small></div>
+                  ) : (
+                    <div className={`manager-coin-result ${ovrRoll.result === 0 ? "lost" : "won"}`}>
+                      <span><small>The lab die landed on {ovrRoll.result}</small><h3>{ovrRoll.result === 0 ? "No OVR gained" : `+${Math.max(0, potentialPlan.currentOvr - ovrRoll.startingOvr)} OVR applied`}</h3><p>{ovrRoll.result === 0 ? `${potentialPlayer.handle} remains at ${potentialPlan.currentOvr} OVR.` : `${potentialPlayer.handle} moved from ${ovrRoll.startingOvr} to ${potentialPlan.currentOvr} OVR immediately.`}</p></span>
+                      <div>
+                        <button className="secondary" disabled={career.cash < nextOvrCost || potentialPlan.currentOvr >= OVR_CAP} onClick={() => setOvrRoll({ startingOvr: potentialPlan.currentOvr, cost: nextOvrCost, status: "ready" })}><RefreshCcw size={15} /> Roll again</button>
+                        <button className="primary" onClick={closePotentialLab}><CheckCircle2 size={15} /> Return to development</button>
+                      </div>
+                    </div>
+                  )}
+                  <footer><span><small>Investment</small><b>{fmtMoney(ovrRoll.cost)}</b></span><span><small>Outcome range</small><b>0–3 OVR</b></span><span><small>Available cash</small><b>{fmtMoney(career.cash)}</b></span><p>Each result has a 25% chance. Direct OVR is capped at {OVR_CAP}; potential rises with OVR when needed.</p></footer>
+                </>
+              )
             )}
-            <footer><span><small>Investment</small><b>{fmtMoney(potentialFlip.cost)}</b></span><span><small>Success chance</small><b>50%</b></span><span><small>Available cash</small><b>{fmtMoney(career.cash)}</b></span><p>Cost rises with the ceiling's value. Potential can exceed 99, while OVR still has to be earned.</p></footer>
           </section>
         </div>
       )}
@@ -11769,6 +13373,14 @@ function ManagerAnimatedCoin({ status, result }: { status: "choosing" | "flippin
     <div className={`manager-coin ${status === "flipping" ? "flipping" : "settled"} ${result ?? "heads"}`}>
       <span className="manager-coin-face front"><b>H</b><small>Heads</small></span>
       <span className="manager-coin-face back"><b>T</b><small>Tails</small></span>
+    </div>
+  );
+}
+
+function ManagerAnimatedDie({ status, result }: { status: "ready" | "rolling" | "settled"; result?: ManagerOvrDiceResult }) {
+  return (
+    <div className={`manager-lab-die ${status}`}>
+      <span><b>{status === "rolling" ? "?" : result ?? "0–3"}</b><small>{status === "settled" ? "OVR gained" : "OVR die"}</small></span>
     </div>
   );
 }
@@ -11955,13 +13567,13 @@ function ManagerMarketPage({
             const range = managerScoutingRange(candidate.player);
             const photo = playerPhoto(candidate.player.handle);
             return (
-              <div className={`manager-candidate-row ${selectedCandidate?.id === candidate.id ? "selected" : ""}`} key={candidate.id}>
+              <div className={`manager-candidate-row ${candidate.priority ? "priority" : ""} ${selectedCandidate?.id === candidate.id ? "selected" : ""}`} key={candidate.id}>
                 <button className="manager-candidate-main" onClick={() => setSelectedId(candidate.id)}>
                   {photo ? <img className="manager-candidate-photo" src={photo} alt={candidate.player.handle} loading="lazy" /> : <Avatar label={candidate.player.handle} accent={candidate.player.source?.accent ?? "#6aa7ff"} />}
                   <span><strong><Flag country={candidate.player.country ?? "INT"} /> {candidate.player.handle}</strong><small>{candidate.player.realName ?? candidate.player.handle} / age {candidate.player.age ?? "-"}</small></span>
                 </button>
                 <span className="manager-candidate-role"><strong>{candidate.player.role}</strong><small>{candidate.player.style ?? "Saved profile"}</small></span>
-                <span className="manager-candidate-market"><strong>{candidateScouted ? candidate.player.ovr : `${range.low}-${range.high}`} <small>OVR</small></strong><em>{candidateSigned ? "Signed" : candidateUnavailable ? "Moved" : candidateOffer ? candidateOffer.status : candidate.kind === "free-agent" ? "Free agent" : candidate.previousTeam}</em></span>
+                <span className="manager-candidate-market"><strong>{candidateScouted ? candidate.player.ovr : `${range.low}-${range.high}`} <small>OVR</small></strong><em>{candidateSigned ? "Signed" : candidateUnavailable ? "Moved" : candidateOffer ? candidateOffer.status : candidate.kind === "free-agent" ? "Free agent" : candidate.priority ? "Priority sale" : candidate.previousTeam}</em></span>
                 <button className="icon-only" onClick={() => onCareerChange(toggleManagerShortlist(career, candidate.id))} title={market.shortlistedPlayerIds.includes(candidate.id) ? "Remove from shortlist" : "Add to shortlist"}>
                   {market.shortlistedPlayerIds.includes(candidate.id) ? <BookmarkCheck size={16} /> : <Bookmark size={16} />}
                 </button>
@@ -11978,7 +13590,7 @@ function ManagerMarketPage({
                 {playerPhoto(selectedCandidate.player.handle)
                   ? <img src={playerPhoto(selectedCandidate.player.handle)} alt={selectedCandidate.player.handle} />
                   : <Avatar label={selectedCandidate.player.handle} accent={selectedCandidate.player.source?.accent ?? "#6aa7ff"} />}
-                <span><small>{selectedCandidate.kind === "free-agent" ? `Previously ${selectedCandidate.previousTeam}` : selectedCandidate.previousTeam}</small><h2><Flag country={selectedCandidate.player.country ?? "INT"} /> {selectedCandidate.player.handle}</h2><p>{selectedCandidate.player.realName ?? selectedCandidate.player.handle} / {selectedCandidate.player.role} / age {selectedCandidate.player.age ?? "-"}</p></span>
+                <span><small>{selectedCandidate.kind === "free-agent" ? `Previously ${selectedCandidate.previousTeam}` : selectedCandidate.priority ? `Priority sale / ${selectedCandidate.previousTeam}` : selectedCandidate.previousTeam}</small><h2><Flag country={selectedCandidate.player.country ?? "INT"} /> {selectedCandidate.player.handle}</h2><p>{selectedCandidate.player.realName ?? selectedCandidate.player.handle} / {selectedCandidate.player.role} / age {selectedCandidate.player.age ?? "-"}</p></span>
                 <button className="icon-only" onClick={() => onCareerChange(toggleManagerShortlist(career, selectedCandidate.id))} title={isShortlisted ? "Remove from shortlist" : "Add to shortlist"}>{isShortlisted ? <BookmarkCheck size={17} /> : <Bookmark size={17} />}</button>
               </div>
 
@@ -12004,7 +13616,7 @@ function ManagerMarketPage({
                   <div className="manager-negotiation-meta">
                     <span><small>Club relationship</small><b>{relationship ? managerClubRelationshipLabel(relationship.trust) : "New contact"}</b><em>{relationship?.trust ?? 50} trust</em></span>
                     <span><small>Negotiation</small><b>{latestTradeOffer ? `Round ${latestTradeOffer.round} / 3` : "Not opened"}</b><em>{roundsRemaining} rounds remain</em></span>
-                    <span><small>Market pressure</small><b>{latestTradeOffer && latestTradeOffer.status !== "pending" && latestTradeOffer.rivalTeamName ? latestTradeOffer.rivalTeamName : "Undisclosed"}</b><em>{latestTradeOffer?.status === "outbid" ? "deal completed" : "rival interest"}</em></span>
+                    <span><small>Market pressure</small><b>{selectedCandidate.priority ? "Actively for sale" : latestTradeOffer && latestTradeOffer.status !== "pending" && latestTradeOffer.rivalTeamName ? latestTradeOffer.rivalTeamName : "Undisclosed"}</b><em>{selectedCandidate.priority ? selectedCandidate.listingReason : latestTradeOffer?.status === "outbid" ? "deal completed" : "rival interest"}</em></span>
                   </div>
                   <label>
                     <span>Player offered</span>
@@ -12067,7 +13679,16 @@ function ManagerMarketPage({
                 <div className="manager-offer-panel">
                   <div className="manager-offer-head"><span><small>Contract desk</small><strong>Build an offer</strong></span><b className={evaluation && evaluation.score >= 60 ? "positive" : "negative"}>{evaluation?.score ?? 0}% interest</b></div>
                   <label><span>Monthly salary</span><div className="manager-money-stepper"><button onClick={() => setSalary(Math.max(1_000, salary - 500))} title="Reduce salary"><Minus size={14} /></button><input type="number" step="500" min="1000" value={salary} onChange={(event) => setSalary(Math.max(1_000, Number(event.target.value) || 1_000))} /><button onClick={() => setSalary(salary + 500)} title="Increase salary"><Plus size={14} /></button></div></label>
-                  <label><span>Contract length</span><select value={cycles} onChange={(event) => setCycles(Number(event.target.value))}><option value={1}>1 Major / 0.5 years</option><option value={2}>2 Majors / 1 year</option><option value={3}>3 Majors / 1.5 years</option><option value={4}>4 Majors / 2 years</option></select></label>
+                  <label>
+                    <span>Contract length</span>
+                    <select value={cycles} onChange={(event) => setCycles(Number(event.target.value))}>
+                      {Array.from({ length: MANAGER_MAX_CONTRACT_CYCLES }, (_, index) => index + 1).map((majorCycles) => (
+                        <option key={majorCycles} value={majorCycles}>
+                          {majorCycles} {majorCycles === 1 ? "Major" : "Majors"} / {managerContractDurationLabel({ majorCyclesRemaining: majorCycles })}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
                   <label><span>Promised role</span><select value={squadRole} onChange={(event) => setSquadRole(event.target.value as ManagerSquadRole)}>{(["star", "starter", "rotation", "prospect", "bench"] as ManagerSquadRole[]).map((item) => <option key={item} value={item}>{item}</option>)}</select></label>
                   <div className="manager-offer-readout"><span><small>Expectation</small><b>{fmtMoney(selectedCandidate.askingSalary)}/mo</b></span><span><small>Signing bonus</small><b>{fmtMoney(salary)}</b></span><span><small>Runway after signing</small><b>{managerMonthlyPayroll(career) + salary > 0 ? `${Math.max(0, (career.cash - salary) / (managerMonthlyPayroll(career) + salary)).toFixed(1)} mo` : "-"}</b></span></div>
                   <button className="primary large" disabled={activeContracts >= 8 || career.cash < salary} onClick={() => onCareerChange(submitManagerFreeAgentOffer(career, selectedCandidate.player, offerTerms))}><UserPlus size={17} /> Submit contract offer</button>
@@ -12222,23 +13843,33 @@ function ManagerInboxPage({
             {offers.map((offer) => {
               const buyer = buyerTeam(offer);
               const locked = managerIncomingOfferRosterLock(career, offer);
-              const canSell = activeContractCount > 5 && !locked;
+              const canSell = (activeContractCount > 5 || Boolean(offer.offeredPlayer)) && !locked;
               const pending = offer.status === "pending";
               const counter = counterValues[offer.id] ?? Math.ceil(offer.cashOffered * 1.15 / 5_000) * 5_000;
               return (
                 <article className={`manager-incoming-offer ${offer.status}`} key={offer.id}>
-                  <div className="manager-offer-club"><TeamLogo team={buyer} /><span><small>{offer.status.replace("-", " ")} / expires {managerFormatDate(offer.expiresOn)}</small><strong>{buyer.name}</strong><em>Approach for {offer.targetPlayer.handle}</em></span></div>
+                  <div className="manager-offer-club"><TeamLogo team={buyer} /><span><small>{offer.status.replace("-", " ")} / expires {managerFormatDate(offer.expiresOn)}</small><strong>{buyer.name}</strong><em>{offer.isTrade ? `Trade approach for ${offer.targetPlayer.handle}` : `Bid for ${offer.targetPlayer.handle}`}</em></span></div>
                   <div className="manager-offer-player">
                     {playerPhoto(offer.targetPlayer.handle) ? <img src={playerPhoto(offer.targetPlayer.handle)} alt={offer.targetPlayer.handle} /> : <Avatar label={offer.targetPlayer.handle} accent={team.accent} />}
                     <span><strong>{offer.targetPlayer.handle}</strong><small>{offer.targetPlayer.role} / {offer.targetPlayer.ovr} OVR</small></span>
                   </div>
-                  <div className="manager-offer-money"><small>{offer.counterCash != null ? "Your counter" : "Cash offer"}</small><b>{fmtMoney(offer.counterCash ?? offer.cashOffered)}</b><em>{offer.reasons[0]}</em></div>
+                  {offer.offeredPlayer ? (
+                    <div className="manager-offer-player trade-incoming" style={{ borderLeft: "2px solid #38bdf8", paddingLeft: "10px" }}>
+                      {playerPhoto(offer.offeredPlayer.handle) ? <img src={playerPhoto(offer.offeredPlayer.handle)} alt={offer.offeredPlayer.handle} /> : <Avatar label={offer.offeredPlayer.handle} accent={buyer.accent} />}
+                      <span><small style={{ color: "#38bdf8", fontWeight: "bold" }}>OFFERED IN TRADE</small><strong>{offer.offeredPlayer.handle}</strong><small>{offer.offeredPlayer.role} / {offer.offeredPlayer.ovr} OVR</small></span>
+                    </div>
+                  ) : null}
+                  <div className="manager-offer-money"><small>{offer.isTrade ? (offer.cashOffered > 0 ? "Player + Cash" : "Straight Player Swap") : (offer.counterCash != null ? "Your counter" : "Cash offer")}</small><b>{offer.isTrade ? (offer.cashOffered > 0 ? `+${fmtMoney(offer.cashOffered)}` : "1-for-1 Trade") : fmtMoney(offer.counterCash ?? offer.cashOffered)}</b><em>{offer.reasons[0]}</em></div>
                   <div className="manager-offer-actions">
                     {pending ? (
                       <>
-                        <button className="primary" disabled={!canSell} onClick={() => onCareerChange(acceptManagerIncomingOffer(career, offer.id))}><CheckCircle2 size={15} /> Accept</button>
-                        <label><span>Counter</span><input type="number" min={offer.cashOffered + 5_000} step="5000" value={counter} onChange={(event) => setCounterValues((current) => ({ ...current, [offer.id]: Number(event.target.value) || 0 }))} /></label>
-                        <button className="secondary" disabled={!canSell || counter <= offer.cashOffered} onClick={() => onCareerChange(counterManagerIncomingOffer(career, offer.id, counter))}><ArrowLeftRight size={15} /> Send</button>
+                        <button className="primary" disabled={!canSell} onClick={() => onCareerChange(acceptManagerIncomingOffer(career, offer.id))}><CheckCircle2 size={15} /> {offer.isTrade ? "Accept Trade" : "Accept"}</button>
+                        {!offer.isTrade && (
+                          <>
+                            <label><span>Counter</span><input type="number" min={offer.cashOffered + 5_000} step="5000" value={counter} onChange={(event) => setCounterValues((current) => ({ ...current, [offer.id]: Number(event.target.value) || 0 }))} /></label>
+                            <button className="secondary" disabled={!canSell || counter <= offer.cashOffered} onClick={() => onCareerChange(counterManagerIncomingOffer(career, offer.id, counter))}><ArrowLeftRight size={15} /> Send</button>
+                          </>
+                        )}
                         <button className="danger" onClick={() => onCareerChange(declineManagerIncomingOffer(career, offer.id))}><Ban size={15} /> Decline</button>
                       </>
                     ) : offer.status === "counter-pending" ? (
@@ -12273,13 +13904,17 @@ function ManagerInboxPage({
             <span><small>Head-to-head</small><b className={vrsBreakdown.headToHead >= 0 ? "positive" : "negative"}>{vrsBreakdown.headToHead >= 0 ? "+" : ""}{vrsBreakdown.headToHead}</b></span>
             <span><small>Active window</small><b>{vrsBreakdown.activeEvents} events</b><em>{vrsBreakdown.activeMatches} series / 6 months</em></span>
           </div>
-          <div className="manager-vrs-columns"><span>Rank</span><span>Team</span><span>Points</span><span>Movement</span></div>
+          <div className="manager-vrs-columns"><span>Rank</span><span>Team</span><span>Points</span><span>Latest evidence</span><span>Movement</span></div>
           <div className="manager-vrs-list">
             {standings.map((standing) => (
               <div className={standing.managed ? "managed" : ""} key={standing.team.id}>
                 <b>#{standing.rank}</b>
                 <span><TeamLogo team={standing.team} small /><strong><Flag country={standing.team.country} /> {standing.team.name}</strong>{standing.managed && <em>Your club</em>}</span>
                 <strong>{standing.points.toLocaleString()}</strong>
+                <span className="manager-vrs-evidence">
+                  <b>{standing.evidence ? `${standing.evidence.eventName} / ${standing.evidence.record}` : "No active result"}</b>
+                  <small>{standing.evidence?.bestWin ?? "Baseline seed only"}</small>
+                </span>
                 <small className={standing.movement > 0 ? "positive" : standing.movement < 0 ? "negative" : ""}>{standing.movement > 0 ? `+${standing.movement}` : standing.movement || "-"}</small>
               </div>
             ))}
@@ -12301,6 +13936,7 @@ function ManagerHomePage({
   record,
   results,
   onOpenCalendar,
+  onOpenPreparation,
   onOpenRoster,
   onOpenMarket,
   onOpenInbox,
@@ -12323,6 +13959,7 @@ function ManagerHomePage({
   record: SwissRecord;
   results: SwissResult[];
   onOpenCalendar: () => void;
+  onOpenPreparation: () => void;
   onOpenRoster: () => void;
   onOpenMarket: () => void;
   onOpenInbox: () => void;
@@ -12344,6 +13981,9 @@ function ManagerHomePage({
   const nextConfirmedReady = nextConfirmed ? managerEventReadyToLaunch(career, nextConfirmed.id) : false;
   const checkpoint = nextManagerCheckpoint(career);
   const unread = career.inbox.filter((item) => !item.read);
+  const liveOfferCount = career.market.incomingOffers.filter(
+    (offer) => offer.status === "pending" || offer.status === "counter-pending",
+  ).length;
   const decisionItems = career.inbox.filter((item) => item.kind !== "market");
   const worldNews = career.inbox.filter((item) => item.kind === "market").slice(0, 4);
   const financial = managerFinancialStatus(career);
@@ -12374,6 +14014,15 @@ function ManagerHomePage({
         : nextConfirmed
           ? () => onAdvance(managerEventStartForRank(nextConfirmed, career.vrsRank, career.season))
           : () => onAdvance();
+  const continueDetail = activeEvent
+    ? `${managerEventName(activeEvent, career.season)} · ${phase === "playoffs" ? `${results.length} playoff series completed` : `${record.wins}-${record.losses} group record`}`
+    : nextConfirmedReady && nextConfirmed
+      ? `${nextConfirmed.location} · your roster is cleared to travel`
+      : checkpoint
+        ? "Resolve the next calendar checkpoint and any decisions due there"
+        : nextConfirmed
+          ? `${nextConfirmed.shortName} is booked and waiting for its start date`
+          : `Close the current cycle and open ${managerSeasonLabel(career.season + 1)}`;
 
   if (career.status === "bankrupt") {
     const wins = history.filter((entry) => entry.tier === "champion").length;
@@ -12420,10 +14069,44 @@ function ManagerHomePage({
           <button className="secondary" onClick={onOpenRoster}><Users size={16} /> Roster</button>
           <button className="secondary" onClick={onOpenMarket}><BriefcaseBusiness size={16} /> Recruitment</button>
           <button className="secondary" onClick={onOpenCalendar}><CalendarDays size={16} /> Calendar</button>
-          <button className="primary" onClick={continueAction}>
-            <ArrowRight size={16} /> {continueLabel}
-          </button>
+          <button className="secondary" onClick={onOpenPreparation}><Target size={16} /> Preparation</button>
         </div>
+      </section>
+
+      <section className="manager-control-deck" aria-label="Manager operations">
+        <div className="manager-next-action">
+          <span><Zap size={15} /> Recommended next move</span>
+          <strong>{continueLabel}</strong>
+          <small>{continueDetail}</small>
+          <button className="primary" onClick={continueAction}>Continue <ArrowRight size={16} /></button>
+        </div>
+        <nav className="manager-quick-desk" aria-label="Headquarters workspaces">
+          <button type="button" onClick={onOpenInbox}>
+            <Mail size={18} />
+            <span><small>Decision desk</small><strong>{unread.length ? `${unread.length} unread` : "Inbox clear"}</strong></span>
+            <ArrowRight size={14} />
+          </button>
+          <button type="button" onClick={onOpenCalendar}>
+            <CalendarDays size={18} />
+            <span><small>Competition</small><strong>{nextConfirmed?.shortName ?? `${available.length} events open`}</strong></span>
+            <ArrowRight size={14} />
+          </button>
+          <button type="button" onClick={onOpenRoster}>
+            <Users size={18} />
+            <span><small>Squad readiness</small><strong>{roster.length} players · {teamForm} form</strong></span>
+            <ArrowRight size={14} />
+          </button>
+          <button type="button" onClick={onOpenPreparation}>
+            <Target size={18} />
+            <span><small>Match preparation</small><strong>{managerPreparationPlans.find((plan) => plan.id === career.preparation.activePlan)?.shortName} · {career.preparation.mastery[career.preparation.activePlan]}%</strong></span>
+            <ArrowRight size={14} />
+          </button>
+          <button type="button" onClick={onOpenMarket}>
+            <BriefcaseBusiness size={18} />
+            <span><small>Recruitment</small><strong>{liveOfferCount ? `${liveOfferCount} live offer${liveOfferCount === 1 ? "" : "s"}` : "Market open"}</strong></span>
+            <ArrowRight size={14} />
+          </button>
+        </nav>
       </section>
 
       <section className="manager-kpis" aria-label="Organization status">
@@ -12431,7 +14114,6 @@ function ManagerHomePage({
         <div><span>Available cash</span><b>{fmtMoney(career.cash)}</b><small className={`manager-pressure-${financial.pressure}`}>{financial.inDebt ? "Season-end insolvency risk" : Number.isFinite(financial.runwayMonths) ? `${financial.runwayMonths.toFixed(1)} months runway` : "No active payroll"}</small></div>
         <div><span>Board confidence</span><b>{career.boardConfidence}</b><small>{career.boardConfidence >= 70 ? "Secure" : career.boardConfidence >= 45 ? "Stable" : "Under review"}</small></div>
         <div><span>Reputation</span><b>{career.reputation}</b><small>{career.reputation >= 70 ? "Elite pull" : career.reputation >= 45 ? "Established" : "Building"}</small></div>
-        <button type="button" className="manager-kpi-action" onClick={onOpenInbox}><span>Inbox</span><b>{unread.length}</b><small>unread decision{unread.length === 1 ? "" : "s"}</small><ArrowRight size={15} /></button>
       </section>
 
       <section className={`manager-objective-strip ${career.boardObjective.status}`} aria-label="Board objective">
@@ -12620,6 +14302,152 @@ function ManagerCompactEventRow({
   );
 }
 
+function ManagerPreparationPage({
+  team,
+  career,
+  opponents,
+  onBack,
+  onSelectPlan,
+  onScheduleScrim,
+  onCancelScrim,
+  onAdvance,
+}: {
+  team: FieldTeam;
+  career: ManagerCareerState;
+  opponents: Roster[];
+  onBack: () => void;
+  onSelectPlan: (plan: ManagerPreparationPlan, targetSite: "A" | "B") => void;
+  onScheduleScrim: (input: ManagerScrimInput) => void;
+  onCancelScrim: (scrimId: string) => void;
+  onAdvance: (targetDate?: string) => void;
+}) {
+  const availableOpponents = opponents
+    .filter((opponent) => (
+      isCurrentManagerWorldRoster(opponent)
+      && opponent.id !== career.organizationId
+      && opponent.name !== career.organizationName
+    ))
+    .sort((left, right) => (left.rank ?? 99) - (right.rank ?? 99));
+  const dateOptions = managerScrimDateOptions(career, 21);
+  const [opponentId, setOpponentId] = useState(availableOpponents[0]?.id ?? "");
+  const [map, setMap] = useState<MapId>("mirage");
+  const [scheduledFor, setScheduledFor] = useState(dateOptions[0] ?? career.date);
+  const [intensity, setIntensity] = useState<ManagerScrimIntensity>("standard");
+  const [privacy, setPrivacy] = useState<ManagerScrimPrivacy>("closed");
+  useEffect(() => {
+    if (!availableOpponents.some((opponent) => opponent.id === opponentId)) setOpponentId(availableOpponents[0]?.id ?? "");
+  }, [availableOpponents, opponentId]);
+  useEffect(() => {
+    if (!dateOptions.includes(scheduledFor)) setScheduledFor(dateOptions[0] ?? career.date);
+  }, [career.date, dateOptions, scheduledFor]);
+  const opponent = availableOpponents.find((item) => item.id === opponentId);
+  const scrimInput: ManagerScrimInput = {
+    opponentId,
+    opponentName: opponent?.name ?? "",
+    map,
+    scheduledFor,
+    intensity,
+    privacy,
+  };
+  const eligibility = managerScrimEligibility(career, scrimInput);
+  const activePlan = managerPreparationPlans.find((plan) => plan.id === career.preparation.activePlan)!;
+  const upcoming = career.preparation.scrims
+    .filter((scrim) => scrim.status === "scheduled")
+    .sort((left, right) => left.scheduledFor.localeCompare(right.scheduledFor));
+  const completed = career.preparation.scrims
+    .filter((scrim) => scrim.status === "completed")
+    .sort((left, right) => right.scheduledFor.localeCompare(left.scheduledFor))
+    .slice(0, 6);
+  const leakedPlans = new Set(completed.filter((scrim) => scrim.leaked).map((scrim) => scrim.plan));
+  const planIcon = (plan: ManagerPreparationPlan) => plan === "anti-awp"
+    ? <Crosshair size={20} />
+    : plan === "punish-aggression"
+      ? <Shield size={20} />
+      : plan === "heavy-utility"
+        ? <Flame size={20} />
+        : <Target size={20} />;
+
+  return (
+    <main className="layout fullscreen-page manager-page manager-preparation-page" style={{ "--prep-team-accent": team.accent } as React.CSSProperties}>
+      <section className="manager-prep-hero">
+        <div>
+          <button className="icon-only" onClick={onBack} title="Back to manager headquarters"><ArrowLeft size={18} /></button>
+          <span className="manager-prep-hero-icon"><Target size={24} /></span>
+          <span><small>Tactical department / live match integration</small><h1>Preparation Hub</h1><p>Build plan mastery through scheduled practice, then carry the work into vetoes and the 3D server.</p></span>
+        </div>
+        <div className="manager-prep-readiness">
+          <span><small>Active plan</small><b>{activePlan.shortName}</b><em>{career.preparation.mastery[activePlan.id]}% mastery</em></span>
+          <span className={career.preparation.fatigue >= 40 ? "risk" : ""}><small>Practice fatigue</small><b>{career.preparation.fatigue}</b><em>{career.preparation.fatigue >= 40 ? "Match penalty active" : "Squad fresh"}</em></span>
+          <span className={leakedPlans.has(activePlan.id) ? "risk" : ""}><small>Intel security</small><b>{leakedPlans.has(activePlan.id) ? "Exposed" : "Secure"}</b><em>{leakedPlans.size} leaked plan{leakedPlans.size === 1 ? "" : "s"}</em></span>
+        </div>
+      </section>
+
+      <section className="manager-prep-plans" aria-label="Match preparation plans">
+        <header><div><small>Match doctrine</small><h2>Choose the active plan</h2><p>Only the active plan affects the next match. Mastery controls its upside; fatigue and leaks reduce it.</p></div><span>{career.activeEventId ? "Locked during tournament" : "Change freely before travel"}</span></header>
+        <div className="manager-prep-plan-grid">
+          {managerPreparationPlans.map((plan) => {
+            const selected = plan.id === career.preparation.activePlan;
+            const mastery = career.preparation.mastery[plan.id];
+            return (
+              <button type="button" className={`manager-prep-plan ${selected ? "selected" : ""}`} disabled={Boolean(career.activeEventId)} onClick={() => onSelectPlan(plan.id, career.preparation.targetSite)} key={plan.id}>
+                <span className="manager-prep-plan-icon">{planIcon(plan.id)}</span>
+                <span><small>{selected ? "Active doctrine" : "Available doctrine"}</small><strong>{plan.name}</strong><p>{plan.description}</p></span>
+                <span className="manager-prep-plan-meter"><b>{mastery}%</b><meter min={0} max={100} value={mastery} /><em>{plan.matchEffect}</em></span>
+                {leakedPlans.has(plan.id) && <span className="manager-prep-leaked"><Eye size={12} /> Exposed</span>}
+              </button>
+            );
+          })}
+        </div>
+        {career.preparation.activePlan === "targeted-site-stack" && (
+          <div className="manager-prep-site-call">
+            <span><Target size={16} /><span><small>CT-side read</small><strong>Stack target</strong></span></span>
+            <div className="segmented"><button className={career.preparation.targetSite === "A" ? "selected" : ""} disabled={Boolean(career.activeEventId)} onClick={() => onSelectPlan("targeted-site-stack", "A")}>A site</button><button className={career.preparation.targetSite === "B" ? "selected" : ""} disabled={Boolean(career.activeEventId)} onClick={() => onSelectPlan("targeted-site-stack", "B")}>B site</button></div>
+            <p>A correct read loads real CT routes toward this site. A wrong read leaves the opposite bombsite vulnerable.</p>
+          </div>
+        )}
+      </section>
+
+      <div className="manager-prep-workspace">
+        <section className="manager-scrim-booking" aria-label="Schedule a scrim">
+          <header><span><Radio size={20} /></span><div><small>Practice network</small><h2>Schedule a scrim</h2><p>The selected match plan is captured when the booking is made.</p></div></header>
+          <div className="manager-scrim-form">
+            <label><span>Opponent</span><select value={opponentId} onChange={(event) => setOpponentId(event.target.value)}>{availableOpponents.map((item) => <option value={item.id} key={item.id}>#{item.rank ?? "-"} {item.name}</option>)}</select></label>
+            <label><span>Map</span><select value={map} onChange={(event) => setMap(event.target.value as MapId)}>{mapPool.map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select></label>
+            <label><span>Practice date</span><select value={scheduledFor} onChange={(event) => setScheduledFor(event.target.value)}>{dateOptions.map((date) => <option value={date} key={date}>{managerFormatDate(date)}</option>)}</select></label>
+          </div>
+          <div className="manager-scrim-choice">
+            <span>Session load</span>
+            <div className="manager-scrim-intensity">{(Object.keys(managerScrimIntensityProfiles) as ManagerScrimIntensity[]).map((id) => { const profile = managerScrimIntensityProfiles[id]; return <button className={intensity === id ? "selected" : ""} onClick={() => setIntensity(id)} key={id}><strong>{profile.label}</strong><small>+{profile.masteryGain} mastery · +{profile.fatigueGain} fatigue</small></button>; })}</div>
+          </div>
+          <div className="manager-scrim-choice privacy">
+            <span>Server privacy</span>
+            <div className="segmented"><button className={privacy === "closed" ? "selected" : ""} onClick={() => setPrivacy("closed")}><ShieldCheck size={14} /> Closed</button><button className={privacy === "open" ? "selected" : ""} onClick={() => setPrivacy("open")}><Eye size={14} /> Open</button></div>
+          </div>
+          <div className={`manager-scrim-preview ${eligibility.leakRisk >= 35 ? "risk" : ""}`}>
+            <span><small>Plan rehearsed</small><b>{activePlan.shortName}{activePlan.id === "targeted-site-stack" ? ` / ${career.preparation.targetSite} site` : ""}</b></span>
+            <span><small>Exposure risk</small><b>{eligibility.leakRisk}%</b></span>
+            <span><small>Session gains</small><b>+{managerScrimIntensityProfiles[intensity].masteryGain + (privacy === "open" ? 3 : 0)} mastery · +{managerScrimIntensityProfiles[intensity].familiarityGain + (privacy === "open" ? 1 : 0)} fit</b></span>
+          </div>
+          <button className="primary manager-scrim-submit" disabled={!eligibility.eligible} onClick={() => onScheduleScrim(scrimInput)} title={eligibility.reasons[0] ?? "Book this scrim"}><Plus size={15} /> Book practice</button>
+          {!eligibility.eligible && <p className="manager-scrim-warning">{eligibility.reasons[0]}</p>}
+        </section>
+
+        <section className="manager-scrim-schedule" aria-label="Scrim schedule">
+          <header><div><small>Calendar commitments</small><h2>Practice schedule</h2></div><span>{upcoming.length} upcoming</span></header>
+          <div className="manager-scrim-list">
+            {upcoming.map((scrim, index) => {
+              const plan = managerPreparationPlans.find((item) => item.id === scrim.plan)!;
+              return <article key={scrim.id}><span className="manager-scrim-date"><b>{managerFormatDate(scrim.scheduledFor)}</b><small>{index === 0 ? "Next checkpoint" : "Scheduled"}</small></span><span><small>{scrim.map.toUpperCase()} · {managerScrimIntensityProfiles[scrim.intensity].label} · {scrim.privacy}</small><strong>{scrim.opponentName}</strong><em>{plan.shortName} · {scrim.leakRisk}% exposure</em></span><div>{index === 0 && <button className="primary compact" onClick={() => onAdvance(scrim.scheduledFor)}>Advance</button>}<button className="secondary compact" onClick={() => onCancelScrim(scrim.id)}>Cancel</button></div></article>;
+            })}
+            {!upcoming.length && <div className="manager-empty-state">No practice is booked. The squad will recover two fatigue points per free day.</div>}
+          </div>
+          {completed.length > 0 && <div className="manager-scrim-history"><h3>Recent sessions</h3>{completed.map((scrim) => <div className={scrim.leaked ? "leaked" : ""} key={scrim.id}><span>{scrim.leaked ? <Eye size={14} /> : <ShieldCheck size={14} />}</span><span><strong>{scrim.opponentName} · {scrim.map.toUpperCase()}</strong><small>{managerFormatDate(scrim.scheduledFor)} · +{scrim.masteryGain} {managerPreparationPlans.find((plan) => plan.id === scrim.plan)?.shortName} mastery</small></span><b>{scrim.leaked ? "Leaked" : "Secure"}</b></div>)}</div>}
+        </section>
+      </div>
+    </main>
+  );
+}
+
 function ManagerCalendarPage({
   career,
   roster,
@@ -12630,6 +14458,7 @@ function ManagerCalendarPage({
   onLaunch,
   onReturnEvent,
   onOpenCompletedEvent,
+  onOpenEvent,
 }: {
   career: ManagerCareerState;
   roster: Player[];
@@ -12640,6 +14469,7 @@ function ManagerCalendarPage({
   onLaunch: (eventId: string) => void;
   onReturnEvent: () => void;
   onOpenCompletedEvent: (eventId: string) => void;
+  onOpenEvent: (eventId: string) => void;
 }) {
   const registeredCount = career.registrations.filter((item) => ["confirmed", "active"].includes(item.status)).length;
   const eligibleCount = managerEvents.filter((event) => managerEventEligibility(career, event).eligible).length;
@@ -12700,11 +14530,12 @@ function ManagerCalendarPage({
                 ) : isComplete ? (
                   <>
                     <span className="manager-status completed"><CheckCircle2 size={14} /> {registration.placement ? managerPlacementLabel(registration.placement) : "Complete"}</span>
-                    <button className="secondary compact" onClick={() => onOpenCompletedEvent(event.id)}>Overview</button>
+                    <button className="secondary compact" onClick={() => onOpenCompletedEvent(event.id)}>Match archive</button>
                   </>
                 ) : (
                   <button className="primary compact" disabled={!check.eligible || roster.length < 5} onClick={() => onRegister(event.id)}>Register</button>
                 )}
+                <button className="secondary compact" onClick={() => onOpenEvent(event.id)}><Eye size={13} /> Overview</button>
               </div>
             </div>
           );
@@ -12714,7 +14545,103 @@ function ManagerCalendarPage({
   );
 }
 
-type ManagerHonorTab = "major" | "lan";
+function ManagerWorldEventOverviewPage({
+  event,
+  career,
+  rosters,
+  onBack,
+  onOpenTeam,
+}: {
+  event: ManagerEvent;
+  career: ManagerCareerState;
+  rosters: Roster[];
+  onBack: () => void;
+  onOpenTeam: (team: FieldTeam) => void;
+}) {
+  const schedule = managerEventSchedule(event, career.season);
+  const savedResult: ManagerWorldEventResult | undefined = [...career.worldVrs.events].reverse().find((item) => (
+    item.eventId === event.id && item.season === career.season
+  ));
+  const result = savedResult ? managerWorldEventSnapshot(career, savedResult) : undefined;
+  const registration = career.registrations.find((item) => item.eventId === event.id);
+  const qualifiedIds = managerQualifiedTeamIdsForEvent(career, event, career.season);
+  const qualifiedSet = new Set(qualifiedIds);
+  const visibleRosters = rosters.filter((roster) => roster.id !== career.organizationId);
+  const qualified = visibleRosters.filter((roster) => qualifiedSet.has(roster.id)).sort(managerInviteRosterOrder);
+  const openProjects = visibleRosters.filter((roster) => roster.id === "manager-lfo" && event.lfoEligible && !qualifiedSet.has(roster.id));
+  const eligible = visibleRosters.filter((roster) => {
+    return !qualifiedSet.has(roster.id)
+      && roster.id !== "manager-lfo"
+      && managerWorldTeamEligibleForEvent(event, roster);
+  }).sort(managerInviteRosterOrder);
+  const projectedField = [...qualified, ...openProjects, ...eligible].slice(0, Math.max(1, event.capacity - (registration && registration.status !== "withdrawn" ? 1 : 0)));
+  const qualifier = event.openQualifierEventId ? managerEventById(event.openQualifierEventId) : undefined;
+  const destination = event.qualifiesToEventId ? managerEventById(event.qualifiesToEventId) : undefined;
+  const prestige = managerEventPrestige(event);
+  const status = result ? "Completed" : career.date < schedule.startsOn ? "Upcoming" : career.date <= schedule.endsOn ? "In progress" : "Awaiting world result";
+  const lfoPlacement = result?.placements.find((placement) => placement.teamId === "manager-lfo");
+  const projectedLfo = projectedField.find((roster) => roster.id === "manager-lfo");
+  const placements = result?.placements ?? [];
+
+  return (
+    <main className="layout fullscreen-page manager-page manager-world-event-page">
+      <section className={`manager-world-event-hero prestige-${prestige.tier}`}>
+        <div className="manager-world-event-title">
+          <button className="icon-only" onClick={onBack} title="Back to tournament calendar"><ArrowLeft size={18} /></button>
+          <span className={`manager-tier-mark ${event.tier}`}><Trophy size={24} /></span>
+          <div><small>{event.classification} / {prestige.label} / {event.environment}</small><h1>{managerEventName(event, career.season)}</h1><p>{event.description}</p></div>
+        </div>
+        <div className="manager-world-event-status"><small>{status}</small><strong>{managerFormatDate(schedule.startsOn)} – {managerFormatDate(schedule.endsOn)}</strong><em>{event.location}</em></div>
+      </section>
+
+      <section className="manager-world-event-kpis" aria-label="Event information">
+        <div><Users size={18} /><span><small>Field</small><b>{event.capacity} teams</b></span></div>
+        <div><Coins size={18} /><span><small>Prize pool</small><b>{fmtMoney(event.prizePool)}</b></span></div>
+        <div><Gauge size={18} /><span><small>Entry</small><b>{event.entryType === "open" ? "Open bracket" : `VRS #${event.rankMin}–#${event.rankMax}`}</b></span></div>
+        <div><ShieldCheck size={18} /><span><small>Your club</small><b>{registration ? registration.status : "Not attending"}</b></span></div>
+      </section>
+
+      {(qualifier || destination) && (
+        <section className="manager-qualification-path">
+          <span><Swords size={20} /></span>
+          <div><small>Open circuit pathway</small><strong>{destination ? `${event.qualificationSlots ?? 0} place${event.qualificationSlots === 1 ? "" : "s"} feed ${destination.shortName}` : `${qualifier?.shortName} feeds this field`}</strong><p>{destination ? event.stakesLabel : `${qualifiedIds.length || qualifier?.qualificationSlots || 0} protected qualifier slot${(qualifiedIds.length || qualifier?.qualificationSlots || 0) === 1 ? "" : "s"}; the remaining places follow VRS seeding.`}</p></div>
+        </section>
+      )}
+
+      <div className="manager-world-event-grid">
+        <section className="manager-world-event-field">
+          <header><div><small>{result ? "Official result" : "Projected attendance"}</small><h2>{result ? "Final standings" : "Event field"}</h2></div><span>{result ? `${placements.length} placed` : `${projectedField.length + (registration ? 1 : 0)} projected`}</span></header>
+          <div className="manager-world-event-standings">
+            {result ? placements.map((placement, index) => {
+              const roster = rosters.find((item) => item.id === placement.teamId || item.name === placement.teamName);
+              return (
+                <button type="button" disabled={!roster} onClick={() => roster && onOpenTeam(toTournamentTeam(roster))} key={placement.teamId}>
+                  <span className="manager-world-event-seed">{index + 1}</span>
+                  <span className="manager-world-event-team">{roster ? <TeamLogo team={toTournamentTeam(roster)} small /> : <i>{placement.teamName.slice(0, 2).toUpperCase()}</i>}<b>{placement.teamName}</b>{placement.managed && <em>Your club</em>}</span>
+                  <span><b>{managerPlacementLabel(placement.placement)}</b><small>{placement.wins}-{placement.losses} / {fmtMoney(placement.prizeWon)}</small></span>
+                </button>
+              );
+            }) : projectedField.map((roster, index) => (
+              <button type="button" onClick={() => onOpenTeam(toTournamentTeam(roster))} key={roster.id}>
+                <span className="manager-world-event-seed">{index + 1}</span>
+                <span className="manager-world-event-team"><TeamLogo team={toTournamentTeam(roster)} small /><b>{roster.name}</b>{roster.id === "manager-lfo" && <em>Unsigned mix</em>}</span>
+                <span><b>{qualifiedSet.has(roster.id) ? "Qualified" : `VRS #${roster.rank ?? 64}`}</b><small>{qualifiedSet.has(roster.id) ? `via ${qualifier?.shortName ?? "open qualifier"}` : `${averageOvr(roster.players).toFixed(1)} avg OVR`}</small></span>
+              </button>
+            ))}
+          </div>
+        </section>
+
+        <aside className="manager-world-event-side">
+          <section><header><small>Tournament structure</small><h2>Format</h2></header><strong>{event.formatLabel}</strong>{event.formatStages.map((stage) => <div className="manager-world-format-stage" key={stage.label}><span>{stage.label}</span><b>{stage.teams} teams / {stage.series}</b><small>{stage.advances}</small></div>)}</section>
+          <section><header><small>Placement rewards</small><h2>Prize breakdown</h2></header>{(["champion", "runner-up", "top4", "top8", "swiss"] as PlacementTier[]).map((placement) => <div className="manager-world-prize" key={placement}><span>{managerPlacementLabel(placement)}</span><b>{fmtMoney(event.prizes[placement])}</b></div>)}</section>
+          {(lfoPlacement || projectedLfo) && <section className="manager-lfo-event-card"><header><small>Looking for organization</small><h2>LFO Generation {career.lfoTeam?.generation ?? 1}</h2></header><p>{lfoPlacement ? `The unsigned five finished ${managerPlacementLabel(lfoPlacement.placement)} with a ${lfoPlacement.wins}-${lfoPlacement.losses} event record. A top-32 VRS breakthrough can attract North, Sentinels, or GODSENT.` : "The current unsigned generation has entered the projected field with a real IGL, a dedicated AWPer, and three best-fit riflers."}</p>{career.lfoTeam && <div>{career.lfoTeam.players.map((player) => <span key={player.id}><b>{player.handle}</b><small>{player.role}</small></span>)}</div>}</section>}
+        </aside>
+      </div>
+    </main>
+  );
+}
+
+type ManagerHonorTab = "major" | "lan" | "hall_of_fame";
 
 function managerEventForHistory(entry: CareerHistoryEntry) {
   const eventId = entry.managerEventId ?? entry.archive?.eventId;
@@ -12761,10 +14688,16 @@ const managerTrophySlotHints = [
 
 function managerTrophyDisplayScore(entry: CareerHistoryEntry) {
   const placementScore = entry.tier === "champion" ? 400 : entry.tier === "runner-up" ? 260 : entry.tier === "top4" ? 150 : entry.tier === "top8" ? 70 : 20;
+  return placementScore + managerHistoryPrestige(entry).score * 4;
+}
+
+function managerHistoryPrestige(entry: CareerHistoryEntry) {
   const event = managerEventForHistory(entry);
-  const majorScore = event?.tier === "major" || entry.eventName?.toLowerCase().includes("major") ? 180 : 0;
-  const lanScore = event?.environment === "LAN" ? 35 : 0;
-  return placementScore + majorScore + lanScore;
+  if (event) return managerEventPrestige(event);
+  if (entry.eventName?.toLowerCase().includes("major")) {
+    return { tier: "major" as const, label: "Major prestige", score: 100 };
+  }
+  return { tier: "challenger" as const, label: "Archived event", score: 45 };
 }
 
 function ManagerTrophyCabinet({
@@ -12785,7 +14718,11 @@ function ManagerTrophyCabinet({
     .map((entry, index) => ({ entry, index, score: managerTrophyDisplayScore(entry) }))
     .sort((a, b) => b.score - a.score || (b.entry.season ?? 1) - (a.entry.season ?? 1) || b.index - a.index)
     .slice(0, slotCount);
+  const featured = compact ? undefined : artifacts[0];
+  const shelfArtifacts = featured ? artifacts.slice(1) : artifacts;
   const emptySlots = Math.max(0, slotCount - artifacts.length);
+  const titles = history.filter((entry) => entry.tier === "champion").length;
+  const podiums = history.filter((entry) => ["champion", "runner-up", "top4"].includes(entry.tier)).length;
 
   return (
     <section
@@ -12794,27 +14731,64 @@ function ManagerTrophyCabinet({
       aria-label={`${team.name} trophy room`}
     >
       <header className="manager-trophy-room-head">
-        <div><span>Organization legacy</span><h2>{compact ? "Trophy cabinet" : "The trophy room"}</h2><small>{history.length ? `${history.length} archived event${history.length === 1 ? "" : "s"}` : "The first display is waiting"}</small></div>
-        {onOpenHistory && <button className="text-action" onClick={onOpenHistory}>Enter room <ArrowRight size={14} /></button>}
+        <div><span>Organization legacy</span><h2>{compact ? "Trophy cabinet" : "The trophy room"}</h2><small>{history.length ? `${history.length} archived event${history.length === 1 ? "" : "s"} · ordered by prestige` : "The first display is waiting"}</small></div>
+        <div className="manager-trophy-room-actions">
+          {!compact && (
+            <span className="manager-trophy-room-record">
+              <b>{titles}</b> titles
+              <i />
+              <b>{podiums}</b> podiums
+            </span>
+          )}
+          {onOpenHistory && <button className="text-action" onClick={onOpenHistory}>Enter room <ArrowRight size={14} /></button>}
+        </div>
       </header>
+      {featured && (() => {
+        const event = managerEventForHistory(featured.entry);
+        const prestige = managerHistoryPrestige(featured.entry);
+        const completedOn = managerHistoryDate(featured.entry, event);
+        const tone = managerHonorTone(featured.entry);
+        const Icon = featured.entry.tier === "champion" ? Trophy : featured.entry.tier === "runner-up" || featured.entry.tier === "top4" ? Award : Shield;
+        return (
+          <button
+            type="button"
+            className={`manager-trophy-featured ${tone} prestige-${prestige.tier}`}
+            onClick={() => onOpenEvent(featured.entry)}
+            aria-label={`Open ${featured.entry.eventName ?? event?.name ?? `Event ${featured.entry.event}`} overview`}
+          >
+            <span className="manager-trophy-featured-copy">
+              <small>Cabinet centerpiece · {prestige.label} · Season {featured.entry.season ?? 1}</small>
+              <strong>{featured.entry.eventName ?? event?.name ?? `Event ${featured.entry.event}`}</strong>
+              <em>{managerHonorPlacement(featured.entry)} · {completedOn ? managerFormatDate(completedOn) : "Archived season"} · {fmtMoney(featured.entry.prize)}</em>
+              <span>Open tournament archive <ArrowRight size={14} /></span>
+            </span>
+            <span className="manager-trophy-featured-object" aria-hidden="true">
+              <i className="manager-trophy-halo" />
+              <span className="manager-trophy-object"><Icon size={86} strokeWidth={1.35} /><i /></span>
+              <span className="manager-trophy-plaque"><TeamLogo team={team} small /><b>{managerHonorPlacement(featured.entry)}</b></span>
+            </span>
+          </button>
+        );
+      })()}
       <div className="manager-trophy-case">
-        {artifacts.map(({ entry, index }) => {
+        {shelfArtifacts.map(({ entry, index }) => {
           const event = managerEventForHistory(entry);
+          const prestige = managerHistoryPrestige(entry);
           const completedOn = managerHistoryDate(entry, event);
           const tone = managerHonorTone(entry);
           const Icon = entry.tier === "champion" ? Trophy : entry.tier === "runner-up" || entry.tier === "top4" ? Award : Shield;
           return (
             <button
               type="button"
-              className={`manager-trophy-slot ${tone}`}
+              className={`manager-trophy-slot ${tone} prestige-${prestige.tier}`}
               key={entry.archive?.id ?? `${entry.event}-${index}`}
               onClick={() => onOpenEvent(entry)}
-              title={`Open ${entry.eventName ?? event?.name ?? `Event ${entry.event}`} overview`}
+              aria-label={`Open ${entry.eventName ?? event?.name ?? `Event ${entry.event}`} overview`}
             >
               <span className="manager-trophy-object" aria-hidden="true"><Icon size={compact ? 40 : 50} strokeWidth={1.55} /><i /></span>
               <span className="manager-trophy-plaque"><TeamLogo team={team} small /><b>{managerHonorPlacement(entry)}</b></span>
               <strong>{entry.eventName ?? event?.name ?? `Event ${entry.event}`}</strong>
-              <small>{completedOn ? managerFormatDate(completedOn) : `Season ${entry.season ?? 1}`}</small>
+              <small>{prestige.label} · {completedOn ? managerFormatDate(completedOn) : `Season ${entry.season ?? 1}`}</small>
             </button>
           );
         })}
@@ -12861,7 +14835,7 @@ function ManagerClubHonorsPage({
       <section className="manager-honors-hero">
         <div className="manager-honors-team">
           <TeamLogo team={team} />
-          <span><small>Organization record / {history.length} completed events</small><h1>{team.name} Club Honors</h1><p>Every placement earned under your management, with the tournament archive behind it.</p></span>
+          <span><small>Organization record / {history.length} completed events</small><h1>{team.name} Club Honors & Hall of Fame</h1><p>Every placement earned under your management, all-time record books, and historical trophies.</p></span>
         </div>
         <button className="secondary" onClick={onBack}><ArrowLeft size={16} /> Back to HQ</button>
       </section>
@@ -12879,26 +14853,62 @@ function ManagerClubHonorsPage({
       <nav className="manager-honors-tabs" role="tablist" aria-label="Organization achievements">
         <button type="button" role="tab" aria-selected={activeTab === "major"} className={activeTab === "major" ? "active" : ""} onClick={() => setActiveTab("major")}><Trophy size={16} /> Majors <span>{majorEntries.length}</span></button>
         <button type="button" role="tab" aria-selected={activeTab === "lan"} className={activeTab === "lan" ? "active" : ""} onClick={() => setActiveTab("lan")}><Database size={16} /> LAN events <span>{history.filter((entry) => managerEventForHistory(entry)?.environment === "LAN").length}</span></button>
+        <button type="button" role="tab" aria-selected={activeTab === "hall_of_fame"} className={activeTab === "hall_of_fame" ? "active" : ""} onClick={() => setActiveTab("hall_of_fame")}><Award size={16} /> Hall of Fame</button>
       </nav>
 
-      <section className="manager-honors-ledger">
-        <div className="manager-honors-heading">
-          <span>Placement</span><span>Organization</span><span>Tournament</span><span>Reward</span><span>Archive</span>
-        </div>
-        {rows.map(({ entry, index, event }) => {
-          const completedOn = managerHistoryDate(entry, event);
-          return (
-            <button type="button" className="manager-honor-row" key={entry.archive?.id ?? `${entry.event}-${index}`} onClick={() => onOpenEvent(entry)}>
-              <span className={`manager-placement-badge ${managerHonorTone(entry)}`}><Trophy size={14} /> {managerHonorPlacement(entry)}</span>
-              <span className="manager-honor-team"><TeamLogo team={team} small /><b>{team.name}</b></span>
-              <span className="manager-honor-event"><b>{entry.eventName ?? event?.name ?? `Event ${entry.event}`}</b><small>{event ? `${event.environment} / ${event.location}` : `Season ${entry.season ?? 1}`}{completedOn ? ` / ${managerFormatDate(completedOn)}` : ""}</small></span>
-              <span className="manager-honor-reward"><b>{fmtMoney(entry.prize)}</b><small>{signedInteger(entry.points ?? 0)} VRS / {entry.record.wins}-{entry.record.losses}</small></span>
-              <span className="manager-honor-open">Overview <ArrowRight size={15} /></span>
-            </button>
-          );
-        })}
-        {!rows.length && <div className="manager-empty-state">No {activeTab === "major" ? "Major" : "LAN"} placements have been recorded yet.</div>}
-      </section>
+      {activeTab === "hall_of_fame" ? (
+        <section className="manager-hof-section" style={{ display: "grid", gap: "20px", marginTop: "16px" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "16px" }}>
+            <div style={{ background: "#161c22", border: "1px solid #28333e", borderRadius: "10px", padding: "18px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "12px", color: "#f59e0b" }}>
+                <Trophy size={20} />
+                <strong style={{ fontSize: "16px" }}>All-Time Major Champions</strong>
+              </div>
+              <p style={{ color: "#94a3b8", fontSize: "13px", lineHeight: "1.5" }}>
+                {majorTitles > 0 ? (
+                  `${team.name} has hoisted ${majorTitles} Major Trophy title${majorTitles === 1 ? "" : "s"} in club history!`
+                ) : (
+                  `${team.name} is currently contending for their maiden Valve Major Championship.`
+                )}
+              </p>
+            </div>
+
+            <div style={{ background: "#161c22", border: "1px solid #28333e", borderRadius: "10px", padding: "18px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "12px", color: "#38bdf8" }}>
+                <Award size={20} />
+                <strong style={{ fontSize: "16px" }}>Hall of Fame Roster</strong>
+              </div>
+              <div style={{ display: "grid", gap: "8px" }}>
+                {career.contracts.slice(0, 5).map((contract) => (
+                  <div key={contract.id} style={{ display: "flex", justifyContent: "space-between", fontSize: "13px" }}>
+                    <span style={{ color: "#e2e8f0", fontWeight: "bold" }}>{contract.playerHandle}</span>
+                    <span style={{ color: "#64748b" }}>{contract.playerRole} · ${contract.monthlySalary.toLocaleString()}/mo</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </section>
+      ) : (
+        <section className="manager-honors-ledger">
+          <div className="manager-honors-heading">
+            <span>Placement</span><span>Organization</span><span>Tournament</span><span>Reward</span><span>Archive</span>
+          </div>
+          {rows.map(({ entry, index, event }) => {
+            const completedOn = managerHistoryDate(entry, event);
+            return (
+              <button type="button" className="manager-honor-row" key={entry.archive?.id ?? `${entry.event}-${index}`} onClick={() => onOpenEvent(entry)}>
+                <span className={`manager-placement-badge ${managerHonorTone(entry)}`}><Trophy size={14} /> {managerHonorPlacement(entry)}</span>
+                <span className="manager-honor-team"><TeamLogo team={team} small /><b>{team.name}</b></span>
+                <span className="manager-honor-event"><b>{entry.eventName ?? event?.name ?? `Event ${entry.event}`}</b><small>{event ? `${event.environment} / ${event.location}` : `Season ${entry.season ?? 1}`}{completedOn ? ` / ${managerFormatDate(completedOn)}` : ""}</small></span>
+                <span className="manager-honor-reward"><b>{fmtMoney(entry.prize)}</b><small>{signedInteger(entry.points ?? 0)} VRS / {entry.record.wins}-{entry.record.losses}</small></span>
+                <span className="manager-honor-open">Overview <ArrowRight size={15} /></span>
+              </button>
+            );
+          })}
+          {!rows.length && <div className="manager-empty-state">No {activeTab === "major" ? "Major" : "LAN"} placements have been recorded yet.</div>}
+        </section>
+      )}
     </main>
   );
 }
@@ -13480,6 +15490,9 @@ interface EventOverviewCircuit {
 interface EventOverviewManager {
   event: ManagerEvent;
   stage?: CircuitEvent;
+  activeEventStage?: ManagerEventStage;
+  activeStageTeams?: FieldTeam[];
+  otherStageTeams?: FieldTeam[];
   vrsStandings: ManagerVrsStanding[];
 }
 
@@ -13491,6 +15504,120 @@ interface EventPlacementRow {
   prize?: number;
   order: number;
   tone: "champion" | "podium" | "qualified" | "eliminated" | "live";
+}
+
+function CologneEventBracketOverview({
+  teams,
+  results,
+  activeStage,
+  activeStageTeams,
+  otherStageTeams,
+  onOpenTeam,
+  onOpenResult,
+}: {
+  teams: FieldTeam[];
+  results: SwissResult[];
+  activeStage?: ManagerEventStage;
+  activeStageTeams?: FieldTeam[];
+  otherStageTeams?: FieldTeam[];
+  onOpenTeam: (team: FieldTeam) => void;
+  onOpenResult: (id: string) => void;
+}) {
+  const stageOneResults = results.filter((result) => result.eventId === "stage-1");
+  const stageTwoResults = results.filter((result) => result.eventId === "stage-2");
+  const showStageOne = activeStage === "stage-1" || (!activeStage && stageOneResults.length > 0);
+  const stageOneTeams = activeStage === "stage-1" && activeStageTeams?.length
+    ? activeStageTeams
+    : teamsFromResults(stageOneResults);
+  const stageTwoGroups = cologneConnectedGroups(stageTwoResults);
+
+  if (activeStage === "stage-2" && activeStageTeams?.length) {
+    stageTwoGroups.splice(
+      0,
+      stageTwoGroups.length,
+      activeStageTeams,
+      ...(otherStageTeams?.length ? [otherStageTeams] : []),
+    );
+  }
+
+  const visibleStageTwoGroups = activeStage === "stage-1" ? [] : stageTwoGroups;
+  if (!showStageOne && !visibleStageTwoGroups.length) return null;
+
+  return (
+    <section className="cologne-overview-brackets">
+      <div className="cologne-overview-brackets-head">
+        <div><span>Tournament tree</span><h2>Cologne brackets</h2></div>
+        <small>Green advances / red drops or eliminates</small>
+      </div>
+      {showStageOne && stageOneTeams.length >= 16 && (
+        <ManagerDoubleEliminationBoard
+          user={stageOneTeams.find((team) => team.id === "user") ?? stageOneTeams[0]}
+          field={stageOneTeams.filter((team) => team.id !== (stageOneTeams.find((item) => item.id === "user")?.id ?? stageOneTeams[0].id))}
+          stage="stage-1"
+          label="Stage 1"
+          results={stageOneResults}
+          currentPairs={[]}
+          onOpenTeam={onOpenTeam}
+          onOpenResult={onOpenResult}
+        />
+      )}
+      {visibleStageTwoGroups.map((group, index) => {
+        const groupIds = new Set(group.map((team) => team.id));
+        const groupResults = stageTwoResults.filter((result) => (
+          groupIds.has(result.left.id) && groupIds.has(result.right.id)
+        ));
+        const user = group.find((team) => team.id === "user") ?? group[0];
+        return (
+          <ManagerDoubleEliminationBoard
+            user={user}
+            field={group.filter((team) => team.id !== user.id)}
+            stage="stage-2"
+            label={`Group ${String.fromCharCode(65 + index)}`}
+            results={groupResults}
+            currentPairs={[]}
+            onOpenTeam={onOpenTeam}
+            onOpenResult={onOpenResult}
+            key={`${index}-${group.map((team) => team.id).join("-")}`}
+          />
+        );
+      })}
+    </section>
+  );
+}
+
+function cologneConnectedGroups(results: SwissResult[]) {
+  const teams = new Map<string, FieldTeam>();
+  const parent = new Map<string, string>();
+  const find = (id: string): string => {
+    const current = parent.get(id) ?? id;
+    if (current === id) return id;
+    const root = find(current);
+    parent.set(id, root);
+    return root;
+  };
+  const union = (left: string, right: string) => {
+    const leftRoot = find(left);
+    const rightRoot = find(right);
+    if (leftRoot !== rightRoot) parent.set(rightRoot, leftRoot);
+  };
+  results.forEach((result) => {
+    teams.set(result.left.id, result.left);
+    teams.set(result.right.id, result.right);
+    if (!parent.has(result.left.id)) parent.set(result.left.id, result.left.id);
+    if (!parent.has(result.right.id)) parent.set(result.right.id, result.right.id);
+    union(result.left.id, result.right.id);
+  });
+  const groups = new Map<string, FieldTeam[]>();
+  teams.forEach((team) => {
+    const root = find(team.id);
+    groups.set(root, [...(groups.get(root) ?? []), team]);
+  });
+  return [...groups.values()]
+    .filter((group) => group.length >= 2)
+    .sort((left, right) => (
+      Math.min(...left.map((team) => team.rank ?? 999))
+      - Math.min(...right.map((team) => team.rank ?? 999))
+    ));
 }
 
 function EventOverviewPage({
@@ -13564,6 +15691,7 @@ function EventOverviewPage({
   const placementGroups = groupEventPlacements(placements);
   const placementByTeam = new Map(placements.map((entry) => [entry.team.id, entry]));
   const playerLeaders = useMemo(() => buildOverviewPlayerLeaders(results, championId), [championId, results]);
+  const showPlayerAwards = !manager || managerEventAwardsEligible(manager.event);
   const vrsRows = teams
     .map((team) => ({
       team,
@@ -13583,10 +15711,13 @@ function EventOverviewPage({
     const teamRecord = records[team.id] ?? { wins: 0, losses: 0 };
     return teamRecord.wins >= 3 || teamRecord.losses >= 3;
   });
+  const isCologneEvent = Boolean(manager?.event.doubleElimination);
   const eventStatus = outcome === "champion" || outcome === "complete"
     ? "Finished"
     : phase === "playoffs" && hasPlayoffs
       ? `${playoffRoundLabel(currentRound)} live`
+      : isCologneEvent
+        ? `${manager?.activeEventStage === "stage-1" ? "Stage 1" : "Group stage"} live`
       : swissResolved
         ? "Stage complete"
         : manager?.stage
@@ -13605,12 +15736,18 @@ function EventOverviewPage({
   const eventDescription = manager?.stage
     ? `${manager.stage.description} ${manager.event.description}`
     : manager?.event.description ?? circuit?.event.description ?? "Sixteen teams, one Swiss field, and a single-elimination championship bracket.";
-  const primaryFormatLabel = manager?.event.format === "round-robin" && !manager.stage
+  const primaryFormatLabel = isCologneEvent
+    ? "Double elimination"
+    : manager?.event.format === "round-robin" && !manager.stage
     ? "Round robin"
     : manager?.event.format === "single-elimination" && !manager.stage
       ? "Knockout"
       : "Swiss";
-  const primaryFormatDetail = manager?.event.format === "round-robin" && !manager.stage
+  const primaryFormatDetail = isCologneEvent
+    ? manager?.activeEventStage === "stage-1"
+      ? "Stage 1 / 16 teams / eight advance"
+      : "Main Stage / two groups of eight / top three per group"
+    : manager?.event.format === "round-robin" && !manager.stage
     ? `Every team plays once / BO${manager.event.groupBestOf}`
     : manager?.event.format === "single-elimination" && !manager.stage
       ? `Single elimination / opening round BO${manager.event.groupBestOf} / later rounds BO3`
@@ -13647,7 +15784,19 @@ function EventOverviewPage({
 
       {circuit && <EventStageRoute circuit={circuit} onSelect={onSelectCircuitEvent} />}
 
-      <div className="overview-feature-grid">
+      {isCologneEvent && (
+        <CologneEventBracketOverview
+          teams={teams}
+          results={results}
+          activeStage={manager?.activeEventStage}
+          activeStageTeams={manager?.activeStageTeams}
+          otherStageTeams={manager?.otherStageTeams}
+          onOpenTeam={onOpenTeam}
+          onOpenResult={onOpenSeries}
+        />
+      )}
+
+      <div className={`overview-feature-grid${showPlayerAwards ? "" : " no-awards"}`}>
         <section className="overview-section placement-overview">
           <div className="overview-section-head">
             <div>
@@ -13681,18 +15830,20 @@ function EventOverviewPage({
           </div>
         </section>
 
-        <OverviewMvpRace leaders={playerLeaders} onOpenPlayer={onOpenPlayer} />
+        {showPlayerAwards && <OverviewMvpRace leaders={playerLeaders} onOpenPlayer={onOpenPlayer} />}
       </div>
 
-      {hasPlayoffs && (
+      {hasPlayoffs && (!isCologneEvent || phase === "playoffs") && (
         <PlayoffBracket
           currentRound={currentRound}
           pairs={playoffPairs}
           results={results}
+          sixTeam={isCologneEvent}
           onOpenResult={onOpenSeries}
           quarterfinalBestOf={manager?.event.format === "single-elimination" && !manager.stage
             ? manager.event.groupBestOf
             : 3}
+          finalBestOf={manager?.event.format === "single-elimination" && !manager.stage ? 3 : 5}
         />
       )}
 
@@ -13890,15 +16041,7 @@ function OverviewMvpRace({
 }
 
 function buildOverviewPlayerLeaders(results: SwissResult[], championId?: string) {
-  const rows = buildPlayerDatabase(results).filter((row) => row.matches > 0);
-  if (!rows.length) return { mvp: undefined, evps: [] as PlayerDatabaseRow[] };
-  const maxMaps = Math.max(...rows.map((row) => row.matches));
-  const minMaps = Math.max(1, Math.ceil(maxMaps * 0.45));
-  const eligible = rows.filter((row) => row.matches >= minMaps);
-  const championRows = championId ? eligible.filter((row) => row.team.id === championId) : [];
-  const mvp = (championRows.length ? championRows : eligible)[0] ?? rows[0];
-  const evps = eligible.filter((row) => row.databaseKey !== mvp.databaseKey).slice(0, 4);
-  return { mvp, evps };
+  return buildEventAwardLeaders(results, championId);
 }
 
 function buildEventPlacements(
@@ -14418,9 +16561,132 @@ function ComparePage({ pool, initialAId, onBack }: { pool: CompareEntry[]; initi
   );
 }
 
+interface PlayerEventMedal {
+  id: string;
+  kind: "MVP" | "EVP";
+  eventName: string;
+  season?: number;
+  completedOn?: string;
+  rating: number;
+  maps: number;
+  team: FieldTeam;
+  prestige: ReturnType<typeof managerEventPrestige>;
+}
+
+function playerEventMedals(
+  player: Player,
+  history: CareerHistoryEntry[],
+  currentResults: SwissResult[],
+  managerCareer?: ManagerCareerState,
+): PlayerEventMedal[] {
+  const versionKey = playerVersionKey(player);
+  const medals: PlayerEventMedal[] = [];
+  const completedNames = new Set<string>();
+
+  const collect = (
+    id: string,
+    eventName: string,
+    results: SwissResult[],
+    championId: string | undefined,
+    prestige: PlayerEventMedal["prestige"],
+    season?: number,
+    completedOn?: string,
+  ) => {
+    if (!championId || !results.length) return;
+    const leaders = buildEventAwardLeaders(results, championId);
+    const candidates = [
+      ...(leaders.mvp ? [{ kind: "MVP" as const, row: leaders.mvp }] : []),
+      ...leaders.evps.map((row) => ({ kind: "EVP" as const, row })),
+    ];
+    const award = candidates.find(({ row }) => row.versionKey === versionKey);
+    if (!award) return;
+    medals.push({
+      id,
+      kind: award.kind,
+      eventName,
+      season,
+      completedOn,
+      rating: award.row.line.rating,
+      maps: award.row.matches,
+      team: award.row.team,
+      prestige,
+    });
+    completedNames.add(eventName);
+  };
+
+  history.forEach((entry) => {
+    const archive = entry.archive;
+    if (!archive) return;
+    const event = managerEventForHistory(entry);
+    if (event && !managerEventAwardsEligible(event)) return;
+    const prestige = event
+      ? managerEventPrestige(event)
+      : managerHistoryPrestige(entry);
+    collect(
+      archive.id,
+      archive.eventName,
+      archive.results,
+      archive.winner?.id ?? winnerFromFinal(archive.results)?.id,
+      prestige,
+      archive.season,
+      archive.completedOn,
+    );
+  });
+
+  const currentChampion = winnerFromFinal(currentResults);
+  const currentEventName = currentResults.find((result) => result.eventName)?.eventName ?? "Current event";
+  if (currentChampion && !completedNames.has(currentEventName)) {
+    const currentEventId = currentResults.find((result) => result.eventId)?.eventId;
+    const managerEvent = managerEvents.find((event) => event.id === currentEventId || event.name === currentEventName)
+      ?? managerEventById(managerCareer?.activeEventId);
+    const circuitEvent = currentEventId ? circuitEventById(currentEventId) : undefined;
+    const prestige = managerEvent
+      ? managerEventPrestige(managerEvent)
+      : circuitEvent
+        ? { tier: "major" as const, label: "Major circuit", score: 100 }
+        : { tier: "elite" as const, label: "International event", score: 72 };
+    if (!managerEvent || managerEventAwardsEligible(managerEvent)) {
+      collect(`current:${currentEventName}`, currentEventName, currentResults, currentChampion.id, prestige);
+    }
+  }
+
+  return medals.sort((left, right) => (
+    (left.kind === "MVP" ? 0 : 1) - (right.kind === "MVP" ? 0 : 1)
+    || right.prestige.score - left.prestige.score
+    || (right.completedOn ?? "").localeCompare(left.completedOn ?? "")
+  ));
+}
+
+function PlayerEventMedalsPanel({ medals }: { medals: PlayerEventMedal[] }) {
+  if (!medals.length) return null;
+  const mvpCount = medals.filter((medal) => medal.kind === "MVP").length;
+  return (
+    <section className="player-awards-panel" aria-label="MVP and EVP medals">
+      <div className="player-awards-head">
+        <div className="section-title"><Award size={18} /><span>Event medals</span></div>
+        <span>{mvpCount} MVP · {medals.length - mvpCount} EVP</span>
+      </div>
+      <div className="player-awards-grid">
+        {medals.map((medal) => (
+          <article className={`player-award-medal ${medal.kind.toLowerCase()} prestige-${medal.prestige.tier}`} key={medal.id}>
+            <span className="player-award-icon" aria-hidden="true">{medal.kind === "MVP" ? <Trophy size={29} /> : <Award size={29} />}</span>
+            <span className="player-award-copy">
+              <small>{medal.kind} · {medal.prestige.label}</small>
+              <strong>{medal.eventName}</strong>
+              <em><TeamLogo team={medal.team} small /> {medal.team.name} · {medal.maps} maps{medal.completedOn ? ` · ${managerFormatDate(medal.completedOn)}` : ""}</em>
+            </span>
+            <span className="player-award-rating"><small>Event rating</small><b className={ratingTone(medal.rating)}>{medal.rating.toFixed(2)}</b></span>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 function PlayerDetailPage({
   player,
   team,
+  careerHistory = [],
   results,
   onBack,
   onOpenSeries,
@@ -14430,6 +16696,7 @@ function PlayerDetailPage({
 }: {
   player: Player;
   team: FieldTeam;
+  careerHistory?: CareerHistoryEntry[];
   results: SwissResult[];
   onBack: () => void;
   onOpenSeries: (id: string) => void;
@@ -14446,6 +16713,7 @@ function PlayerDetailPage({
   const managerTrade = managerCareer ? [...managerCareer.market.tradeOffers].reverse().find((offer) => offer.incoming.id === player.id) : undefined;
   const roleCount = managerCareer?.contracts.filter((contract) => contract.status !== "expired" && contract.playerRole === player.role).length ?? 0;
   const managerRosterFit = managerContract ? "Current squad member" : roleCount === 0 ? `Fills the ${player.role} gap` : roleCount === 1 ? `Competes for the ${player.role} role` : `${player.role} role is crowded`;
+  const playoffNervesPenalty = getPlayoffNervesPenalty(player);
 
   // one row per MAP the player featured in (HLTV-style match history), in chronological order
   const maps = results
@@ -14490,6 +16758,10 @@ function PlayerDetailPage({
   const displayStageGroups = [...stageGroups].reverse();
   const photo = playerPhoto(player.handle);
   const career = useMemo(() => buildPlayerCareer(results, playerVersionKey(player)), [results, player]);
+  const eventMedals = useMemo(
+    () => playerEventMedals(player, careerHistory, results, managerCareer),
+    [careerHistory, managerCareer, player, results],
+  );
   const vault = useMemo(() => {
     const db = getMatchDb();
     const versionKey = playerVersionKey(player);
@@ -14521,6 +16793,17 @@ function PlayerDetailPage({
               </button>{" "}
               — {total} {total === 1 ? "map" : "maps"} across {stageGroups.length} {stageGroups.length === 1 ? "stage" : "stages"}
             </p>
+            <div className="player-trait-list">
+              {(player.traits ?? []).filter((trait) => trait !== "Playoff nerves").map((trait) => (
+                <span key={trait}>{trait}</span>
+              ))}
+              {player.playoffNerves && (
+                <span className={playoffNervesPenalty > 0 ? "negative" : "resolved"}>
+                  Playoff nerves · {Math.round(playoffNervesPenalty * 100)}% penalty
+                  {playoffNervesPenalty > 0 ? " · fading with experience" : " · resolved"}
+                </span>
+              )}
+            </div>
           </div>
         </div>
         <div className="fullscreen-actions">
@@ -14576,6 +16859,8 @@ function PlayerDetailPage({
               </div>
             </section>
           )}
+
+          <PlayerEventMedalsPanel medals={eventMedals} />
 
           {maps.length >= 2 && (
             <section className="form-panel">
@@ -15675,6 +17960,126 @@ function syncFieldTeamVrs(team: FieldTeam, rosterPool: Roster[]): FieldTeam {
   };
 }
 
+function syncManagerSnapshotTeam(
+  team: FieldTeam,
+  rosterPool: Roster[],
+  career?: ManagerCareerState,
+): FieldTeam {
+  if (career && team.id === "manager-lfo") {
+    const signedOrganization = managerLfoSnapshotOrganization(team.players, career.revivedOrganizations);
+    const signedRoster = signedOrganization
+      ? currentVrsRoster(signedOrganization.id, rosterPool)
+      : undefined;
+    if (signedRoster) return toTournamentTeam(signedRoster);
+  }
+  return syncFieldTeamVrs(team, rosterPool);
+}
+
+function remapSnapshotWinnerId(
+  winnerId: string,
+  originalLeft: FieldTeam,
+  originalRight: FieldTeam,
+  left: FieldTeam,
+  right: FieldTeam,
+) {
+  if (winnerId === originalLeft.id) return left.id;
+  if (winnerId === originalRight.id) return right.id;
+  return winnerId;
+}
+
+function syncManagerSnapshotPair(
+  pair: SwissPair,
+  rosterPool: Roster[],
+  career?: ManagerCareerState,
+): SwissPair {
+  return {
+    ...pair,
+    left: syncManagerSnapshotTeam(pair.left, rosterPool, career),
+    right: syncManagerSnapshotTeam(pair.right, rosterPool, career),
+  };
+}
+
+function syncManagerSnapshotResult(
+  result: SwissResult,
+  rosterPool: Roster[],
+  career?: ManagerCareerState,
+): SwissResult {
+  const left = syncManagerSnapshotTeam(result.left, rosterPool, career);
+  const right = syncManagerSnapshotTeam(result.right, rosterPool, career);
+  return {
+    ...result,
+    left,
+    right,
+    winnerId: remapSnapshotWinnerId(result.winnerId, result.left, result.right, left, right),
+    maps: result.maps.map((map) => ({
+      ...map,
+      winnerId: remapSnapshotWinnerId(map.winnerId, result.left, result.right, left, right),
+    })),
+  };
+}
+
+function syncManagerSnapshotSeries(
+  series: ActiveSeries,
+  rosterPool: Roster[],
+  career?: ManagerCareerState,
+): ActiveSeries {
+  const left = syncManagerSnapshotTeam(series.left, rosterPool, career);
+  const right = syncManagerSnapshotTeam(series.right, rosterPool, career);
+  return {
+    ...series,
+    left,
+    right,
+    mapResults: series.mapResults.map((map) => ({
+      ...map,
+      winnerId: remapSnapshotWinnerId(map.winnerId, series.left, series.right, left, right),
+    })),
+  };
+}
+
+function managerSnapshotIdRemap(
+  teams: FieldTeam[],
+  rosterPool: Roster[],
+  career?: ManagerCareerState,
+) {
+  const remap = new Map<string, string>();
+  teams.forEach((team) => {
+    const current = syncManagerSnapshotTeam(team, rosterPool, career);
+    if (current.id !== team.id) remap.set(team.id, current.id);
+  });
+  return remap;
+}
+
+function remapSnapshotRecords(
+  records: Record<string, SwissRecord>,
+  teams: FieldTeam[],
+  currentTeams: FieldTeam[],
+) {
+  const next = { ...records };
+  teams.forEach((team, index) => {
+    const currentId = currentTeams[index]?.id ?? team.id;
+    if (currentId === team.id) return;
+    if (next[team.id] && !next[currentId]) next[currentId] = next[team.id];
+    if (!currentTeams.some((current) => current.id === team.id)) delete next[team.id];
+  });
+  return next;
+}
+
+function syncManagerSnapshotArchive(
+  archive: ManagerEventArchive,
+  rosterPool: Roster[],
+  career?: ManagerCareerState,
+): ManagerEventArchive {
+  const teams = archive.teams.map((team) => syncManagerSnapshotTeam(team, rosterPool, career));
+  return {
+    ...archive,
+    teams,
+    records: remapSnapshotRecords(archive.records, archive.teams, teams),
+    winner: archive.winner ? syncManagerSnapshotTeam(archive.winner, rosterPool, career) : undefined,
+    results: archive.results.map((result) => syncManagerSnapshotResult(result, rosterPool, career)),
+    playoffPairs: archive.playoffPairs.map((pair) => syncManagerSnapshotPair(pair, rosterPool, career)),
+  };
+}
+
 function syncPairVrs(pair: SwissPair, rosterPool: Roster[]): SwissPair {
   return {
     ...pair,
@@ -15765,17 +18170,24 @@ function simulateManagerMajorEntryRoute(
   };
 }
 
-function buildManagerField(rosterPool: Roster[], event: ManagerEvent, controlledOrganizationId?: string) {
+function buildManagerField(
+  rosterPool: Roster[],
+  event: ManagerEvent,
+  controlledOrganizationId?: string,
+  qualifiedTeamIds: string[] = [],
+) {
   const available = rosterPool.filter((roster) => roster.id !== controlledOrganizationId);
-  const eligible = available.filter((roster) => {
-    const rank = roster.rank ?? 99;
-    return rank >= event.rankMin && rank <= event.rankMax;
-  });
-  const eligibleIds = new Set(eligible.map((roster) => roster.id));
-  const fallback = available.filter((roster) => !eligibleIds.has(roster.id));
+  const qualifiedIds = new Set(qualifiedTeamIds);
+  const qualified = available.filter((roster) => qualifiedIds.has(roster.id)).sort(managerInviteRosterOrder);
+  const openProjects = available.filter((roster) => roster.id === "manager-lfo" && event.lfoEligible && !qualifiedIds.has(roster.id));
+  const eligible = available.filter((roster) => (
+    !qualifiedIds.has(roster.id)
+    && roster.id !== "manager-lfo"
+    && managerWorldTeamEligibleForEvent(event, roster)
+  ));
   const ordered = event.classification === "S-Tier" || event.classification === "Major"
-    ? [...eligible].sort(managerInviteRosterOrder).concat([...fallback].sort(managerInviteRosterOrder))
-    : shuffle([...eligible, ...fallback]);
+    ? [...qualified, ...openProjects, ...eligible.sort(managerInviteRosterOrder)]
+    : [...qualified, ...openProjects, ...shuffle(eligible)];
   return ordered.slice(0, Math.max(1, event.capacity - 1)).map(toTournamentTeam);
 }
 
@@ -15790,49 +18202,67 @@ function buildManagerDoubleEliminationField(
   event: ManagerEvent,
   stage: ManagerEventStage,
   controlledOrganizationId: string | undefined,
-  managedRank: number,
+  managedTeam: FieldTeam,
   stageOneQualifiers: FieldTeam[] = [],
+  openQualifierIds: string[] = [],
 ) {
   const route = event.doubleElimination;
-  if (!route || stage === "playoffs") return buildManagerField(rosterPool, event, controlledOrganizationId);
+  if (!route || stage === "playoffs") return buildManagerField(rosterPool, event, controlledOrganizationId, openQualifierIds);
   const available = rosterPool
     .filter((roster) => roster.id !== controlledOrganizationId)
     .sort(managerInviteRosterOrder);
 
   if (stage === "stage-1") {
+    const protectedIds = new Set(openQualifierIds);
+    const protectedQualifiers = available.filter((roster) => protectedIds.has(roster.id));
     const eligible = available.filter((roster) => {
         const rank = roster.rank ?? 99;
-        return rank >= route.stageOneRankMin && rank <= route.stageOneRankMax;
+        return !protectedIds.has(roster.id) && rank >= route.stageOneRankMin && rank <= route.stageOneRankMax;
       });
-    const eligibleIds = new Set(eligible.map((roster) => roster.id));
-    return [...eligible, ...available.filter((roster) => !eligibleIds.has(roster.id))]
+    return [...protectedQualifiers, ...eligible]
       .slice(0, route.stageOneTeams - 1)
       .map(toTournamentTeam);
   }
 
-  const direct = available
-    .filter((roster) => (roster.rank ?? 99) <= route.directInviteRankMax)
-    .map(toTournamentTeam);
+  const availableTeams = available.map(toTournamentTeam);
+  const managedIsDirect = (managedTeam.rank ?? 99) <= route.directInviteRankMax;
+  const uniqueTeams = (teams: FieldTeam[]) => teams.filter(
+    (team, index) => teams.findIndex((candidate) => candidate.id === team.id) === index,
+  );
+  const direct = uniqueTeams([
+    ...(managedIsDirect ? [managedTeam] : []),
+    ...availableTeams.filter((team) => (team.rank ?? 99) <= route.directInviteRankMax),
+  ])
+    .sort((left, right) => (left.rank ?? 99) - (right.rank ?? 99))
+    .slice(0, route.directInviteRankMax);
   const qualifiedIds = new Set(stageOneQualifiers.map((team) => team.id));
-  const simulatedQualifiers = available
+  const simulatedQualifiers = availableTeams
     .filter((roster) => {
       const rank = roster.rank ?? 99;
       return rank >= route.stageOneRankMin && rank <= route.stageOneRankMax && !qualifiedIds.has(roster.id);
-    })
-    .map(toTournamentTeam);
-  const qualifiers = [...stageOneQualifiers, ...simulatedQualifiers]
-    .filter((team, index, teams) => teams.findIndex((candidate) => candidate.id === team.id) === index)
-    .slice(0, route.stageOneAdvances - (managedRank > route.directInviteRankMax ? 1 : 0));
-  const directSlots = managedRank <= route.directInviteRankMax ? 3 : 4;
-  const group = [
-    ...direct.slice(0, directSlots),
-    ...qualifiers.slice(0, route.stageTwoTeamsPerGroup - 1 - directSlots),
-  ];
-  const groupIds = new Set(group.map((team) => team.id));
-  const fallback = available
-    .filter((roster) => !groupIds.has(roster.id))
-    .map(toTournamentTeam);
-  return [...group, ...fallback].slice(0, route.stageTwoTeamsPerGroup - 1);
+    });
+  const qualifiers = uniqueTeams([
+    ...(!managedIsDirect ? [managedTeam] : []),
+    ...stageOneQualifiers,
+    ...simulatedQualifiers,
+  ]).slice(0, route.stageOneAdvances);
+
+  // Snake the four direct invites and four Stage 1 survivors into balanced groups
+  // instead of loading ranks 1-4 into the managed team's group.
+  const groupASeeds = new Set([0, 3, 4, 7]);
+  const splitSeeds = (teams: FieldTeam[]) => ({
+    a: teams.filter((_, index) => groupASeeds.has(index)),
+    b: teams.filter((_, index) => !groupASeeds.has(index)),
+  });
+  const directGroups = splitSeeds(direct);
+  const qualifierGroups = splitSeeds(qualifiers);
+  const groupA = [...directGroups.a, ...qualifierGroups.a];
+  const groupB = [...directGroups.b, ...qualifierGroups.b];
+  const managedGroup = groupA.some((team) => team.id === "user") ? groupA : groupB;
+  const opponents = managedGroup.filter((team) => team.id !== "user");
+  const occupiedIds = new Set(managedGroup.map((team) => team.id));
+  const fallback = availableTeams.filter((team) => !occupiedIds.has(team.id));
+  return uniqueTeams([...opponents, ...fallback]).slice(0, route.stageTwoTeamsPerGroup - 1);
 }
 
 function buildManagerDoubleEliminationOtherGroup(
@@ -15840,19 +18270,98 @@ function buildManagerDoubleEliminationOtherGroup(
   event: ManagerEvent,
   controlledOrganizationId: string | undefined,
   currentGroup: FieldTeam[],
+  managedTeam: FieldTeam,
+  stageOneQualifiers: FieldTeam[] = [],
 ) {
   const route = event.doubleElimination;
   if (!route) return [];
-  const excluded = new Set([controlledOrganizationId, ...currentGroup.map((team) => team.id)].filter(Boolean));
-  const available = rosterPool
-    .filter((roster) => !excluded.has(roster.id))
-    .sort(managerInviteRosterOrder);
-  const direct = available.filter((roster) => (roster.rank ?? 99) <= route.directInviteRankMax);
-  const stageOne = available.filter((roster) => {
-    const rank = roster.rank ?? 99;
-    return rank >= route.stageOneRankMin && rank <= route.stageOneRankMax;
+  const availableTeams = rosterPool
+    .filter((roster) => roster.id !== controlledOrganizationId)
+    .sort(managerInviteRosterOrder)
+    .map(toTournamentTeam);
+  const uniqueTeams = (teams: FieldTeam[]) => teams.filter(
+    (team, index) => teams.findIndex((candidate) => candidate.id === team.id) === index,
+  );
+  const managedIsDirect = (managedTeam.rank ?? 99) <= route.directInviteRankMax;
+  const direct = uniqueTeams([
+    ...(managedIsDirect ? [managedTeam] : []),
+    ...availableTeams.filter((team) => (team.rank ?? 99) <= route.directInviteRankMax),
+  ])
+    .sort((left, right) => (left.rank ?? 99) - (right.rank ?? 99))
+    .slice(0, route.directInviteRankMax);
+  const qualifiedIds = new Set(stageOneQualifiers.map((team) => team.id));
+  const simulatedQualifiers = availableTeams.filter((team) => {
+    const rank = team.rank ?? 99;
+    return rank >= route.stageOneRankMin
+      && rank <= route.stageOneRankMax
+      && !qualifiedIds.has(team.id);
   });
-  return [...direct.slice(0, 2), ...stageOne.slice(0, 1)].map(toTournamentTeam);
+  const qualifiers = uniqueTeams([
+    ...(!managedIsDirect ? [managedTeam] : []),
+    ...stageOneQualifiers,
+    ...simulatedQualifiers,
+  ]).slice(0, route.stageOneAdvances);
+  const currentIds = new Set([managedTeam.id, ...currentGroup.map((team) => team.id)]);
+  return uniqueTeams([...direct, ...qualifiers])
+    .filter((team) => !currentIds.has(team.id))
+    .slice(0, route.stageTwoTeamsPerGroup);
+}
+
+function cologneResultsForField(
+  field: FieldTeam[],
+  stage: CologneStage,
+  results: SwissResult[],
+) {
+  const validResults: SwissResult[] = [];
+  const maxRound = stage === "stage-1" ? 3 : 4;
+  for (let round = 1; round <= maxRound; round += 1) {
+    const expectedPairs = buildCologneRoundPairs(
+      field,
+      stage,
+      round,
+      validResults,
+      "__neutral__",
+    );
+    const resultByPairId = new Map(
+      results
+        .filter((result) => result.round === round)
+        .map((result) => [result.pairId, result]),
+    );
+    expectedPairs.forEach((pair) => {
+      const result = resultByPairId.get(pair.id);
+      if (result) validResults.push(result);
+    });
+  }
+  return validResults;
+}
+
+function simulateCologneStageTwoRound(
+  field: FieldTeam[],
+  round: number,
+  previousResults: SwissResult[],
+  settings: CustomSettings,
+  difficulty: Difficulty,
+) {
+  if (!field.length || round < 1 || round > 4) return [];
+  const completedPairIds = new Set(previousResults.map((result) => result.pairId));
+  const pairs = buildCologneRoundPairs(
+    field,
+    "stage-2",
+    round,
+    previousResults,
+    "__neutral__",
+  ).filter((pair) => !completedPairIds.has(pair.id));
+  if (!pairs.length) return [];
+  const records = applyResultsToSwissRecords(initialSwissRecords(field), previousResults);
+  return pairs.map((pair) => simulateSwissSeries(
+    pair,
+    round,
+    settings,
+    difficulty,
+    records,
+    3,
+    "Stage 2 group double elimination",
+  ));
 }
 
 function buildRoundRobinRoundPairs(user: FieldTeam, field: FieldTeam[], round: number): SwissPair[] {
@@ -15894,20 +18403,6 @@ function buildRoundRobinPlayoffPairs(standings: FieldTeam[], user: FieldTeam): S
     }));
 }
 
-function buildCologneQuarterfinalPairs(groupA: FieldTeam[], groupB: FieldTeam[], user: FieldTeam): SwissPair[] {
-  return [
-    [groupA[1], groupB[2]],
-    [groupB[1], groupA[2]],
-  ]
-    .filter((pair): pair is [FieldTeam, FieldTeam] => Boolean(pair[0] && pair[1]))
-    .map(([left, right], index) => ({
-      id: `cologne-quarterfinal-${index}-${left.id}-${right.id}`,
-      left,
-      right,
-      active: left.id === user.id || right.id === user.id,
-    }));
-}
-
 function buildCologneSemifinalPairs(byeTeams: FieldTeam[], quarterfinalWinners: FieldTeam[], user: FieldTeam): SwissPair[] {
   return [
     [byeTeams[0], quarterfinalWinners[1]],
@@ -15931,7 +18426,7 @@ function tagManagerDoubleEliminationResults(
   const stageLabel = stage === "stage-1" ? "Stage 1" : stage === "stage-2" ? "Stage 2" : "Playoffs";
   return results.map((result) => ({
     ...result,
-    id: `${event.id}:${stage}:${result.id}`,
+    id: result.id.startsWith(`${event.id}:${stage}:`) ? result.id : `${event.id}:${stage}:${result.id}`,
     eventId,
     eventName: `${event.name} ${stageLabel}`,
   }));
@@ -15947,6 +18442,250 @@ function tagCircuitResults(results: SwissResult[], event: CircuitEvent) {
       eventName: event.name,
     };
   });
+}
+
+function mergeTournamentResults(...groups: SwissResult[][]) {
+  const merged = new Map<string, SwissResult>();
+  groups.flat().forEach((result) => {
+    const eventKey = result.eventId ?? result.eventName ?? "event";
+    merged.set(`${eventKey}:${result.stage}:${result.pairId}`, result);
+  });
+  return [...merged.values()];
+}
+
+function uniqueFieldTeams(teams: FieldTeam[]) {
+  return teams.filter(
+    (team, index) => teams.findIndex((candidate) => candidate.id === team.id) === index,
+  );
+}
+
+function buildManagerCologneStageTwoGroups(
+  rosterPool: Roster[],
+  event: ManagerEvent,
+  controlledOrganizationId: string | undefined,
+  managedTeam: FieldTeam,
+  stageOneQualifiers: FieldTeam[],
+) {
+  const route = event.doubleElimination;
+  if (!route) return { groupA: [] as FieldTeam[], groupB: [] as FieldTeam[] };
+  const available = rosterPool
+    .filter((roster) => roster.id !== controlledOrganizationId)
+    .sort(managerInviteRosterOrder)
+    .map(toTournamentTeam);
+  const managedIsDirect = (managedTeam.rank ?? 99) <= route.directInviteRankMax;
+  const direct = uniqueFieldTeams([
+    ...(managedIsDirect ? [managedTeam] : []),
+    ...available.filter((team) => (team.rank ?? 99) <= route.directInviteRankMax),
+  ])
+    .sort((left, right) => (left.rank ?? 99) - (right.rank ?? 99))
+    .slice(0, route.directInviteRankMax);
+  const qualifierIds = new Set(stageOneQualifiers.map((team) => team.id));
+  const qualifierFallbacks = available.filter((team) => {
+    const rank = team.rank ?? 99;
+    return rank >= route.stageOneRankMin
+      && rank <= route.stageOneRankMax
+      && !qualifierIds.has(team.id);
+  });
+  const qualifiers = uniqueFieldTeams([
+    ...stageOneQualifiers,
+    ...qualifierFallbacks,
+  ]).slice(0, route.stageOneAdvances);
+  const groupASeeds = new Set([0, 3, 4, 7]);
+  const splitSeeds = (teams: FieldTeam[]) => ({
+    a: teams.filter((_, index) => groupASeeds.has(index)),
+    b: teams.filter((_, index) => !groupASeeds.has(index)),
+  });
+  const directGroups = splitSeeds(direct);
+  const qualifierGroups = splitSeeds(qualifiers);
+  return {
+    groupA: [...directGroups.a, ...qualifierGroups.a],
+    groupB: [...directGroups.b, ...qualifierGroups.b],
+  };
+}
+
+function simulateNeutralCologneStage(
+  field: FieldTeam[],
+  stage: CologneStage,
+  existingResults: SwissResult[],
+  settings: CustomSettings,
+  difficulty: Difficulty,
+  bestOf: number,
+) {
+  let results = cologneResultsForField(field, stage, existingResults);
+  let records = applyResultsToSwissRecords(initialSwissRecords(field), results);
+  const maxRound = stage === "stage-1" ? 3 : 4;
+  for (let round = 1; round <= maxRound; round += 1) {
+    if (cologneStageStatus(field, stage, results, "__neutral__").resolved) break;
+    const completedPairIds = new Set(results.map((result) => result.pairId));
+    const pairs = buildCologneRoundPairs(field, stage, round, results, "__neutral__")
+      .filter((pair) => !completedPairIds.has(pair.id));
+    if (!pairs.length) continue;
+    const roundResults = pairs.map((pair) => simulateSwissSeries(
+      pair,
+      round,
+      settings,
+      difficulty,
+      records,
+      bestOf,
+      `${stage === "stage-1" ? "Stage 1" : "Stage 2 group"} double elimination`,
+    ));
+    results = [...results, ...roundResults];
+    records = applyResultsToSwissRecords(records, roundResults);
+  }
+  return results;
+}
+
+function simulateManagerCologneRemainder({
+  event,
+  activeStage,
+  currentField,
+  currentResults,
+  archivedResults,
+  rosterPool,
+  controlledOrganizationId,
+  user,
+  settings,
+  difficulty,
+}: {
+  event: ManagerEvent;
+  activeStage: ManagerEventStage;
+  currentField: FieldTeam[];
+  currentResults: SwissResult[];
+  archivedResults: SwissResult[];
+  rosterPool: Roster[];
+  controlledOrganizationId?: string;
+  user: FieldTeam;
+  settings: CustomSettings;
+  difficulty: Difficulty;
+}) {
+  const route = event.doubleElimination;
+  if (!route || activeStage === "playoffs") {
+    return { results: mergeTournamentResults(archivedResults, currentResults), winner: undefined };
+  }
+
+  let stageOneResults = archivedResults.filter((result) => result.eventId === "stage-1");
+  let stageOneQualifiers: FieldTeam[] = [];
+  let groupA: FieldTeam[];
+  let groupB: FieldTeam[];
+  let groupAExisting: SwissResult[] = [];
+  let groupBExisting: SwissResult[] = [];
+
+  if (activeStage === "stage-1") {
+    const stageOneField = [user, ...currentField];
+    stageOneResults = simulateNeutralCologneStage(
+      stageOneField,
+      "stage-1",
+      currentResults,
+      settings,
+      difficulty,
+      event.groupBestOf,
+    );
+    stageOneQualifiers = cologneStageStatus(
+      stageOneField,
+      "stage-1",
+      stageOneResults,
+      "__neutral__",
+    ).advanced;
+    const groups = buildManagerCologneStageTwoGroups(
+      rosterPool,
+      event,
+      controlledOrganizationId,
+      user,
+      stageOneQualifiers,
+    );
+    groupA = groups.groupA;
+    groupB = groups.groupB;
+  } else {
+    const archivedStageOneTeams = teamsFromResults(stageOneResults);
+    if (archivedStageOneTeams.length) {
+      stageOneQualifiers = cologneStageStatus(
+        archivedStageOneTeams,
+        "stage-1",
+        stageOneResults,
+        "__neutral__",
+      ).advanced;
+    }
+    const groups = buildManagerCologneStageTwoGroups(
+      rosterPool,
+      event,
+      controlledOrganizationId,
+      user,
+      stageOneQualifiers,
+    );
+    const managedGroup = [user, ...currentField];
+    const generatedOtherGroup = groups.groupA.some((team) => team.id === "user")
+      ? groups.groupB
+      : groups.groupA;
+    const managedIds = new Set(managedGroup.map((team) => team.id));
+    groupA = managedGroup;
+    groupB = generatedOtherGroup.filter((team) => !managedIds.has(team.id));
+    const groupBIds = new Set(groupB.map((team) => team.id));
+    groupAExisting = currentResults;
+    groupBExisting = archivedResults.filter((result) => (
+      result.eventId === "stage-2"
+      && groupBIds.has(result.left.id)
+      && groupBIds.has(result.right.id)
+    ));
+  }
+
+  const groupAResults = simulateNeutralCologneStage(
+    groupA,
+    "stage-2",
+    groupAExisting,
+    settings,
+    difficulty,
+    event.groupBestOf,
+  );
+  const groupBResults = simulateNeutralCologneStage(
+    groupB,
+    "stage-2",
+    groupBExisting,
+    settings,
+    difficulty,
+    event.groupBestOf,
+  );
+  const groupAStatus = cologneStageStatus(groupA, "stage-2", groupAResults, "__neutral__");
+  const groupBStatus = cologneStageStatus(groupB, "stage-2", groupBResults, "__neutral__");
+  const playoffSeeds = buildColognePlayoffSeeds(groupAStatus, groupBStatus);
+  if (!playoffSeeds) {
+    return {
+      results: mergeTournamentResults(
+        tagManagerDoubleEliminationResults(stageOneResults, event, "stage-1"),
+        tagManagerDoubleEliminationResults(groupAResults, event, "stage-2"),
+        tagManagerDoubleEliminationResults(groupBResults, event, "stage-2"),
+      ),
+      winner: undefined,
+    };
+  }
+
+  const quarterfinalPairs = playoffSeeds.quarterfinals.map(([left, right], index) => ({
+    id: `cologne-quarterfinal-${index}-${left.id}-${right.id}`,
+    left,
+    right,
+  }));
+  const quarterfinalResults = quarterfinalPairs.map((pair) =>
+    simulatePlayoffSeries(pair, "quarterfinal", settings, difficulty, 3));
+  const quarterfinalWinners = quarterfinalResults.map((result) =>
+    result.winnerId === result.left.id ? result.left : result.right);
+  const semifinalPairs = buildCologneSemifinalPairs(playoffSeeds.byes, quarterfinalWinners, user);
+  const semifinalResults = semifinalPairs.map((pair) =>
+    simulatePlayoffSeries(pair, "semifinal", settings, difficulty, 3));
+  const finalists = semifinalResults.map((result) =>
+    result.winnerId === result.left.id ? result.left : result.right);
+  const finalPairs = buildNeutralNextPlayoffPairs("final", finalists);
+  const finalResults = finalPairs.map((pair) =>
+    simulatePlayoffSeries(pair, "final", settings, difficulty, 5));
+  const playoffResults = [...quarterfinalResults, ...semifinalResults, ...finalResults];
+  return {
+    results: mergeTournamentResults(
+      archivedResults.filter((result) => result.eventId !== "stage-1" && result.eventId !== "stage-2"),
+      tagManagerDoubleEliminationResults(stageOneResults, event, "stage-1"),
+      tagManagerDoubleEliminationResults(groupAResults, event, "stage-2"),
+      tagManagerDoubleEliminationResults(groupBResults, event, "stage-2"),
+      tagManagerDoubleEliminationResults(playoffResults, event, "playoffs"),
+    ),
+    winner: winnerFromFinal(playoffResults),
+  };
 }
 
 function teamsFromResults(results: SwissResult[]) {
@@ -15978,6 +18717,224 @@ function userSeriesRecord(results: SwissResult[]): SwissRecord {
     else record.losses += 1;
     return record;
   }, { wins: 0, losses: 0 });
+}
+
+function managerWorldSeriesFromResults(
+  results: SwissResult[],
+  career: Pick<ManagerCareerState, "organizationId" | "organizationName">,
+): ManagerWorldPlayedSeries[] {
+  const normalizeTeam = (team: FieldTeam) => team.id === "user"
+    ? { id: career.organizationId, name: career.organizationName, points: team.vrsPoints }
+    : { id: team.id, name: team.name, points: team.vrsPoints ?? managerRosterVrsPoints(team) };
+  return [...new Map(results.map((result) => {
+    const left = normalizeTeam(result.left);
+    const right = normalizeTeam(result.right);
+    const winnerId = result.winnerId === result.left.id ? left.id : right.id;
+    const id = `${result.eventId ?? "event"}:${result.id}`;
+    return [id, {
+      id,
+      stageId: result.eventId,
+      phase: result.stage,
+      left,
+      right,
+      winnerId,
+      leftScore: result.leftScore,
+      rightScore: result.rightScore,
+    } satisfies ManagerWorldPlayedSeries];
+  })).values()];
+}
+
+function managerWorldArchiveHash(value: string) {
+  let hash = 2166136261;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+}
+
+function managerWorldMapStats(
+  team: FieldTeam,
+  won: boolean,
+  rounds: number,
+  key: string,
+): MatchState["yourStats"] {
+  return Object.fromEntries(team.players.map((player, index) => {
+    const hash = managerWorldArchiveHash(`${key}:${player.id}`);
+    const form = (hash % 7) - 3;
+    const kills = Math.max(5, Math.round(rounds * 0.62 + (player.ovr - 70) * 0.11 + (won ? 2 : -1) + form));
+    const deaths = Math.max(5, Math.round(rounds * 0.57 + (won ? -1 : 2) + ((hash >>> 4) % 4)));
+    const assists = Math.max(1, Math.round(rounds * 0.17 + ((hash >>> 7) % 4)));
+    const line = {
+      ...emptyLine(),
+      kills,
+      deaths,
+      assists,
+      damage: Math.round(kills * (74 + ((hash >>> 10) % 13)) + assists * 18),
+      kastRounds: Math.min(rounds, Math.round(rounds * (won ? 0.75 : 0.66) + ((hash >>> 13) % 3))),
+      rounds,
+      firstKills: Math.max(0, Math.round(kills * 0.18) + (index === 0 ? 1 : 0)),
+      firstDeaths: Math.max(0, Math.round(deaths * 0.13)),
+      multiKills: Math.max(0, Math.round(kills * 0.16)),
+      clutchWins: hash % 11 === 0 ? 1 : 0,
+    };
+    recalculateHltvStyleRating(line);
+    return [player.id, line];
+  }));
+}
+
+function managerWorldSideStats(
+  stats: MatchState["yourStats"],
+): Record<"CT" | "T", MatchState["yourStats"]> {
+  const split = (line: MatchState["yourStats"][string], first: boolean) => {
+    const part = { ...emptyLine() };
+    const ratio = first ? 0.52 : 0.48;
+    part.kills = first ? Math.round(line.kills * ratio) : line.kills - Math.round(line.kills * 0.52);
+    part.deaths = first ? Math.round(line.deaths * ratio) : line.deaths - Math.round(line.deaths * 0.52);
+    part.assists = first ? Math.round(line.assists * ratio) : line.assists - Math.round(line.assists * 0.52);
+    part.damage = first ? Math.round(line.damage * ratio) : line.damage - Math.round(line.damage * 0.52);
+    part.kastRounds = first ? Math.round(line.kastRounds * ratio) : line.kastRounds - Math.round(line.kastRounds * 0.52);
+    part.rounds = first ? Math.round(line.rounds * ratio) : line.rounds - Math.round(line.rounds * 0.52);
+    part.firstKills = first ? Math.round(line.firstKills * ratio) : line.firstKills - Math.round(line.firstKills * 0.52);
+    part.firstDeaths = first ? Math.round(line.firstDeaths * ratio) : line.firstDeaths - Math.round(line.firstDeaths * 0.52);
+    part.multiKills = first ? Math.round(line.multiKills * ratio) : line.multiKills - Math.round(line.multiKills * 0.52);
+    part.clutchWins = first ? line.clutchWins : 0;
+    recalculateHltvStyleRating(part);
+    return part;
+  };
+  return {
+    CT: Object.fromEntries(Object.entries(stats).map(([id, line]) => [id, split(line, true)])),
+    T: Object.fromEntries(Object.entries(stats).map(([id, line]) => [id, split(line, false)])),
+  };
+}
+
+function managerWorldSwissResults(
+  event: ManagerEvent,
+  result: ManagerWorldEventResult,
+  rosters: FieldTeam[],
+): SwissResult[] {
+  const rosterById = new Map(rosters.map((roster) => [roster.id, roster]));
+  const rosterByName = new Map(rosters.map((roster) => [roster.name.trim().toLowerCase(), roster]));
+  const findTeam = (team: ManagerWorldPlayedSeries["left"]) => (
+    rosterById.get(team.id) ?? rosterByName.get(team.name.trim().toLowerCase())
+  );
+  return (result.series ?? []).flatMap((played, seriesIndex) => {
+    const left = findTeam(played.left);
+    const right = findTeam(played.right);
+    if (!left || !right) return [];
+    const leftWon = played.winnerId === played.left.id;
+    const bestOf = event.format === "single-elimination" && played.phase !== "quarterfinal" ? 3 : event.groupBestOf;
+    const winsNeeded = bestOf === 1 ? 1 : 2;
+    const loserMaps = managerWorldArchiveHash(`${result.id}:${played.id}:loser-maps`) % winsNeeded;
+    const leftScore = played.leftScore ?? (leftWon ? winsNeeded : loserMaps);
+    const rightScore = played.rightScore ?? (leftWon ? loserMaps : winsNeeded);
+    const winnerId = leftWon ? left.id : right.id;
+    const loserId = leftWon ? right.id : left.id;
+    const mapWinners = [
+      ...Array.from({ length: Math.min(leftScore, rightScore) }, () => loserId),
+      ...Array.from({ length: Math.max(leftScore, rightScore) }, () => winnerId),
+    ];
+    const mapOffset = managerWorldArchiveHash(`${result.id}:${played.id}:maps`) % mapPool.length;
+    const maps = mapWinners.map((mapWinnerId, mapIndex): SeriesMapResult => {
+      const map = mapPool[(mapOffset + mapIndex) % mapPool.length].id;
+      const mapLeftWon = mapWinnerId === left.id;
+      const loserScore = 6 + (managerWorldArchiveHash(`${played.id}:${map}:score`) % 6);
+      const leftMapScore = mapLeftWon ? 13 : loserScore;
+      const rightMapScore = mapLeftWon ? loserScore : 13;
+      const rounds = leftMapScore + rightMapScore;
+      const leftStats = managerWorldMapStats(left, mapLeftWon, rounds, `${played.id}:${map}:left`);
+      const rightStats = managerWorldMapStats(right, !mapLeftWon, rounds, `${played.id}:${map}:right`);
+      return {
+        map,
+        leftScore: leftMapScore,
+        rightScore: rightMapScore,
+        winnerId: mapWinnerId,
+        leftStats,
+        rightStats,
+        leftSideStats: managerWorldSideStats(leftStats),
+        rightSideStats: managerWorldSideStats(rightStats),
+      };
+    });
+    const stage = played.phase;
+    const round = stage === "quarterfinal" ? 6 : stage === "semifinal" ? 7 : stage === "final" ? 8 : seriesIndex + 1;
+    const label = stage === "quarterfinal"
+      ? "Quarterfinal"
+      : stage === "semifinal"
+        ? "Semifinal"
+        : stage === "final"
+          ? "Grand final"
+          : event.format === "round-robin" ? `League match ${seriesIndex + 1}` : `Stage match ${seriesIndex + 1}`;
+    return [{
+      id: played.id,
+      pairId: played.id,
+      round,
+      stage,
+      label,
+      bestOf,
+      left,
+      right,
+      leftScore,
+      rightScore,
+      winnerId,
+      maps,
+      leftStats: aggregateSeriesStats(left, maps, "left"),
+      rightStats: aggregateSeriesStats(right, maps, "right"),
+      played: false,
+      eventId: event.id as CircuitEventId,
+      eventName: result.eventName,
+    }];
+  });
+}
+
+function managerWorldResultArchive(
+  event: ManagerEvent,
+  result: ManagerWorldEventResult,
+  rosters: FieldTeam[],
+): ManagerEventArchive {
+  const results = managerWorldSwissResults(event, result, rosters);
+  const resultTeams = teamsFromResults(results);
+  const placementOrder = new Map(result.placements.map((placement, index) => [placement.teamId, index]));
+  const teams = resultTeams.sort((left, right) => (
+    (placementOrder.get(left.id) ?? 999) - (placementOrder.get(right.id) ?? 999)
+  ));
+  const final = [...results].reverse().find((series) => series.stage === "final");
+  const winner = final
+    ? final.winnerId === final.left.id ? final.left : final.right
+    : teams.find((team) => team.id === result.placements[0]?.teamId);
+  return {
+    id: `manager-world:${result.id}`,
+    eventId: event.id,
+    eventName: result.eventName,
+    season: result.season,
+    completedOn: result.completedOn,
+    phase: results.some((series) => series.stage !== "swiss") ? "playoffs" : "swiss",
+    playoffRound: latestPlayoffRound(results),
+    outcome: "complete",
+    winner,
+    teams,
+    records: Object.fromEntries(result.placements.map((placement) => [placement.teamId, {
+      wins: placement.wins,
+      losses: placement.losses,
+    }])),
+    results,
+    playoffPairs: [],
+  };
+}
+
+function reconcileManagerHistoryVrs(career: ManagerCareerState, history: CareerHistoryEntry[]) {
+  return history.reduce((current, entry) => {
+    const archive = entry.archive;
+    const eventId = entry.managerEventId ?? archive?.eventId;
+    if (!archive || !eventId || !archive.results.length) return current;
+    return integrateManagerWorldSeries(
+      current,
+      eventId,
+      managerWorldSeriesFromResults(archive.results, current),
+      archive.completedOn,
+      archive.season,
+      entry.tier,
+    );
+  }, career);
 }
 
 function managerVrsEvidenceFromResults(
@@ -16615,6 +19572,179 @@ function simulateSwissSeries(
 
 function simulatePlayoffSeries(pair: SwissPair, round: PlayoffRound, settings: CustomSettings, difficulty: Difficulty, bestOfOverride?: number) {
   return simulateSeries(pair, playoffRoundNumber(round), round, playoffRoundLabel(round), bestOfOverride ?? playoffBestOf(round), settings, difficulty);
+}
+
+function buildRandomizedAutoVeto(
+  you: FieldTeam,
+  opponent: FieldTeam,
+  bestOf: number,
+  settings: CustomSettings,
+) {
+  const remaining = mapPool.map((map) => map.id);
+  const selected: MapId[] = [];
+  const picked: VetoState["picked"] = {};
+  const pickedMapsPerTeam = Math.floor(Math.min(bestOf, remaining.length) / 2);
+
+  const takeMap = (score: (map: MapId) => number) => {
+    const map = weightedMapChoice(remaining, score);
+    remaining.splice(remaining.indexOf(map), 1);
+    return map;
+  };
+
+  for (let index = 0; index < pickedMapsPerTeam; index += 1) {
+    const yourPick = takeMap((map) => mapEdge(you, opponent, map, settings));
+    selected.push(yourPick);
+    picked[yourPick] = "you";
+
+    const opponentPick = takeMap((map) => -mapEdge(you, opponent, map, settings));
+    selected.push(opponentPick);
+    picked[opponentPick] = "opponent";
+  }
+
+  let decider: MapId | undefined;
+  if (selected.length < Math.min(bestOf, mapPool.length)) {
+    decider = takeMap((map) => -Math.abs(mapEdge(you, opponent, map, settings)) * 0.35);
+    selected.push(decider);
+    picked[decider] = "decider";
+  }
+
+  const banned = remaining.reduce(
+    (result, map, index) => {
+      result[map] = index % 2 === 0 ? "you" : "opponent";
+      return result;
+    },
+    {} as VetoState["banned"],
+  );
+  const log = selected.map((map) => {
+    const owner = picked[map];
+    if (owner === "you") return `${you.name} auto-picked ${mapName(map)}`;
+    if (owner === "opponent") return `${opponent.name} auto-picked ${mapName(map)}`;
+    return `${mapName(map)} was left as the decider`;
+  });
+
+  return {
+    maps: selected,
+    veto: {
+      bestOf,
+      available: [],
+      banned,
+      picked,
+      selected,
+      log: [...log, "Auto Coach completed the randomized veto"],
+      decider,
+      ready: true,
+      prompt: "Auto-veto complete",
+    } satisfies VetoState,
+  };
+}
+
+function weightedMapChoice(maps: MapId[], score: (map: MapId) => number) {
+  const weighted = maps.map((map) => ({
+    map,
+    weight: 0.55 + Math.exp(clampNumber(score(map), -10, 10) / 4),
+  }));
+  const total = weighted.reduce((sum, item) => sum + item.weight, 0);
+  let roll = Math.random() * total;
+
+  for (const item of weighted) {
+    roll -= item.weight;
+    if (roll <= 0) return item.map;
+  }
+  return weighted[weighted.length - 1].map;
+}
+
+function simulateAutoCoachedSeries(
+  pair: SwissPair,
+  round: number,
+  stage: SeriesStage,
+  label: string,
+  bestOf: number,
+  settings: CustomSettings,
+  difficulty: Difficulty,
+  laneKey?: string,
+  preparation?: MatchPreparationContext,
+): AutoCoachedSeries {
+  const autoVeto = buildRandomizedAutoVeto(pair.left, pair.right, bestOf, settings);
+  const activeSeries: ActiveSeries = {
+    id: `${stage}-${pair.id}-${Date.now()}`,
+    pairId: pair.id,
+    round,
+    stage,
+    laneKey,
+    label,
+    bestOf,
+    maps: autoVeto.maps,
+    currentMapIndex: 0,
+    left: pair.left,
+    right: pair.right,
+    mapResults: [],
+  };
+  const matches: MatchState[] = [];
+  let coachCalls = 0;
+
+  for (const map of autoVeto.maps) {
+    let state = initMatch(map, pair.left, pair.right, { stage, preparation });
+    let tactic: Tactic = "standard";
+    let timeouts = 2;
+    let timeoutPlan: TimeoutPlan = { boost: 0, rounds: 0 };
+    let guard = 0;
+
+    while (!state.ended && guard < AUTO_SIM_ROUND_LIMIT) {
+      const yourMoney = state.yourMoney ? Object.values(state.yourMoney).reduce((sum, value) => sum + value, 0) : 0;
+      const opponentMoney = state.opponentMoney ? Object.values(state.opponentMoney).reduce((sum, value) => sum + value, 0) : 0;
+      const roundRead = buildRoundRead(state, pair.left, pair.right, settings, yourMoney, opponentMoney);
+      const timeoutRead = buildCoachDeskRead(state, pair.left, pair.right, timeouts, timeoutPlan);
+      const decision = decideAutoCoach({
+        currentTactic: tactic,
+        recommendedTactic: roundRead.tactic,
+        recommendationLabel: roundRead.label,
+        recommendationReason: roundRead.reason,
+        timeoutRecommended: timeoutRead.canCallTimeout,
+        timeoutPriority: timeoutRead.tone,
+        timeoutLabel: timeoutRead.label,
+        timeoutReason: timeoutRead.reason,
+        availableTimeouts: timeouts,
+        timeoutRounds: timeoutPlan.rounds,
+        roundsPlayed: state.roundWinners.length,
+      });
+      tactic = decision.tactic;
+      if (decision.callTimeout) {
+        timeoutPlan = tacticalTimeoutPlan(state, pair.left, pair.right);
+        timeouts -= 1;
+        coachCalls += 1;
+      }
+
+      const timeoutBoost = timeoutPlan.rounds > 0 ? timeoutPlan.boost : 0;
+      state = playRound(state, pair.left, pair.right, settings, difficulty, tactic, timeoutBoost, true);
+      if (timeoutPlan.rounds > 0) {
+        timeoutPlan = {
+          boost: timeoutPlan.rounds > 1 ? timeoutPlan.boost : 0,
+          rounds: Math.max(0, timeoutPlan.rounds - 1),
+        };
+      }
+      guard += 1;
+    }
+
+    state = resolveAutoSimMatch(state, pair.left, pair.right, settings);
+    matches.push(state);
+    activeSeries.mapResults.push(mapResultFromState(map, state, pair.left, pair.right));
+    if (seriesIsDone(activeSeries)) break;
+    activeSeries.currentMapIndex += 1;
+  }
+
+  const finalMatch = matches[matches.length - 1];
+  const completedBeforeFinal = activeSeries.mapResults.slice(0, -1);
+  return {
+    series: {
+      ...activeSeries,
+      mapResults: completedBeforeFinal,
+      currentMapIndex: completedBeforeFinal.length,
+    },
+    finalMatch,
+    matches,
+    veto: autoVeto.veto,
+    coachCalls,
+  };
 }
 
 function simulateSeries(

@@ -5,6 +5,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { mapPool } from "../src/gameData";
 
 import {
   buildNavGrid,
@@ -16,7 +17,7 @@ import {
   hasPixelNav,
   mapGeometries,
 } from "../src/mapGeometry";
-import type { Circle, MapGeometry, Vec } from "../src/mapGeometry";
+import type { Circle, MapGeometry, NavGrid, Vec } from "../src/mapGeometry";
 
 function rect(x1: number, y1: number, x2: number, y2: number): Vec[] {
   return [
@@ -93,6 +94,26 @@ test("hasLineOfSight: corridor clear, smoke and void both cut vision", () => {
   assert.ok(!hasLineOfSight(grid, { x: 30, y: 19 }, { x: 30, y: 81 }), "a sightline across the void is blocked");
 });
 
+test("diagonal line checks include both cells touched at a grid corner", () => {
+  const blockedVision = new Uint8Array(9);
+  blockedVision[1] = 1;
+  blockedVision[3] = 1;
+  const grid: NavGrid = {
+    res: 3,
+    blockedMove: blockedVision.slice(),
+    blockedVision,
+  };
+  assert.equal(
+    hasLineOfSight(
+      grid,
+      { x: 100 / 6, y: 100 / 6 },
+      { x: (100 * 5) / 6, y: (100 * 5) / 6 },
+    ),
+    false,
+    "a diagonal must not shave between two blocked shoulder cells",
+  );
+});
+
 test("baked mirage grid: derived from the radar — spawns/sites on the floor, T->A stays walkable", () => {
   assert.ok(hasPixelNav("mirage"), "mirage uses a pixel-accurate baked grid");
   const grid = getNavGrid("mirage");
@@ -114,6 +135,14 @@ test("baked mirage grid: derived from the radar — spawns/sites on the floor, T
   }
 });
 
-test("getNavGrid: null for maps without a baked grid or geometry", () => {
-  assert.equal(getNavGrid("nuke"), null);
+test("every competitive map exposes a source-derived movement grid", () => {
+  for (const { id } of mapPool) {
+    const grid = getNavGrid(id);
+    assert.ok(grid, `${id} should expose a movement grid`);
+    assert.ok(grid!.blockedMove.some((value) => value === 0), `${id} should contain walkable cells`);
+    if (id !== "mirage") {
+      assert.equal(grid!.res, 112, `${id} should use the dense voxel movement surface`);
+      assert.ok(grid!.elevation, `${id} should retain Source 2 floor elevations`);
+    }
+  }
 });

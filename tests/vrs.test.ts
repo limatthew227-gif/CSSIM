@@ -78,6 +78,27 @@ test("defeating a stronger opponent is worth more than defeating a weak one", ()
   assert.ok(strong.points > weak.points);
 });
 
+test("a 1-6 tournament record cannot increase VRS", () => {
+  const profile = createVrsProfile("2026-07-20", 24);
+  const losingEvent: VrsEventEvidence = {
+    ...event(1_750),
+    id: "one-and-six",
+    prizeWon: 50_000,
+    matches: Array.from({ length: 7 }, (_, index) => ({
+      id: `one-and-six-${index}`,
+      opponentId: `top-opponent-${index}`,
+      opponentName: `Top opponent ${index}`,
+      opponentPoints: 1_750,
+      won: index === 0,
+    })),
+  };
+  const before = calculateVrs(profile, "2026-07-20");
+  const after = calculateVrs(appendVrsEvent(profile, losingEvent), "2026-07-20");
+  assert.ok(after.points < before.points);
+  assert.ok(after.headToHead < 0);
+  assert.equal(after.activeMatches, 7);
+});
+
 test("expired event evidence leaves the active ranking window", () => {
   const profile = appendVrsEvent(createVrsProfile("2026-07-20", 32), event(1_600));
   const expired = calculateVrs(profile, "2027-01-16");

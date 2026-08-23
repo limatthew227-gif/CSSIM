@@ -105,9 +105,11 @@ without a baked grid keep the original position-agnostic kill logic untouched.
   Palace, Ramp, Top Mid, Short, Apps, Market). Players route on the real floor.
 - ✅ Tools: `scripts/derive-navgrid.ts` (pixel extraction + mask overlay), `scripts/preview-map.ts`
   (`npm run preview:map`, for hand-authored polygon maps).
-- ⏳ Bake the other 6 maps (inferno, dust2, nuke, ancient, anubis, train) — run `derive-navgrid.ts`
-  per map and add their `MapGeometry` labels/spawns + `MAP_LAYOUTS` coords. Until then they fall back
-  to legacy node routing + PNG automatically.
+- ✅ **3D voxel observer:** all seven maps have source-derived walkable floors and elevations from
+  Awpy nav data (`scripts/generate-voxel-map-data.ts` → `src/voxelMapData.ts`), with Nuke's lower
+  level preserved. See `docs/voxel-maps.md`.
+- ⏳ Extend full tactical routing/LOS to the other 6 maps. Their voxel terrain is accurate now, but
+  their round decisions still use the legacy node routes until their tactical graphs are built.
 - ⏳ Fine-tune mirage callout label positions if any read slightly off.
 - ⏳ (Future) in-match smokes/mollies.
 

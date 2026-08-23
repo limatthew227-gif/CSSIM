@@ -49,6 +49,14 @@ export interface FieldTeam {
 
 export type MatchStageContext = "swiss" | "quarterfinal" | "semifinal" | "final";
 
+export interface MatchPreparationContext {
+  plan: "anti-awp" | "punish-aggression" | "heavy-utility" | "targeted-site-stack";
+  targetSite: "A" | "B";
+  mastery: number;
+  fatigue: number;
+  leaked: boolean;
+}
+
 export interface MatchContext {
   map: MapId;
   stage?: MatchStageContext;
@@ -56,6 +64,7 @@ export interface MatchContext {
   coldPlayers?: string[];
   yourForm?: number; // per-MATCH team form (strength delta) — drives day-to-day upsets
   opponentForm?: number;
+  preparation?: MatchPreparationContext;
 }
 
 // Per-match "form" (a team's day): a strength delta in OVR units, rolled once per map. Independent
@@ -140,6 +149,12 @@ export interface FeedLine {
   ctScore?: number;
   reason?: string;
   isHeadshot?: boolean;
+  isWallbang?: boolean;
+  isCollateral?: boolean;
+  isNinjaDefuse?: boolean;
+  isAce?: boolean;
+  clutchVs?: number; // e.g. 1v3, 1v4
+  highlight?: "ace" | "clutch" | "collateral" | "wallbang" | "ninja_defuse";
 }
 
 export interface MatchState {
@@ -1387,6 +1402,43 @@ function isFreshHalfBuy(nextRound: number) {
   return nextRound === 13 || (nextRound >= 25 && (nextRound - 25) % 3 === 0);
 }
 
+export function preparationRoundModifier(
+  preparation: MatchPreparationContext | undefined,
+  side: MatchSide,
+  opponent: FieldTeam,
+  opponentWeapons: Record<string, string>,
+  yourUtilityCount: number,
+  round: number,
+  map: MapId,
+) {
+  if (!preparation) return 0;
+  const masteryFactor = 0.3 + clamp(preparation.mastery, 0, 100) / 100 * 0.7;
+  const informationFactor = preparation.leaked ? 0.52 : 1;
+  const planFactor = masteryFactor * informationFactor;
+  const fatiguePenalty = -Math.min(0.045, clamp(preparation.fatigue, 0, 100) * 0.00055);
+  let planBonus = 0;
+
+  if (preparation.plan === "anti-awp") {
+    const opponentHasAwp = Object.values(opponentWeapons).some((weapon) => weapon.toUpperCase().includes("AWP"))
+      || opponent.players.some((player) => player.role === "AWP");
+    planBonus = opponentHasAwp ? 0.035 : 0.007;
+  } else if (preparation.plan === "punish-aggression") {
+    const aggressiveShare = opponent.players.filter((player) => player.style === "Aggressive").length
+      / Math.max(1, opponent.players.length);
+    planBonus = 0.012 + aggressiveShare * 0.027;
+  } else if (preparation.plan === "heavy-utility") {
+    planBonus = yourUtilityCount >= 4 ? 0.03 : yourUtilityCount >= 2 ? 0.014 : -0.007;
+  } else if (side === "CT") {
+    const siteSeed = preparation.targetSite === "A" ? 17 : 43;
+    const mapSeed = map.split("").reduce((sum, char) => sum + char.charCodeAt(0), 0);
+    const readThreshold = 43 + clamp(preparation.mastery, 0, 100) * 0.38;
+    const correctRead = (round * 37 + mapSeed * 11 + siteSeed) % 100 < readThreshold;
+    planBonus = correctRead ? 0.043 : -0.032;
+  }
+
+  return clamp(planBonus * planFactor + fatiguePenalty, -0.065, 0.055);
+}
+
 export function playRound(
   state: MatchState,
   you: FieldTeam,
@@ -1872,7 +1924,18 @@ export function playRound(
   // Symmetric so the CT side's edge is zero-sum — it no longer favours whoever STARTS CT over a match
   // (both teams play equal CT/T halves). Was 0.015/-0.005, which handed the CT-starting team ~5% extra.
   const sideMod = state.side === "CT" ? 0.01 : -0.01;
-  const tacticMod = roundStyleCallMod(you.players, parsedTactic.style, state.side) + buyIntentMod(parsedTactic.buy, currentEconomy);
+  const preparationMod = preparationRoundModifier(
+    state.context.preparation,
+    state.side,
+    opponent,
+    opponentWeapons,
+    Object.values(yourUtility).reduce((sum, amount) => sum + amount, 0),
+    state.round,
+    state.map,
+  );
+  const tacticMod = roundStyleCallMod(you.players, parsedTactic.style, state.side)
+    + buyIntentMod(parsedTactic.buy, currentEconomy)
+    + preparationMod;
   const luck = (Math.random() - 0.5) * (settings.luck + difficulty.luck) * 0.34;
 
   // Utility edge: how much each team's util skill is expressed this round, gated by how
@@ -2251,7 +2314,7 @@ export function generateDynamicRound(
   };
 
   const feed: FeedLine[] = [];
-  
+
   // Start reason
   let startReason: string | undefined = undefined;
   if (round === 1) {
@@ -2270,6 +2333,16 @@ export function generateDynamicRound(
     const parts: string[] = [];
     if (peakingNames.length > 0) parts.push(`🔥 Superstar form active: ${peakingNames.join(", ")} in the zone!`);
     if (coldNames.length > 0) parts.push(`❄️ Cold form active: ${coldNames.join(", ")} struggling to find impact.`);
+    if (context.preparation) {
+      const prepLabel = context.preparation.plan === "anti-awp"
+        ? "Anti-AWP"
+        : context.preparation.plan === "punish-aggression"
+          ? "Punish Aggression"
+          : context.preparation.plan === "heavy-utility"
+            ? "Heavy Utility"
+            : `${context.preparation.targetSite}-site Stack`;
+      parts.push(`📋 ${prepLabel} prepared at ${context.preparation.mastery}% mastery${context.preparation.leaked ? " — opponent has the read" : ""}.`);
+    }
     if (parts.length > 0) startReason = parts.join("  ");
   }
 
@@ -2286,7 +2359,7 @@ export function generateDynamicRound(
   // surfaces flashes/smokes/mollies in the feed (and flags flash-assisted kills). ---
   const utilLeft: Record<"you" | "opponent", number> = { you: yourUtilCount, opponent: opponentUtilCount };
   let utilEventsThisRound = 0;
-  const MAX_UTIL_EVENTS = 6;
+  const MAX_UTIL_EVENTS = context.preparation?.plan === "heavy-utility" ? 8 : 6;
 
   const tTeamKey = side === "T" ? "you" : "opponent";
   const ctTeamKey = side === "CT" ? "you" : "opponent";
@@ -2351,6 +2424,7 @@ export function generateDynamicRound(
       tactics,
       utilityCounts,
       economies,
+      preparation: context.preparation,
     });
 
     const idMap = new Map<string, Player>([
@@ -2507,8 +2581,28 @@ export function generateDynamicRound(
     utilLeft[teamSide] -= 1;
     utilEventsThisRound += 1;
     const thrower = pickUtilThrower(squad);
-    const at = usePositions ? posOf(thrower, 115 - timeRemaining) : undefined;
-    feed.push({ round, killer: thrower.handle, killerId: thrower.id, victim: "", victimId: "", weapon: type, team: teamSide, first: false, type, killerPos: at });
+    const elapsed = 115 - timeRemaining;
+    const at = usePositions ? posOf(thrower, elapsed) : undefined;
+    const targets = usePositions ? alive[otherSide(teamSide)].map((player) => posOf(player, elapsed)) : [];
+    const targetPos = targets.length
+      ? {
+          x: targets.reduce((sum, point) => sum + point.x, 0) / targets.length,
+          y: targets.reduce((sum, point) => sum + point.y, 0) / targets.length,
+        }
+      : at;
+    feed.push({
+      round,
+      killer: thrower.handle,
+      killerId: thrower.id,
+      victim: "",
+      victimId: "",
+      weapon: type,
+      team: teamSide,
+      first: false,
+      type,
+      killerPos: at ?? targetPos,
+      targetPos,
+    });
     return true;
   }
 
@@ -2550,7 +2644,7 @@ export function generateDynamicRound(
 
     // 1. Shorter time steps to allow more sequential fights/events
     let timeStep = Math.floor(Math.random() * 5) + 2; // 2-6 seconds pre-plant
-    
+
     if (tPlantedBomb) {
       timeStep = Math.floor(Math.random() * 4) + 2; // 2-5 seconds post-plant
       bombTimer -= timeStep;
@@ -2612,6 +2706,14 @@ export function generateDynamicRound(
        }
     }
 
+    // Clutch tracking
+    let clutchCandidate: { player: Player; team: "you" | "opponent"; vs: number } | undefined;
+    if (alive.you.length === 1 && alive.opponent.length >= 1) {
+      clutchCandidate = { player: alive.you[0], team: "you", vs: alive.opponent.length };
+    } else if (alive.opponent.length === 1 && alive.you.length >= 1) {
+      clutchCandidate = { player: alive.opponent[0], team: "opponent", vs: alive.you.length };
+    }
+
     // Saving logic
     if (!isLastRoundOfHalf && !isMatchPoint) {
       // Check if disadvantaged side should save
@@ -2619,20 +2721,21 @@ export function generateDynamicRound(
         const sideAlive = alive[sideKey].length;
         const oppAlive = alive[otherSide(sideKey)].length;
         if (sideAlive === 0 || oppAlive === 0) return false;
-        
+
         if (sideAlive >= oppAlive && !tPlantedBomb) return false;
         if (tPlantedBomb && sideKey === ctTeamKey && sideAlive >= oppAlive) return false;
-        
-        if (sideAlive <= oppAlive - 2 || (tPlantedBomb && sideKey === ctTeamKey && sideAlive < oppAlive)) {
+
+        // Smart weapon saving: high weapon value + heavy disadvantage = save
+        if (sideAlive <= oppAlive - 2 || (tPlantedBomb && sideKey === ctTeamKey && (sideAlive === 1 && oppAlive >= 2 || sideAlive < oppAlive))) {
            let equipVal = 0;
            const sideWeapons = sideKey === "you" ? yourWeapons : opponentWeapons;
            alive[sideKey].forEach(p => { equipVal += getWeaponCost(sideWeapons[p.id] ?? ""); });
            const avgEquip = equipVal / sideAlive;
-           
+
            if (avgEquip >= 2500) {
-             return Math.random() < 0.85; // highly likely to save
+             return Math.random() < 0.88; // highly likely to save expensive rifles / AWPs
            }
-           return Math.random() < 0.35;
+           return Math.random() < 0.40;
         }
         return false;
       };
@@ -2681,21 +2784,19 @@ export function generateDynamicRound(
        finalReason = "Bomb defused";
        roundEnded = true;
        const defuser = alive[ctTeamKey][Math.floor(Math.random() * counts.ct)];
-       feed.push({ round, killer: defuser.handle, killerId: defuser.id, victim: "Bomb", victimId: "", weapon: "defuse_kit", team: ctTeamKey, first: false, type: "defuse", ctAlive: counts.ct, tAlive: counts.t });
+       const isNinjaDefuse = alive[tTeamKey].length > 0;
+       feed.push({
+         round, killer: defuser.handle, killerId: defuser.id, victim: "Bomb", victimId: "", weapon: "defuse_kit",
+         team: ctTeamKey, first: false, type: "defuse", ctAlive: counts.ct, tAlive: counts.t,
+         isNinjaDefuse, highlight: isNinjaDefuse ? "ninja_defuse" : undefined,
+       });
        break;
     }
 
     if (eventType === "kill") {
        let youGetKillProb = getP();
        const playerAdvantage = alive.you.length - alive.opponent.length;
-       // Individual skill of the best player still alive on each side sways the duel, so a star can
-       // carry a weak team (and isn't "shut down" just because his teammates are low-rated). The
-       // carry's edge persists while they live and vanishes when they die. getP() stays the
-       // team-strength baseline; this adds the star factor a team average alone misses.
-       // Carry factor: how much the best player still alive OUTSHINES their own team average — large
-       // for a star stuck with weak mates, ~0 for a uniformly strong side (getP already covers that),
-       // so it lifts the shut-down star without inflating already-good teams. Persists while the star
-       // lives (carry + clutch) and disappears when they die.
+
        const topYou = alive.you.reduce((m, pl) => Math.max(m, pl.ovr), 0);
        const topOpp = alive.opponent.reduce((m, pl) => Math.max(m, pl.ovr), 0);
        const avgYou = you.players.reduce((s, pl) => s + pl.ovr, 0) / you.players.length;
@@ -2720,8 +2821,6 @@ export function generateDynamicRound(
        let engage: { from: string; to: string } | undefined;
 
        if (usePositions) {
-         // Only players in contact on the graph (same/adjacent callout) can trade. Among those pairs
-         // the winner is still OVR/role-weighted via killWeightFn / deathWeightFn.
          const elapsed = 115 - timeRemaining;
          const losPairs: Array<[Player, Player]> = [];
          for (const k of alive[killerSide]) {
@@ -2734,8 +2833,6 @@ export function generateDynamicRound(
          if (losPairs.length === 0) {
            noLosStreak += 1;
            const cleanup = alive[killerSide].length <= 1 || alive[victimSide].length <= 1;
-           // No sightline yet: let players keep approaching and try again next tick. The cap + low-time
-           // + cleanup conditions guarantee the round still resolves (a push/rotation engagement).
            if (noLosStreak < 6 && timeRemaining > 15 && !cleanup) continue;
            killer = pickWeightedBy(alive[killerSide], p => killWeightFn(p, context, killerOppRank, killerEquipped[p.id]));
            victim = pickWeightedBy(alive[victimSide], p => deathWeightFn(p, context, victimOppRank, victimEquipped[p.id]));
@@ -2760,8 +2857,9 @@ export function generateDynamicRound(
 
        if (isFirstKill) {
           isFirstKill = false;
-          // Scaled opener shift: 0.35
-          const delta = 0.35;
+          // Scaled opener shift: 0.35 + entry fragger space boost
+          const entryBonus = killer.role === "Entry" ? 0.08 : 0;
+          const delta = 0.35 + entryBonus;
           logit += killerSide === "you" ? delta : -delta;
        } else {
           if (timeRemaining > lastKillTime - 12 && killerSide !== lastKillerSide) {
@@ -2784,34 +2882,56 @@ export function generateDynamicRound(
        lastKillTime = timeRemaining;
        lastKillerSide = killerSide;
 
-       // A flash from the killer's side that immediately precedes the kill = flash assist.
-       const flashAssist = Math.random() < 0.28 ? throwUtil(killerSide, "flash") : false;
+        // Flash assist (flashbang preceding kill, ~6-7% of kills when util available, deals 0 bullet damage)
+        const teamHasUtil = (killerSide === "you" ? yourUtilCount : opponentUtilCount) > 0;
+        const supportTeammate = alive[killerSide].find(p => p.role === "Support" && p.id !== killer.id);
+        const flashAssist = teamHasUtil && ((supportTeammate && Math.random() < 0.07) || (Math.random() < 0.03 && throwUtil(killerSide, "flash")));
 
-       let assistant: Player | undefined;
-       let assistantDmg = 0;
-       let killerDmg = 0;
-       if (Math.random() < 0.36) {
-          const teammates = alive[killerSide].filter(p => p.id !== killer.id);
-          if (teammates.length > 0) {
-            assistant = teammates[Math.floor(Math.random() * teammates.length)];
-            assistantDmg = Math.floor(25 + Math.random() * 30);
-            killerDmg = Math.max(30, 100 - assistantDmg);
-          }
-       }
-       if (assistantDmg === 0) killerDmg = Math.floor(65 + Math.random() * 35);
+        let assistant: Player | undefined;
+        let assistantDmg = 0;
+        let killerDmg = 100;
+
+        if (flashAssist) {
+           assistant = supportTeammate ?? (alive[killerSide].length > 1 ? alive[killerSide].filter(p => p.id !== killer.id)[0] : undefined);
+           assistantDmg = 0; // Flash assists do not deal bullet damage
+           killerDmg = Math.floor(75 + Math.random() * 25);
+        } else if (Math.random() < 0.20) { // Standard bullet damage assist on ~20% of kills
+           const teammates = alive[killerSide].filter(p => p.id !== killer.id);
+           if (teammates.length > 0) {
+             assistant = teammates[Math.floor(Math.random() * teammates.length)];
+             assistantDmg = Math.floor(41 + Math.random() * 20); // standard assist threshold >= 41 dmg
+             killerDmg = Math.max(39, 100 - assistantDmg);
+           }
+        } else {
+           killerDmg = Math.floor(70 + Math.random() * 30);
+        }
+
+       const killerWeapon = nadeKillWeapon(killer, context?.map, (killerSide === "you" ? yourUtilCount : opponentUtilCount) > 0) ?? (killerEquipped[killer.id] ?? "Pistol");
+       const isSniper = killerWeapon === "AWP" || killerWeapon === "SSG 08" || killerWeapon === "Scout";
+       const isWallbang = Math.random() < 0.06;
+       const isCollateral = isSniper && Math.random() < 0.035;
+
+       const previousKillsByKiller = feed.filter(f => (!f.type || f.type === "kill") && f.killerId === killer.id).length;
+       const isAce = previousKillsByKiller === 4; // 5th kill
+
+       let highlight: "ace" | "clutch" | "collateral" | "wallbang" | undefined = undefined;
+       if (isAce) highlight = "ace";
+       else if (isCollateral) highlight = "collateral";
+       else if (isWallbang) highlight = "wallbang";
 
        feed.push({
          round, killer: killer.handle, killerId: killer.id, victim: victim.handle, victimId: victim.id,
-         weapon: nadeKillWeapon(killer, context?.map, (killerSide === "you" ? yourUtilCount : opponentUtilCount) > 0) ?? (killerEquipped[killer.id] ?? "Pistol"), team: killerSide, first: feed.filter(f => !f.type || f.type === "kill").length === 0,
+         weapon: killerWeapon, team: killerSide, first: feed.filter(f => !f.type || f.type === "kill").length === 0,
          assistant: assistant?.handle, assistantId: assistant?.id, killerDamage: killerDmg, assistantDamage: assistantDmg,
          isHeadshot: Math.random() < 0.38, flashAssist, killerPos, victimPos, engage,
+         isWallbang, isCollateral, isAce, highlight,
        });
 
        if (alive[victimSide].length === 0) {
           if (tPlantedBomb && victimSide === ctTeamKey) {
              bombOutcome = "exploded";
              winningTeamId = tTeamKey;
-             finalReason = "Target bombed"; // Changed from Squad eliminated if bomb planted
+             finalReason = "Target bombed";
              roundEnded = true;
           } else if (tPlantedBomb && victimSide === tTeamKey) {
              bombOutcome = "defused";
@@ -2824,6 +2944,15 @@ export function generateDynamicRound(
              winningTeamId = killerSide;
              finalReason = "Squad eliminated";
              roundEnded = true;
+          }
+
+          // Check if the round was won in a clutch situation
+          if (clutchCandidate && winningTeamId === clutchCandidate.team && alive[clutchCandidate.team].length === 1 && alive[clutchCandidate.team][0].id === clutchCandidate.player.id) {
+             const lastFeed = feed[feed.length - 1];
+             if (lastFeed) {
+               lastFeed.clutchVs = clutchCandidate.vs;
+               if (!lastFeed.highlight) lastFeed.highlight = "clutch";
+             }
           }
        }
     }
@@ -2890,6 +3019,13 @@ export function getPlayoffDelta(player: Player, opponentRank?: number): number {
 
   const rGroup = (rOverall * mOverall - rPlayoffs * mPlayoffs) / (mOverall - mPlayoffs);
   return rPlayoffs - rGroup;
+}
+
+export function getPlayoffNervesPenalty(player: Player): number {
+  const trait = player.playoffNerves;
+  if (!trait) return 0;
+  const yearsElapsed = Math.max(0, (player.age ?? trait.baselineAge) - trait.baselineAge);
+  return clamp(trait.initialPenalty - yearsElapsed * trait.fadePerYear, 0, trait.initialPenalty);
 }
 
 function killWeight(player: Player, context: MatchContext, opponentRank?: number, weapon?: string) {
@@ -2968,7 +3104,7 @@ function playerPerformanceMultiplier(player: Player, context: MatchContext, oppo
   const isAwpOrScout = weapon === "AWP" || (weapon && weapon.toUpperCase().includes("SSG"));
   if (isAwpOrScout) {
     const isAwper = player.role === "AWP";
-    const baseline = isAwper ? 84 : 85; 
+    const baseline = isAwper ? 84 : 85;
     const diff = player.stats.awp - baseline;
     const factor = diff >= 0 ? diff * 0.008 : diff * 0.015;
     const multiplierChange = diff >= 0 ? Math.min(0.08, factor) : factor;
@@ -2978,11 +3114,16 @@ function playerPerformanceMultiplier(player: Player, context: MatchContext, oppo
   // Playoff performance buff / debuff
   if (context.stage && context.stage !== "swiss") {
     const delta = getPlayoffDelta(player, opponentRank);
+    let playoffMultiplier = 1;
     if (delta >= 0.13) {
-      multiplier *= 1.10;
+      playoffMultiplier = 1.10;
     } else if (delta <= -0.13 && handle !== "donk" && handle !== "m0nesy") {
-      multiplier *= 0.90;
+      playoffMultiplier = 0.90;
     }
+    // Explicit pressure traits model a team whose normal-stage numbers have not translated to
+    // elimination matches yet. Do not stack two playoff penalties; use the stronger current one.
+    playoffMultiplier = Math.min(playoffMultiplier, 1 - getPlayoffNervesPenalty(player));
+    multiplier *= playoffMultiplier;
   }
 
   // Superstar peaking boost (Aim and Consistency based)
@@ -3073,7 +3214,7 @@ function createRoundStatPatch(
       const assistantId = event.assistantId;
       if (assistantId && patch[assistantId]) {
         patch[assistantId].assists += 1;
-        patch[assistantId].damage += event.assistantDamage ?? 40;
+        patch[assistantId].damage += event.flashAssist ? 0 : (event.assistantDamage ?? 40);
         assistedThisRound.add(assistantId);
       }
     } else {
@@ -3137,11 +3278,11 @@ function chipDamage(player: Player, roundKills: number, survived: boolean, conte
   const survivalBonus = survived ? 2 : 0;
   const skillBonus = (player.ovr - 70) * 0.2;
   const performance = context ? playerPerformanceMultiplier(player, context, opponentRank, weapon) : 1;
-  
+
   if (roundKills > 0) {
     return Math.max(4, (4 + activity * 0.4 + Math.random() * 8) * performance);
   }
-  
+
   return Math.max(6, (8 + activity + survivalBonus + skillBonus + Math.random() * 14) * performance);
 }
 

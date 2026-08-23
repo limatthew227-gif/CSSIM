@@ -5,38 +5,157 @@ import { nearestNode } from "./mirageNav";
 import { getNavGrid, snapToWalkable, hasLineOfSight } from "./mapGeometry";
 import type { TimelineFrame } from "./mirageRoundSim";
 
-// Walkable mask for the graph map, memoized once (getNavGrid is itself memoized).
-const MIRAGE_GRID = getNavGrid("mirage");
-const onFloor = (p: Position): Position => (MIRAGE_GRID ? snapToWalkable(MIRAGE_GRID, p) : p);
+const onMapFloor = (mapId: MapId, point: Position): Position => {
+  const grid = getNavGrid(mapId);
+  return grid ? snapToWalkable(grid, point) : point;
+};
 
 // Longest believable engagement on the radar (units, 0..100). Kills resolved farther apart than this
 // — or with no clear sightline — get the victim pulled in toward the killer so the trace reads as a
 // real duel down a sightline instead of a shot across the whole map through buildings.
 const MAX_ENGAGE = 34;
-function plausibleEngagement(killer: Position, victim: Position): Position {
-  const dx = victim.x - killer.x;
-  const dy = victim.y - killer.y;
+function plausibleEngagement(mapId: MapId, killer: Position, victim: Position): Position {
+  const grid = getNavGrid(mapId);
+  const safeKiller = grid ? snapToWalkable(grid, killer) : killer;
+  const dx = victim.x - safeKiller.x;
+  const dy = victim.y - safeKiller.y;
   const d = Math.hypot(dx, dy);
   let v = victim;
   // 1. Cap the distance so nothing reads as a shot across the whole map.
   if (d > MAX_ENGAGE) {
     const k = MAX_ENGAGE / d;
-    v = { x: killer.x + dx * k, y: killer.y + dy * k };
+    v = { x: safeKiller.x + dx * k, y: safeKiller.y + dy * k };
   }
-  // 2. Only correct line-of-sight on the longer shots — close-range grid LOS is noisy (thin 1-cell
-  //    walls between adjacent free cells), and pulling every short duel in collapses them onto the
-  //    killer and kills the spatial variety. Gentle pull, few steps.
-  if (Math.hypot(v.x - killer.x, v.y - killer.y) > 14) {
-    for (let i = 0; i < 3 && MIRAGE_GRID && !hasLineOfSight(MIRAGE_GRID, killer, v); i += 1) {
-      v = { x: killer.x + (v.x - killer.x) * 0.75, y: killer.y + (v.y - killer.y) * 0.75 };
+  v = onMapFloor(mapId, v);
+  // 2. A kill trace is spatial evidence, so it must end on the same walkable surface and share a
+  //    real sightline with the shooter. Walk the candidate back along the duel vector first; if a
+  //    wall separates the two lanes entirely, choose a nearby visible floor cell around the killer.
+  if (grid && !hasLineOfSight(grid, safeKiller, v)) {
+    const target = v;
+    for (let factor = 0.875; factor >= 0.125; factor -= 0.125) {
+      const candidate = snapToWalkable(grid, {
+        x: safeKiller.x + (target.x - safeKiller.x) * factor,
+        y: safeKiller.y + (target.y - safeKiller.y) * factor,
+      });
+      if (
+        Math.hypot(candidate.x - safeKiller.x, candidate.y - safeKiller.y) > 0.35 &&
+        hasLineOfSight(grid, safeKiller, candidate)
+      ) {
+        return candidate;
+      }
     }
+
+    const length = Math.hypot(dx, dy) || 1;
+    const ux = dx / length;
+    const uy = dy / length;
+    const directions = [[ux, uy], [-uy, ux], [uy, -ux], [-ux, -uy]];
+    for (const radius of [1.2, 2.2, 3.4]) {
+      for (const [dirX, dirY] of directions) {
+        const candidate = snapToWalkable(grid, {
+          x: safeKiller.x + dirX * radius,
+          y: safeKiller.y + dirY * radius,
+        });
+        if (
+          Math.hypot(candidate.x - safeKiller.x, candidate.y - safeKiller.y) > 0.35 &&
+          hasLineOfSight(grid, safeKiller, candidate)
+        ) {
+          return candidate;
+        }
+      }
+    }
+    return safeKiller;
   }
-  return onFloor(v);
+  return v;
 }
 
 export interface Position {
   x: number;
   y: number;
+}
+
+const formationCache = new Map<string, Position[]>();
+
+/**
+ * Resolve a five-player formation around an anchor using the same walkable grid that owns movement.
+ * Desired slots face `toward`, then snap to distinct nearby floor cells. This keeps spawns and site
+ * holds from collapsing into one marker without inventing offsets that land inside walls.
+ */
+function formationSlots(
+  mapId: MapId,
+  anchor: Position,
+  toward: Position,
+  count = 5,
+  spread = 1,
+  minimumSeparation = 1.55,
+  searchRadius = 7,
+): Position[] {
+  const grid = getNavGrid(mapId);
+  if (!grid) return Array.from({ length: count }, () => anchor);
+  const center = snapToWalkable(grid, anchor);
+  const vx = toward.x - center.x;
+  const vy = toward.y - center.y;
+  const magnitude = Math.hypot(vx, vy) || 1;
+  const fx = vx / magnitude;
+  const fy = vy / magnitude;
+  const rx = -fy;
+  const ry = fx;
+  const key = `${mapId}:${center.x.toFixed(2)},${center.y.toFixed(2)}>${toward.x.toFixed(2)},${toward.y.toFixed(2)}:${count}:${spread.toFixed(2)}:${minimumSeparation.toFixed(2)}:${searchRadius.toFixed(2)}`;
+  const cached = formationCache.get(key);
+  if (cached) return cached;
+
+  // Front pair, centre, then a wider back pair — roughly how CS spawn packs fan out.
+  const offsets = [
+    { forward: 2.6, right: 0 },
+    { forward: 1.2, right: -2.2 },
+    { forward: 1.2, right: 2.2 },
+    { forward: -1.1, right: -1.8 },
+    { forward: -1.1, right: 1.8 },
+  ];
+  const cellSize = 100 / grid.res;
+  const centerCol = Math.min(grid.res - 1, Math.max(0, Math.floor((center.x / 100) * grid.res)));
+  const centerRow = Math.min(grid.res - 1, Math.max(0, Math.floor((center.y / 100) * grid.res)));
+  const radiusCells = Math.ceil(searchRadius / cellSize);
+  const candidates: Position[] = [];
+  for (let row = Math.max(0, centerRow - radiusCells); row <= Math.min(grid.res - 1, centerRow + radiusCells); row += 1) {
+    for (let col = Math.max(0, centerCol - radiusCells); col <= Math.min(grid.res - 1, centerCol + radiusCells); col += 1) {
+      if (grid.blockedMove[row * grid.res + col]) continue;
+      const point = { x: (col + 0.5) * cellSize, y: (row + 0.5) * cellSize };
+      if (Math.hypot(point.x - center.x, point.y - center.y) <= searchRadius) candidates.push(point);
+    }
+  }
+
+  const selected: Position[] = [];
+  const used = new Set<number>();
+  for (let slot = 0; slot < count; slot += 1) {
+    const offset = offsets[slot % offsets.length];
+    const desired = {
+      x: center.x + (fx * offset.forward + rx * offset.right) * spread,
+      y: center.y + (fy * offset.forward + ry * offset.right) * spread,
+    };
+    let bestIndex = -1;
+    let bestScore = Number.POSITIVE_INFINITY;
+    candidates.forEach((candidate, candidateIndex) => {
+      if (used.has(candidateIndex)) return;
+      const separation = selected.length
+        ? Math.min(...selected.map((point) => Math.hypot(point.x - candidate.x, point.y - candidate.y)))
+        : Number.POSITIVE_INFINITY;
+      const crowdPenalty =
+        separation < minimumSeparation ? (minimumSeparation - separation) * 40 : 0;
+      const score = Math.hypot(candidate.x - desired.x, candidate.y - desired.y) + crowdPenalty;
+      if (score < bestScore) {
+        bestScore = score;
+        bestIndex = candidateIndex;
+      }
+    });
+    if (bestIndex >= 0) {
+      used.add(bestIndex);
+      selected.push(candidates[bestIndex]);
+    } else {
+      selected.push(center);
+    }
+  }
+  formationCache.set(key, selected);
+  return selected;
 }
 
 export interface MapLayout {
@@ -384,7 +503,31 @@ export function cleanRoute(route: Position[]): Position[] {
       }
     }
   }
+  // Combat endpoints are authoritative. Corridor cleanup may remove an end point less than 0.1
+  // units from the preceding grid vertex, but even that tiny mismatch separates the rendered body
+  // from the tracer and reads as a wall shot. Always pin the exact final point.
+  const finalPoint = route[route.length - 1];
+  const cleanedFinal = cleaned[cleaned.length - 1];
+  if (
+    finalPoint &&
+    cleanedFinal &&
+    (Math.abs(cleanedFinal.x - finalPoint.x) > 1e-9 ||
+      Math.abs(cleanedFinal.y - finalPoint.y) > 1e-9)
+  ) {
+    cleaned.push(finalPoint);
+  }
   return cleaned;
+}
+
+function routeLength(route: Position[]): number {
+  let length = 0;
+  for (let index = 1; index < route.length; index += 1) {
+    length += Math.hypot(
+      route[index].x - route[index - 1].x,
+      route[index].y - route[index - 1].y,
+    );
+  }
+  return length;
 }
 
 function interpolate(p1: Position, p2: Position, t: number): Position {
@@ -442,20 +585,92 @@ function graphRoute(a: Position, b: Position): Position[] {
   return route;
 }
 
-// Movement speed for graph maps, in radar units (0..100) per event-step. Waypoint steps are re-timed
-// so no leg is ever traversed faster than this — the cure for "supersonic" sprints.
-const WALK_SPEED = 15;
+const voxelRouteCache = new Map<string, Position[]>();
 
-function polylineLength(pts: Position[]): number {
-  let len = 0;
-  for (let i = 1; i < pts.length; i += 1) len += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
-  return len;
+function spatialRoute(mapId: MapId, a: Position, b: Position): Position[] {
+  if (mapId === "mirage") return graphRoute(a, b);
+  const grid = getNavGrid(mapId);
+  if (!grid) return [a, b];
+  const start = snapToWalkable(grid, a);
+  const end = snapToWalkable(grid, b);
+  // The exact endpoint is part of the rendered combat contract. A 0.1-unit cache key allowed two
+  // nearby duel anchors to share a route whose final vertex belonged to the earlier fight, leaving
+  // the tracer and player body subtly separated at the death frame.
+  const key = `${mapId}:${start.x.toFixed(3)},${start.y.toFixed(3)}>${end.x.toFixed(3)},${end.y.toFixed(3)}`;
+  let route = voxelRouteCache.get(key);
+  if (!route) {
+    route = corridorPath(mapId, [start, end]);
+    if (voxelRouteCache.size < 8000) voxelRouteCache.set(key, route);
+  }
+  return route;
 }
 
-function getPlayerPositionAtStep(wps: Waypoint[], step: number, layout: MapLayout, isAlive: boolean = true, useGraph = false): Position {
+// Movement speed for spatial maps, in radar units (0..100) per event-step. Short legs reach their
+// hold early; long legs consume the whole event interval. The interval itself is distance-paced in
+// getStepDelay, so a long rotate takes longer on screen instead of teleporting at the kill frame.
+const WALK_SPEED = 15;
+
+/**
+ * Resolve a duel on the arena's real corridor rather than trusting narration-only coordinates.
+ * The round engine still owns who won; the spatial layer owns where contact was physically possible.
+ */
+function resolveSpatialDuel(
+  mapId: MapId,
+  killerIntent: Position,
+  victimIntent: Position,
+  seed: number,
+): { killer: Position; victim: Position } {
+  const grid = getNavGrid(mapId);
+  if (!grid) {
+    const killer = killerIntent;
+    return { killer, victim: plausibleEngagement(mapId, killer, victimIntent) };
+  }
+
+  const corridor = cleanRoute(spatialRoute(mapId, killerIntent, victimIntent));
+  const meeting = snapToWalkable(grid, getPathPosition(corridor, 0.5));
+  const baseAngle =
+    Math.atan2(victimIntent.y - killerIntent.y, victimIntent.x - killerIntent.x) +
+    (((seed % 29) - 14) * Math.PI) / 180;
+
+  // Keep both endpoints on nearby floor cells with a verified clear shot between them.
+  for (const radius of [4.6, 3.7, 2.9, 2.2, 1.5]) {
+    for (let turn = 0; turn < 8; turn += 1) {
+      const angle = baseAngle + (turn * Math.PI) / 4;
+      const killer = snapToWalkable(grid, {
+        x: meeting.x - Math.cos(angle) * radius * 0.38,
+        y: meeting.y - Math.sin(angle) * radius * 0.38,
+      });
+      const victim = snapToWalkable(grid, {
+        x: meeting.x + Math.cos(angle) * radius * 0.62,
+        y: meeting.y + Math.sin(angle) * radius * 0.62,
+      });
+      const distance = Math.hypot(victim.x - killer.x, victim.y - killer.y);
+      if (distance >= 0.8 && distance <= MAX_ENGAGE && hasLineOfSight(grid, killer, victim)) {
+        return { killer, victim };
+      }
+    }
+  }
+
+  const killer = meeting;
+  return { killer, victim: plausibleEngagement(mapId, killer, victimIntent) };
+}
+
+function getPlayerPositionAtStep(
+  wps: Waypoint[],
+  step: number,
+  layout: MapLayout,
+  mapId: MapId,
+  isAlive: boolean = true,
+  useSpatialRoutes = false,
+): Position {
   if (wps.length === 0) return { x: 50, y: 50 };
-  if (wps.length === 1) return wps[0].pos;
-  if (step >= wps[wps.length - 1].step) return wps[wps.length - 1].pos;
+  if (wps.length === 1) {
+    return useSpatialRoutes ? onMapFloor(mapId, wps[0].pos) : wps[0].pos;
+  }
+  if (step >= wps[wps.length - 1].step) {
+    const last = wps[wps.length - 1].pos;
+    return useSpatialRoutes ? onMapFloor(mapId, last) : last;
+  }
 
   let w1 = wps[0];
   let w2 = wps[wps.length - 1];
@@ -471,11 +686,15 @@ function getPlayerPositionAtStep(wps: Waypoint[], step: number, layout: MapLayou
   const t_linear = denominator > 0 ? (step - w1.step) / denominator : 0;
 
   let cleaned: Position[];
-  if (useGraph) {
-    // Tactical graph: route callout-to-callout (elevation-aware), never off the radar image. The
+  if (useSpatialRoutes) {
+    // Route callout-to-callout on the authoritative walkable surface. Mirage uses its detailed
+    // tactical graph; every other map uses the Source 2 voxel occupancy/elevation grid. The
     // any-angle corridor path is already corner-hugging and strictly on the floor; we do NOT Chaikin
     // it (corner-cutting shaved routes back into walls, and snapping those back caused jitter).
-    cleaned = cleanRoute(graphRoute(w1.pos, w2.pos)).map(onFloor);
+    // The pathfinder has already snapped the endpoints and validated every segment. Re-snapping
+    // each corner independently can move one corner to the opposite side of a thin wall and create
+    // a new, invalid segment between two otherwise valid Source 2 path vertices.
+    cleaned = cleanRoute(spatialRoute(mapId, w1.pos, w2.pos));
   } else {
     // Legacy node-graph fallback for maps without code geometry yet.
     const n1 = getClosestNodeKey(w1.pos, layout);
@@ -507,9 +726,308 @@ function getPlayerPositionAtStep(wps: Waypoint[], step: number, layout: MapLayou
   // No per-frame wobble here: the old jiggle reseeded every animation frame off the fractional
   // step, which made holding players visibly buzz/vibrate. Holding players now stay put.
   const pos = getPathPosition(cleaned, t);
-  // Final guard: a point interpolated between two floor vertices can still clip a wall corner, so
-  // snap the rendered position onto the walkable mask (no-op when already on the floor).
-  return useGraph ? onFloor(pos) : pos;
+  // `spatialRoute` is already constructed from movement-clear Source 2 corridor segments. Do not
+  // snap this interpolated point again: at a voxel-cell boundary the nearest-free-cell lookup can
+  // momentarily choose a cell beside the route, producing a one-frame sideways jump before the
+  // player snaps back. Keeping the continuous arc-length interpolation removes that jitter while
+  // the route itself remains authoritative for wall avoidance.
+  return pos;
+}
+
+type Bombsite = "A" | "B";
+
+interface TacticalLaneSet {
+  attack: string[];
+  defend: string[];
+}
+
+interface TacticalPlan {
+  setup: Position;
+  contact: Position;
+  hold: Position;
+}
+
+interface TacticalPlayerInput {
+  p: Player;
+  idx: number;
+  key: string;
+  side: "CT" | "T";
+  team: "you" | "opponent";
+}
+
+/**
+ * Callout lanes are semantic references; their final coordinates are always snapped and connected
+ * by the Source 2 navigation raster. The ordering encodes a normal multi-lane execute/retake:
+ * primary contact, secondary trade route, then the long sightline/flank.
+ */
+const TACTICAL_LANES: Record<MapId, Record<Bombsite, TacticalLaneSet>> = {
+  mirage: {
+    A: { attack: ["A Ramp", "Palace", "Connector"], defend: ["Connector", "Mid", "Palace"] },
+    B: { attack: ["Apps", "Mid", "Market"], defend: ["Market", "Connector", "Apps"] },
+  },
+  inferno: {
+    A: { attack: ["A Ramp", "Alt Mid", "Arch"], defend: ["Pit", "Arch", "A Ramp"] },
+    B: { attack: ["Banana", "Alt Mid", "Arch"], defend: ["Arch", "Banana", "Alt Mid"] },
+  },
+  dust2: {
+    A: { attack: ["Long A", "Short A", "Mid Doors"], defend: ["Short A", "Mid Doors", "Long A"] },
+    B: { attack: ["Upper Tunnel", "Lower Tunnel", "Mid Doors"], defend: ["Mid Doors", "Lower Tunnel", "Upper Tunnel"] },
+  },
+  nuke: {
+    A: { attack: ["Lobby", "Main", "Outside"], defend: ["Main", "Outside", "Ramp"] },
+    B: { attack: ["Ramp", "Secret", "Outside"], defend: ["Secret", "Ramp", "Outside"] },
+  },
+  ancient: {
+    A: { attack: ["A Hall", "Donut", "Cheetah"], defend: ["Temple", "Donut", "A Hall"] },
+    B: { attack: ["B Main", "Cheetah", "Donut"], defend: ["Cheetah", "Temple", "B Main"] },
+  },
+  anubis: {
+    A: { attack: ["A Main", "Canal", "Bridge"], defend: ["A Connector", "Bridge", "A Main"] },
+    B: { attack: ["B Waters", "Bridge", "Canal"], defend: ["Bridge", "B Waters", "A Connector"] },
+  },
+  train: {
+    A: { attack: ["Popdog", "Ivy", "Z Connector"], defend: ["Alley", "Z Connector", "Ivy"] },
+    B: { attack: ["B Ramp", "Popdog", "Z Connector"], defend: ["Z Connector", "Alley", "B Ramp"] },
+  },
+};
+
+const TACTICAL_ROLE_ORDER: Record<Player["role"], number> = {
+  Entry: 0,
+  Rifler: 1,
+  Support: 2,
+  IGL: 3,
+  AWP: 4,
+  Lurker: 5,
+};
+
+function routeProgress(mapId: MapId, from: Position, to: Position, progress: number): Position {
+  const route = cleanRoute(spatialRoute(mapId, from, to));
+  return onMapFloor(mapId, getPathPosition(route, progress));
+}
+
+function calloutPosition(
+  mapId: MapId,
+  layout: MapLayout,
+  name: string | undefined,
+  fallback: Position,
+): Position {
+  return onMapFloor(mapId, (name && layout.chokePoints[name]) || fallback);
+}
+
+/**
+ * Keep phase destinations personally separated while remaining on real floor cells. This is an
+ * occupancy reservation, not a repulsion force, so it cannot cause the per-frame jitter that a
+ * boids-style avoidance pass would introduce.
+ */
+function reserveTacticalPoint(
+  mapId: MapId,
+  desired: Position,
+  toward: Position,
+  reserved: Position[],
+  minimumSeparation = 3.35,
+): Position {
+  const safeDesired = onMapFloor(mapId, desired);
+  if (
+    reserved.every(
+      (point) => Math.hypot(point.x - safeDesired.x, point.y - safeDesired.y) >= minimumSeparation,
+    )
+  ) {
+    reserved.push(safeDesired);
+    return safeDesired;
+  }
+
+  const candidates = formationSlots(
+    mapId,
+    safeDesired,
+    toward,
+    5,
+    1.75,
+    minimumSeparation,
+    10,
+  );
+  let best = candidates[0] ?? safeDesired;
+  let bestScore = Number.POSITIVE_INFINITY;
+  for (const candidate of candidates) {
+    const nearest = reserved.length
+      ? Math.min(...reserved.map((point) => Math.hypot(point.x - candidate.x, point.y - candidate.y)))
+      : Number.POSITIVE_INFINITY;
+    const crowdPenalty =
+      nearest < minimumSeparation ? (minimumSeparation - nearest) * 120 : 0;
+    const score = Math.hypot(candidate.x - safeDesired.x, candidate.y - safeDesired.y) + crowdPenalty;
+    if (score < bestScore) {
+      best = candidate;
+      bestScore = score;
+    }
+  }
+  reserved.push(best);
+  return best;
+}
+
+/**
+ * Build phase plans modelled on demo-review concepts rather than sending roles straight to a site:
+ * Ts default into lanes, preserve an entry/trader layer, then fan into post-plant crossfires; CTs
+ * hold a 2–1–2 shell and retake through several approaches. Source 2 nav still owns every leg.
+ */
+function buildTacticalPlans(
+  mapId: MapId,
+  layout: MapLayout,
+  players: TacticalPlayerInput[],
+  attackSite: Bombsite,
+  hasPlant: boolean,
+  preparation?: MatchState["context"]["preparation"],
+): Map<string, TacticalPlan> {
+  const plans = new Map<string, TacticalPlan>();
+  const site = onMapFloor(mapId, attackSite === "A" ? layout.bombsiteA : layout.bombsiteB);
+  const oppositeSite = onMapFloor(
+    mapId,
+    attackSite === "A" ? layout.bombsiteB : layout.bombsiteA,
+  );
+  const attackLanes = TACTICAL_LANES[mapId][attackSite].attack.map((name) =>
+    calloutPosition(mapId, layout, name, layout.mid),
+  );
+  const retakeLanes = TACTICAL_LANES[mapId][attackSite].defend.map((name) =>
+    calloutPosition(mapId, layout, name, layout.mid),
+  );
+  const oppositeLaneName = TACTICAL_LANES[mapId][attackSite === "A" ? "B" : "A"].attack[0];
+  const oppositeLane = calloutPosition(mapId, layout, oppositeLaneName, oppositeSite);
+  const siteSlots = formationSlots(mapId, site, layout.tSpawn, 5, 2.15, 3.45, 13);
+
+  for (const team of ["you", "opponent"] as const) {
+    const members = players
+      .filter((player) => player.team === team)
+      .sort(
+        (a, b) =>
+          TACTICAL_ROLE_ORDER[a.p.role] - TACTICAL_ROLE_ORDER[b.p.role] || a.idx - b.idx,
+      );
+    const setupReserved: Position[] = [];
+    const contactReserved: Position[] = [];
+    const holdReserved: Position[] = [];
+
+    for (const member of members) {
+      if (member.side === "T") {
+        const role = member.p.role;
+        const primary = attackLanes[0] ?? layout.mid;
+        const secondary = attackLanes[1] ?? layout.mid;
+        const longLane = attackLanes[2] ?? secondary;
+        let setupDesired: Position;
+        let contactDesired: Position;
+        let holdDesired: Position;
+
+        if (role === "Entry") {
+          setupDesired = routeProgress(mapId, layout.tSpawn, primary, 0.98);
+          contactDesired = siteSlots[0] ?? site;
+          holdDesired = siteSlots[3] ?? site;
+        } else if (role === "Rifler") {
+          // A trade layer follows the entry's corridor but stays several floor cells behind.
+          setupDesired = routeProgress(mapId, layout.tSpawn, primary, 0.77);
+          contactDesired = siteSlots[1] ?? site;
+          holdDesired = siteSlots[0] ?? site;
+        } else if (role === "Support") {
+          setupDesired = routeProgress(mapId, layout.tSpawn, secondary, 0.9);
+          contactDesired = siteSlots[2] ?? site;
+          holdDesired = routeProgress(mapId, site, secondary, 0.46);
+        } else if (role === "IGL") {
+          setupDesired = routeProgress(mapId, layout.tSpawn, secondary, 0.68);
+          contactDesired = routeProgress(mapId, secondary, site, 0.56);
+          holdDesired = routeProgress(mapId, site, longLane, 0.42);
+        } else if (role === "Lurker") {
+          setupDesired = routeProgress(mapId, layout.tSpawn, oppositeLane, 0.9);
+          contactDesired = oppositeLane;
+          holdDesired = routeProgress(mapId, oppositeLane, oppositeSite, 0.28);
+        } else {
+          // The AWP keeps the long lane rather than joining the entry pack on the bomb marker.
+          setupDesired = routeProgress(mapId, layout.tSpawn, longLane, 0.84);
+          contactDesired = longLane;
+          holdDesired = routeProgress(mapId, longLane, site, 0.16);
+        }
+
+        plans.set(member.key, {
+          setup: reserveTacticalPoint(
+            mapId,
+            setupDesired,
+            layout.tSpawn,
+            setupReserved,
+          ),
+          contact: reserveTacticalPoint(
+            mapId,
+            contactDesired,
+            layout.tSpawn,
+            contactReserved,
+          ),
+          hold: reserveTacticalPoint(
+            mapId,
+            hasPlant ? holdDesired : contactDesired,
+            layout.tSpawn,
+            holdReserved,
+          ),
+        });
+        continue;
+      }
+
+      const role = member.p.role;
+      const aLanes = TACTICAL_LANES[mapId].A.defend.map((name) =>
+        calloutPosition(mapId, layout, name, layout.bombsiteA),
+      );
+      const bLanes = TACTICAL_LANES[mapId].B.defend.map((name) =>
+        calloutPosition(mapId, layout, name, layout.bombsiteB),
+      );
+      let setupDesired: Position;
+      if (team === "you" && preparation?.plan === "targeted-site-stack") {
+        const stackLanes = preparation.targetSite === "A" ? aLanes : bLanes;
+        const stackSite = preparation.targetSite === "A" ? layout.bombsiteA : layout.bombsiteB;
+        if (role === "AWP") setupDesired = stackLanes[2] ?? layout.mid;
+        else if (role === "Lurker") setupDesired = layout.mid;
+        else if (role === "Entry") setupDesired = stackLanes[0] ?? stackSite;
+        else if (role === "Support") setupDesired = stackLanes[1] ?? stackSite;
+        else setupDesired = stackLanes[member.idx % Math.max(1, stackLanes.length)] ?? stackSite;
+      } else if (role === "Entry") setupDesired = aLanes[0];
+      else if (role === "IGL") setupDesired = aLanes[1] ?? layout.bombsiteA;
+      else if (role === "AWP") setupDesired = layout.mid;
+      else if (role === "Support") setupDesired = bLanes[1] ?? layout.bombsiteB;
+      else setupDesired = bLanes[0];
+
+      const retakeIndex =
+        role === "Entry" ? 0 : role === "Rifler" ? 1 : role === "Support" ? 1 : 2;
+      const retakeStart = retakeLanes[retakeIndex] ?? layout.mid;
+      const retakeProgress =
+        role === "Entry"
+          ? 0.68
+          : role === "Rifler"
+            ? 0.52
+            : role === "Support"
+              ? 0.25
+              : role === "IGL"
+                ? 0.42
+                : 0.1;
+      const holdDesired = hasPlant
+        ? routeProgress(mapId, retakeStart, site, retakeProgress)
+        : setupDesired;
+
+      const setup = reserveTacticalPoint(
+        mapId,
+        setupDesired,
+        layout.ctSpawn,
+        setupReserved,
+      );
+      plans.set(member.key, {
+        setup,
+        contact: reserveTacticalPoint(
+          mapId,
+          setup,
+          layout.ctSpawn,
+          contactReserved,
+        ),
+        hold: reserveTacticalPoint(
+          mapId,
+          holdDesired,
+          layout.ctSpawn,
+          holdReserved,
+        ),
+      });
+    }
+  }
+
+  return plans;
 }
 
 export interface RadarTrace {
@@ -567,7 +1085,10 @@ export function simulateRadarPlayers(
 ): RadarSimulationResult {
   const mapId = match.map;
   const layout = MAP_LAYOUTS[mapId] || MAP_LAYOUTS.mirage;
-  const useGraph = mapId === "mirage"; // route on the tactical graph; legacy node routes elsewhere
+  const useMirageTimeline = mapId === "mirage";
+  const useSpatialRoutes = Boolean(getNavGrid(mapId));
+  const onFloor = (point: Position) =>
+    useSpatialRoutes ? onMapFloor(mapId, point) : point;
   const yourSide = match.side;
   const opponentSide: "CT" | "T" = yourSide === "CT" ? "T" : "CT";
 
@@ -584,7 +1105,11 @@ export function simulateRadarPlayers(
   for (let i = 0; i < allEvents.length; i++) {
     const event = allEvents[i];
     if ((!event.type || event.type === "kill") && event.victimId) {
-      if (i < stepIndex) {
+      // Mirage samples a timestamped engine timeline between events. Other maps animate *toward*
+      // event i during the interval i..i+1, so the victim remains alive until the interval finishes.
+      // Marking them dead at the first fractional frame was the body-teleport bug.
+      const occurred = useMirageTimeline ? i < stepIndex : i + 1 <= stepIndex + 1e-6;
+      if (occurred) {
         const victimTeam = event.team === "you" ? "opponent" : event.team === "opponent" ? "you" : undefined;
         if (victimTeam) deadIds.add(teamPlayerKey(victimTeam, event.victimId));
       }
@@ -594,7 +1119,12 @@ export function simulateRadarPlayers(
   // === Mirage spatial replay: play the engine's real per-player trajectories (set by playRound). ===
   // This is the authoritative movement now — players spread across approaches and only meet where the
   // duels actually happened, so no funnel/teleport and traces are real sightlines.
-  if (useGraph && match.roundTimeline && match.roundTimelineRound === activeRound && match.roundTimeline.length) {
+  if (
+    useMirageTimeline &&
+    match.roundTimeline &&
+    match.roundTimelineRound === activeRound &&
+    match.roundTimeline.length
+  ) {
     const tl = match.roundTimeline;
     // map the event-step clock onto round-time via each event's timestamp
     const eventT: number[] = allEvents.map((e) => e.t ?? NaN);
@@ -659,76 +1189,107 @@ export function simulateRadarPlayers(
   const tTeamName = yourSide === "T" ? you.name : opponent.name;
   const strategySeed = hashString(tTeamName) + activeRound;
   const tStrategy = strategySeed % 3;
+  // A narrated plant is authoritative for the called site. Without a plant, rotate the default
+  // between A and B. The old independent strategy/plant seeds often made the entire T side reverse
+  // direction at the plant event.
+  const attackSite: Bombsite =
+    plantEventIndex !== -1 ? plantSite : tStrategy === 2 ? "B" : "A";
 
-  // 1. Determine base destinations — always use exact known node positions
+  // 1. Assign phase plans: default -> contact/execute -> hold/retake.
   const allPlayers = [
     ...you.players.map((p, idx) => ({ p, idx, key: teamPlayerKey("you", p.id), side: yourSide, team: "you" as const })),
     ...opponent.players.map((p, idx) => ({ p, idx, key: teamPlayerKey("opponent", p.id), side: opponentSide, team: "opponent" as const }))
   ];
 
-  const playerDest = new Map<string, Position>();
-  for (const { idx, key, side } of allPlayers) {
-    let dest: Position;
-    if (side === "CT") {
-      if (idx === 0 || idx === 3) dest = layout.bombsiteA;
-      else if (idx === 1 || idx === 4) dest = layout.bombsiteB;
-      else dest = layout.mid;
-    } else {
-      if (tStrategy === 1) dest = idx === 4 ? layout.mid : layout.bombsiteA;
-      else if (tStrategy === 2) dest = idx === 4 ? layout.mid : layout.bombsiteB;
-      else {
-        if (idx === 0 || idx === 1) dest = layout.bombsiteA;
-        else if (idx === 2 || idx === 3) dest = layout.bombsiteB;
-        else dest = layout.mid;
-      }
-    }
-    playerDest.set(key, dest);
+  const spawnSlotByKey = new Map<string, number>();
+  for (const team of ["you", "opponent"] as const) {
+    allPlayers
+      .filter((player) => player.team === team)
+      .sort(
+        (a, b) =>
+          TACTICAL_ROLE_ORDER[a.p.role] - TACTICAL_ROLE_ORDER[b.p.role] || a.idx - b.idx,
+      )
+      .forEach((player, slot) => spawnSlotByKey.set(player.key, slot));
   }
 
-  // 2. Initialize waypoints — everyone starts at spawn
+  const tacticalPlans = buildTacticalPlans(
+    mapId,
+    layout,
+    allPlayers,
+    attackSite,
+    plantEventIndex !== -1,
+    match.context?.preparation,
+  );
+  const playerDest = new Map<string, Position>();
+  for (const { key } of allPlayers) {
+    const plan = tacticalPlans.get(key);
+    playerDest.set(key, plan?.hold ?? onFloor(layout.mid));
+  }
+
+  // 2. Initialize phase waypoints. Entry reaches contact first, the rifler remains a real trade
+  // layer, support/IGL take the second lane, and the AWP keeps a long sightline.
   const playerWaypoints = new Map<string, Waypoint[]>();
-  for (const { key, side } of allPlayers) {
-    const spawn = side === "CT" ? layout.ctSpawn : layout.tSpawn;
-    playerWaypoints.set(key, [{ step: 0, pos: spawn }]);
+  const contactStep =
+    plantEventIndex !== -1
+      ? plantEventIndex + 1
+      : Math.max(0.8, totalSteps * 0.72);
+  const setupStep = Math.max(0.48, Math.min(contactStep - 0.24, contactStep * 0.52));
+  for (const { p, key, side } of allPlayers) {
+    const baseSpawn = side === "CT" ? layout.ctSpawn : layout.tSpawn;
+    const toward = layout.mid;
+    const slot = spawnSlotByKey.get(key) ?? 0;
+    const spawn = formationSlots(mapId, baseSpawn, toward, 5, 1.25, 1.9, 8)[slot];
+    const departureDelay = [0, 0.12, 0.26, 0.42, 0.58][slot] ?? 0.58;
+    const waypoints: Waypoint[] =
+      departureDelay > 0
+        ? [{ step: 0, pos: spawn }, { step: departureDelay, pos: spawn }]
+        : [{ step: 0, pos: spawn }];
+    const plan = tacticalPlans.get(key);
+    if (plan) {
+      const lastStep = () => waypoints[waypoints.length - 1].step;
+      if (setupStep > lastStep() + 0.02) {
+        waypoints.push({ step: setupStep, pos: plan.setup });
+      }
+      const roleLag =
+        side === "T"
+          ? p.role === "Entry"
+            ? -0.1
+            : p.role === "Rifler"
+              ? 0.04
+              : p.role === "Support"
+                ? 0.1
+                : p.role === "IGL"
+                  ? 0.16
+                  : 0
+          : 0;
+      const phasedContactStep = Math.max(
+        lastStep() + 0.08,
+        Math.min(totalSteps, contactStep + roleLag),
+      );
+      if (phasedContactStep > lastStep() + 0.02) {
+        waypoints.push({ step: phasedContactStep, pos: plan.contact });
+      }
+      if (totalSteps > lastStep() + 0.02) {
+        waypoints.push({ step: totalSteps, pos: plan.hold });
+      }
+    }
+    playerWaypoints.set(key, waypoints);
   }
 
   const roundTraces: RadarTrace[] = [];
   const deadIdsSet = new Set<string>();
   const deathPos = new Map<string, Position>(); // where each victim died — dead dots freeze here
+  const putWaypoint = (waypoints: Waypoint[], step: number, pos: Position) => {
+    const existing = waypoints.findIndex((waypoint) => Math.abs(waypoint.step - step) < 1e-9);
+    if (existing >= 0) waypoints[existing] = { step, pos };
+    else waypoints.push({ step, pos });
+    waypoints.sort((a, b) => a.step - b.step);
+  };
 
   // 3. Process events chronologically
   for (let i = 0; i < allEvents.length; i++) {
     const event = allEvents[i];
-    
-    if (event.type === "plant") {
-       const plantSitePos = plantSite === "A" ? layout.bombsiteA : layout.bombsiteB;
-       for (const { idx, key, team } of allPlayers) {
-         if (!deadIdsSet.has(key)) {
-           const wps = playerWaypoints.get(key)!;
-           const lastWp = wps[wps.length - 1];
-           // By the plant a player should be AT their pre-plant objective (site/mid), then rotate —
-           // NOT frozen at spawn. Anchor them at their current destination at the plant step; the
-           // rotate leg (below) then runs from there over the rest of the round.
-           const preplantDest = playerDest.get(key) ?? lastWp.pos;
-           if (lastWp.step < i) {
-             wps.push({ step: i, pos: preplantDest });
-           }
-
-           const actualSide = team === "you" ? yourSide : opponentSide;
-           if (actualSide === "T") {
-             // One lurker goes mid, rest play on site
-             if (idx === 0) {
-               playerDest.set(key, layout.mid);
-             } else {
-               playerDest.set(key, plantSitePos);
-             }
-           } else {
-             // CT retakes toward bomb site
-             playerDest.set(key, plantSitePos);
-           }
-         }
-       }
-    }
+    const occurrenceStep = i + 1;
     
     if ((!event.type || event.type === "kill") && event.victimId) {
       const victimId = event.victimId;
@@ -737,36 +1298,73 @@ export function simulateRadarPlayers(
       const killerTeam = event.team === "you" ? "you" : event.team === "opponent" ? "opponent" : undefined;
       const victimKey = victimTeam ? teamPlayerKey(victimTeam, victimId) : victimId;
       const killerKey = killerTeam && killerId ? teamPlayerKey(killerTeam, killerId) : killerId;
+      const victimWps = playerWaypoints.get(victimKey);
+      const killerWps = killerKey ? playerWaypoints.get(killerKey) : undefined;
       deadIdsSet.add(victimKey);
 
-      // Raw spots the sim resolved the duel at (pixel-nav maps like mirage); else where they headed.
-      const rawVictim = onFloor(event.victimPos ?? playerDest.get(victimKey) ?? layout.mid);
-      // Killer position first (needed to make the engagement plausible): the sim's, else a peek offset.
-      const angle = hashString((killerId || "") + i) * (Math.PI / 180);
-      const killerFightPos = onFloor(event.killerPos ?? {
-        x: rawVictim.x + Math.cos(angle) * 1.2,
-        y: rawVictim.y + Math.sin(angle) * 1.2,
-      });
-      // Pull the victim in so the duel is a believable sightline, not a cross-map shot through walls.
-      const victimDestination = killerId ? plausibleEngagement(killerFightPos, rawVictim) : rawVictim;
+      // Narration decides who won; the 3D arena decides where the duel can physically happen.
+      // Sample each player's CURRENT tactical phase instead of pulling both bodies toward their
+      // final site destination. Only the combatants rendezvous; their teammates keep their lanes.
+      //
+      // A fractional tactical waypoint very near this event used to leave only ~0.1 step to reach
+      // the combat point. Remove those in-between stops for the two combatants so their approach is
+      // spread over the full event interval rather than compressed into a visible last-frame dash.
+      const openCombatInterval = (waypoints: Waypoint[] | undefined) => {
+        if (!waypoints) return;
+        for (let waypointIndex = waypoints.length - 1; waypointIndex >= 0; waypointIndex -= 1) {
+          const waypointStep = waypoints[waypointIndex].step;
+          if (waypointStep > occurrenceStep - 1 + 1e-6 && waypointStep < occurrenceStep - 1e-6) {
+            waypoints.splice(waypointIndex, 1);
+          }
+        }
+      };
+      openCombatInterval(victimWps);
+      openCombatInterval(killerWps);
+
+      const intentAtContact = (key: string | undefined, fallback: Position): Position => {
+        const wps = key ? playerWaypoints.get(key) : undefined;
+        return wps
+          ? getPlayerPositionAtStep(
+              wps,
+              occurrenceStep,
+              layout,
+              mapId,
+              true,
+              useSpatialRoutes,
+            )
+          : onFloor(fallback);
+      };
+      const victimIntent = intentAtContact(
+        victimKey,
+        playerDest.get(victimKey) ?? event.victimPos ?? layout.mid,
+      );
+      const killerIntent = intentAtContact(
+        killerKey,
+        (killerKey ? playerDest.get(killerKey) : undefined) ??
+          event.killerPos ??
+          victimIntent,
+      );
+      const duel = killerId
+        ? resolveSpatialDuel(mapId, killerIntent, victimIntent, hashString(`${killerId}:${victimId}:${i}`))
+        : { killer: killerIntent, victim: victimIntent };
+      const killerFightPos = duel.killer;
+      const victimDestination = duel.victim;
       deathPos.set(victimKey, victimDestination); // dead players freeze here (no ghost wandering)
 
-      const victimWps = playerWaypoints.get(victimKey);
       if (victimWps) {
-        victimWps.push({ step: i, pos: victimDestination });
-        victimWps.push({ step: totalSteps, pos: victimDestination }); // stay dead
+        putWaypoint(victimWps, occurrenceStep, victimDestination);
+        putWaypoint(victimWps, totalSteps, victimDestination); // stay dead
       }
 
       if (killerId) {
-        const killerWps = killerKey ? playerWaypoints.get(killerKey) : undefined;
         if (killerWps) {
-          killerWps.push({ step: i, pos: killerFightPos });
+          putWaypoint(killerWps, occurrenceStep, killerFightPos);
 
           // After the kill the killer drifts toward their objective over the REST of the round, not
           // in a single step — a one-step hop across the map was the main "supersonic" sprint.
           const killerOwnDest = (killerKey ? playerDest.get(killerKey) : undefined) ?? victimDestination;
-          if (i + 1 < totalSteps) {
-            killerWps.push({ step: totalSteps, pos: killerOwnDest });
+          if (occurrenceStep < totalSteps) {
+            putWaypoint(killerWps, totalSteps, killerOwnDest);
           }
 
           const traceSide = event.team === "you" ? yourSide : opponentSide;
@@ -808,36 +1406,29 @@ export function simulateRadarPlayers(
     );
   }
 
-  // 4c. Re-time waypoints (graph maps) so every leg gets enough event-steps for its actual corridor
-  // length at WALK_SPEED. This is the core "supersonic" cure: a long route crammed into one step
-  // used to be traversed instantly; now each leg's step span is at least length/WALK_SPEED, so the
-  // dot moves at a constant, believable pace. Anchors only ever move LATER (so order is preserved),
-  // and a player whose timeline runs past round-end simply hasn't finished crossing — which is fine.
-  if (useGraph) {
-    for (const { key } of allPlayers) {
-      const wps = playerWaypoints.get(key)!;
-      if (wps.length < 2) continue;
-      const retimed: Waypoint[] = [wps[0]];
-      let prevStep = wps[0].step;
-      for (let k = 1; k < wps.length; k += 1) {
-        const legLen = polylineLength(graphRoute(wps[k - 1].pos, wps[k].pos));
-        const step = Math.max(wps[k].step, prevStep + legLen / WALK_SPEED);
-        retimed.push({ step, pos: wps[k].pos });
-        prevStep = step;
-      }
-      playerWaypoints.set(key, retimed);
-    }
-  }
-
   // 5. Calculate final positions (+ facing) at current stepIndex
   // A dead player freezes at the spot they died — never keeps drifting along their route ("ghost").
   const positionFor = (key: string, isAlive: boolean): Position => {
     if (!isAlive && deathPos.has(key)) return deathPos.get(key)!;
-    return getPlayerPositionAtStep(playerWaypoints.get(key) || [], stepIndex, layout, isAlive, useGraph);
+    return getPlayerPositionAtStep(
+      playerWaypoints.get(key) || [],
+      stepIndex,
+      layout,
+      mapId,
+      isAlive,
+      useSpatialRoutes,
+    );
   };
   const yawOf = (key: string, pos: Position): number => {
     const wps = playerWaypoints.get(key) || [];
-    const prev = getPlayerPositionAtStep(wps, Math.max(0, stepIndex - 0.06), layout, true, useGraph);
+    const prev = getPlayerPositionAtStep(
+      wps,
+      Math.max(0, stepIndex - 0.06),
+      layout,
+      mapId,
+      true,
+      useSpatialRoutes,
+    );
     const dx = pos.x - prev.x;
     const dy = pos.y - prev.y;
     if (dx * dx + dy * dy > 0.04) return (Math.atan2(dy, dx) * 180) / Math.PI; // face movement
@@ -882,13 +1473,14 @@ export function simulateRadarPlayers(
   const activeTraces = roundTraces.filter((_, idx) => {
     const killTrace = roundTraces[idx];
     const step = allEvents.findIndex((e) => (!e.type || e.type === "kill") && e.victimId === killTrace.victimId);
-    return step !== -1 && step < stepIndex;
+    return step !== -1 && step + 1 <= stepIndex + 1e-6;
   }).slice(-6);
 
   let currentBombPos: Position | null = null;
-  if (plantEventIndex !== -1 && stepIndex >= plantEventIndex) {
-    // Prefer the plant position the sim chose (matches the CT retake target); else fall back to the seed.
-    currentBombPos = onFloor(allEvents[plantEventIndex].killerPos ?? (plantSite === "A" ? layout.bombsiteA : layout.bombsiteB));
+  if (plantEventIndex !== -1 && stepIndex + 1e-6 >= plantEventIndex + 1) {
+    // The arena's selected site owns the bomb marker. Narration coordinates can come from a generic
+    // sim event and must not pull the post-plant back through a train/building.
+    currentBombPos = onFloor(plantSite === "A" ? layout.bombsiteA : layout.bombsiteB);
   }
 
   return {
@@ -924,9 +1516,9 @@ const STEP_MAX = 4200; // cap so the longest single move can't drag
 
 export function getStepDelay(
   match: MatchState,
-  _you: FieldTeam,
-  _opponent: FieldTeam,
-  _stepIndex: number,
+  you: FieldTeam,
+  opponent: FieldTeam,
+  stepIndex: number,
   speed: number,
   liveFeedView: "feed" | "map"
 ): number {
@@ -949,6 +1541,36 @@ export function getStepDelay(
       }
       return Math.max(STEP_MIN, Math.min(STEP_MAX, (maxMove * MS_PER_UNIT) / speed));
     }
+  }
+  if (liveFeedView === "map" && getNavGrid(match.map)) {
+    // Pace the reconstructed 3D arena by the distance its busiest player actually travels between
+    // these two event boundaries. This keeps the feed and arena synchronized without forcing a body
+    // to its kill coordinate early or letting a long rotate play as a one-frame jump.
+    const fromStep = Math.max(0, stepIndex - 1);
+    const before = simulateRadarPlayers(match, you, opponent, fromStep).players;
+    const after = simulateRadarPlayers(match, you, opponent, stepIndex).players;
+    const beforeByKey = new Map(before.map((player) => [player.radarKey, player]));
+    let maxMove = 0;
+    for (const player of after) {
+      const previous = beforeByKey.get(player.radarKey);
+      if (!previous) continue;
+      // Use travelled corridor length, not straight-line displacement. Around trains/buildings a
+      // 25-unit route can have endpoints only a few units apart; Euclidean pacing made that entire
+      // bend play in a fraction of a second and read as a teleport.
+      maxMove = Math.max(
+        maxMove,
+        routeLength(
+          cleanRoute(
+            spatialRoute(
+              match.map,
+              { x: previous.x, y: previous.y },
+              { x: player.x, y: player.y },
+            ),
+          ),
+        ),
+      );
+    }
+    return Math.max(STEP_MIN, Math.min(STEP_MAX, (maxMove * MS_PER_UNIT) / speed));
   }
   if (liveFeedView === "map") {
     return mapSpeedDelays[speed] ?? 3200;

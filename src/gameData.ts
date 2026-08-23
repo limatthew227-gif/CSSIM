@@ -28,6 +28,15 @@ export interface SourceTeam {
   logo?: string;
 }
 
+export interface PlayoffNerves {
+  /** Fractional performance penalty at the start of the save (0.08 = 8%). */
+  initialPenalty: number;
+  /** Player age when the trait was assigned, used to measure career time elapsed. */
+  baselineAge: number;
+  /** Fraction of the penalty removed per in-game year. */
+  fadePerYear: number;
+}
+
 export interface Player {
   id: string;
   handle: string;
@@ -44,6 +53,9 @@ export interface Player {
   fragSupport?: boolean;
   style: Style;
   traits: string[];
+  // A persistent negative trait used only in playoff maps. Career mode advances player age by half a
+  // year per Major, so the penalty naturally fades as the player gains playoff experience.
+  playoffNerves?: PlayoffNerves;
   stats: PlayerStats;
   ovr: number;
   hltvRating?: number;

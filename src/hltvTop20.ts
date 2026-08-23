@@ -2,6 +2,7 @@ import {
   Coach,
   MapId,
   PlayerStats,
+  PlayoffNerves,
   Role,
   Roster,
   SourceTeam,
@@ -29,6 +30,9 @@ export interface HltvPlayerSeed {
   secondaryRole?: Role; // a second job (e.g. AWP who also IGLs) — counts for composition, not fragging
   fragSupport?: boolean; // a Support who frags like a rifler (no support debuff on stats/OVR/fragging)
   style: Style;
+  traits?: string[];
+  playoffNerves?: PlayoffNerves;
+  age?: number;
   hltvRating: number;
   statOverrides?: Partial<PlayerStats>;
   samples?: Partial<Record<RatingFilter, RatingSample>>;
@@ -303,6 +307,7 @@ function traitsFor(player: HltvPlayerSeed, stats: PlayerStats, team: HltvTeamSee
   const traits = new Set<string>();
   const hltvRating = effectiveHltvRating(player, team);
   traits.add(player.role === "AWP" ? "Sniper" : player.role === "IGL" ? "Brain" : player.role === "Lurker" ? "Late round" : player.role);
+  player.traits?.forEach((trait) => traits.add(trait));
   if (hltvRating >= 1.16) traits.add("Star");
   if (stats.clutch >= 88) traits.add("Clutch");
   if (player.style === "Aggressive") traits.add("Entry");
@@ -377,11 +382,12 @@ export function makeHltvRoster(team: HltvTeamSeed): Roster {
         fragSupport: player.fragSupport,
         style: player.style,
         traits: traitsFor(player, stats, team),
+        playoffNerves: player.playoffNerves,
         stats,
         ovr: rateStatsForRole(stats, player.role === "Support" && player.fragSupport ? "Rifler" : player.role),
         hltvRating: effectiveHltvRating(player, team),
         hltvMaps: ratingSample(player, team, "overall").maps,
-        age: source.year === "2026" ? hltvPlayerAge2026(player.handle) : undefined,
+        age: player.age ?? (source.year === "2026" ? hltvPlayerAge2026(player.handle) : undefined),
         source,
         maps: playerMapPool(index, player, team, maps),
       };
@@ -462,12 +468,13 @@ const hltvTeams: HltvTeamSeed[] = [
     mapBias: { mirage: 3, nuke: 2, anubis: 3, train: -1 },
     players: [
       { handle: "Aleksib", realName: "Aleksi Virolainen", country: "FI", role: "IGL", style: "Balanced", hltvRating: 0.93 },
-      { handle: "iM", realName: "Mihai Ivan", country: "RO", role: "Entry", style: "Aggressive", hltvRating: 1.06 },
+      { handle: "iM", realName: "Mihai Ivan", country: "RO", role: "Lurker", style: "Balanced", hltvRating: 1.06 },
       {
         handle: "b1t",
         realName: "Valeriy Vakhovskiy",
         country: "UA",
-        role: "Rifler",
+        role: "Support",
+        fragSupport: true,
         style: "Balanced",
         hltvRating: 1.13,
         samples: {
@@ -906,10 +913,10 @@ const hltvTeams: HltvTeamSeed[] = [
     mapBias: { mirage: 2, nuke: 2, ancient: 3, train: 1 },
     players: [
       { handle: "torzsi", realName: "Adam Torzsas", country: "HU", role: "AWP", style: "Balanced", hltvRating: 1.1 },
-      { handle: "Spinx", realName: "Lotan Giladi", country: "IL", role: "Rifler", style: "Passive", hltvRating: 1.12 },
-      { handle: "xertioN", realName: "Dorian Berman", country: "IL", role: "Entry", style: "Aggressive", hltvRating: 1.09 },
-      { handle: "xelex", realName: "Adrian Vincze", country: "HU", role: "Rifler", style: "Aggressive", hltvRating: 1.04 },
-      { handle: "Brollan", realName: "Ludvig Brolin", country: "SE", role: "IGL", style: "Balanced", hltvRating: 1.05 },
+      { handle: "Spinx", realName: "Lotan Giladi", country: "IL", role: "Lurker", style: "Passive", hltvRating: 1.12 },
+      { handle: "xertioN", realName: "Dorian Berman", country: "IL", role: "IGL", style: "Aggressive", hltvRating: 1.09 },
+      { handle: "xelex", realName: "Adrian Vincze", country: "HU", role: "Support", style: "Aggressive", hltvRating: 1.04 },
+      { handle: "Brollan", realName: "Ludvig Brolin", country: "SE", role: "Entry", style: "Balanced", hltvRating: 1.05 },
     ],
   },
   {
@@ -1004,7 +1011,7 @@ const hltvTeams: HltvTeamSeed[] = [
       { handle: "Snax", realName: "Janusz Pogorzelski", country: "PL", role: "IGL", style: "Passive", hltvRating: 0.89 },
       { handle: "REZ", realName: "Fredrik Sterner", country: "SE", role: "Rifler", style: "Aggressive", hltvRating: 1.12 },
       { handle: "Tauson", realName: "Sebastian Lindelof", country: "DK", role: "Entry", style: "Balanced", hltvRating: 1.03 },
-      { handle: "PR", realName: "Oldrich Novy", country: "CZ", role: "Rifler", style: "Aggressive", hltvRating: 1.1 },
+      { handle: "PR", realName: "Oldrich Novy", country: "CZ", role: "Entry", style: "Aggressive", hltvRating: 1.1 },
       { handle: "hypex", realName: "Sebastian Rasmussen", country: "DK", role: "AWP", style: "Passive", hltvRating: 1.02 },
     ],
   },
@@ -1272,7 +1279,7 @@ const hltvTeams: HltvTeamSeed[] = [
     players: [
       { handle: "MaSvAl", realName: "Svyatoslav Masko", country: "BY", role: "Rifler", style: "Aggressive", hltvRating: 1.17 },
       { handle: "sFade8", realName: "Vitaliy Marushka", country: "UA", role: "Support", style: "Passive", hltvRating: 0.95 },
-      { handle: "AW", realName: "Anton Wartsev", country: "RU", role: "AWP", style: "Balanced", hltvRating: 1.05 },
+      { handle: "AW", realName: "Andrey Anisimov", country: "RU", role: "AWP", style: "Balanced", hltvRating: 1.05 },
       { handle: "mo0N", realName: "Artur Ponomarev", country: "RU", role: "IGL", style: "Balanced", hltvRating: 1.05 },
       { handle: "tenzy", realName: "Nikita Kochenyuk", country: "RU", role: "Entry", style: "Aggressive", hltvRating: 1.19 },
     ],
